@@ -1,5 +1,6 @@
 //Backend/server.js
-const express = require('express');
+//Dependencies
+const express = require('express'); //Web Framework to handle HTTP requests
 const cors = require('cors');
 const { exec } = require('child_process');
 const fs = require('fs');
