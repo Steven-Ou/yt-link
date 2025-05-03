@@ -11,4 +11,6 @@ export default function Home() {
             setError('Please enter a URL'); //if the URL is empty, show error message
             return;
         }
+        setLoading(true); //Set loading state to true
+        setError(''); //Reset error state
 }
