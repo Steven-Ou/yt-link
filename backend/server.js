@@ -11,3 +11,7 @@ const PORT = 5000; //Port number for the server
 //Middleware
 app.use(cors()); //Allows backend to accept requests from the frontend
 app.use(express.json()); //Parse JSON data in requests
+//Download Route
+app.post('/download', (req, res) => {
+    
+}
