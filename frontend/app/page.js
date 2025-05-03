@@ -28,5 +28,6 @@ export default function Home() {
         }
         const blob = await response.blob(); //Convert the response to a blob
         const downloadUrl = URL.createObjectURL(blob); //Create a download URL for the blob
+        const a = document.createElement('a'); //Create an anchor element
     }
 }
