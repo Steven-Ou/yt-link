@@ -17,4 +17,10 @@ app.post('/download', (req, res) => {
     const filename = `audo_${Date.now()}.mp3`; //Generate a unique filename
     const command = `yt-dlp -x --audio-format mp3 -o "${filename}" "${url}"`; //Command to download audio
 
+    exec(command,(error) => {
+        if(error){
+            console.error(`Error: ${error.message}`); //Log error if command fails
+            return res.status(500).json({error: 'Failed to download audio'}); //Send error response
+        }
+    });
 });
