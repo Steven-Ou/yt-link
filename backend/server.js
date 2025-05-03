@@ -15,5 +15,6 @@ app.use(express.json()); //Parse JSON data in requests
 app.post('/download', (req, res) => {
     const {url} =req.body; //Extract URL from request body
     const filename = `audo_${Date.now()}.mp3`; //Generate a unique filename
-    const command = ``
+    const command = `yt-dlp -x --audio-format mp3 -o "${filename}" "${url}"`; //Command to download audio
+    
 }
