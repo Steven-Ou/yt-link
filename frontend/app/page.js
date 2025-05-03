@@ -13,4 +13,6 @@ export default function Home() {
         }
         setLoading(true); //Set loading state to true
         setError(''); //Reset error state
+        
+    }
 }
