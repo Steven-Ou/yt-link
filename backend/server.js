@@ -22,6 +22,7 @@ app.post('/download', (req, res) => {
             console.error(`Error: ${error.message}`); //Log error if command fails
             return res.status(500).json({error: 'Failed to download audio'}); //Send error response
         }
+        //Sends the mp3 file to the client
         res.download(path.join(__dirname, filename),(err)=>{
             fs.unlinkSync(path.join(__dirname,filename)); //cleaning up the file
         });
