@@ -8,5 +8,7 @@ export default function Home() {
             return;
         }
     }
-        
+    const link = document.createElement('a');
+    link.href =`http://localhost:5000/download?url=${encodeURIComponent(url)}}`;
+
 }
