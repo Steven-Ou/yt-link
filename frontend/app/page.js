@@ -5,5 +5,10 @@ export default function Home() {
     const [loading, setLoading] = useState(false); //checks if the app is in the process of fetching
     const [error, setError] = useState(''); //Stores error messsage and update the error state. 
 
-    const
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if(!url) {
+            setError('Please enter a URL'); //if the URL is empty, show error message
+            return;
+        }
 }
