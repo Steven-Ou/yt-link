@@ -22,15 +22,22 @@ export default function Home() {
                 },
                 body: JSON.stringify({url}),
             });
+            if(!response.ok) {
+                throw new Error('Failed to download audio'); //if the response is not ok, show error message
+            }
+            const blob = await response.blob(); //Convert the response to a blob
+            const downloadUrl = URL.createObjectURL(blob); //Create a download URL for the blob
+            const a = document.createElement('a'); //Create an anchor element
+            a.href = downloadUrl; //Set the href to the download URL
+            a.download = 'audio.mp3'; //Set the download attribute to the desired file name
+            a.click(); //Programmatically click the anchor element to trigger the download
+        }catch (error) {
+            setError(error.message); //If an error occurs, set the error state
+        } finally {
+            setLoading(false); //Set loading state to false
         }
-        if(!response.ok) {
-            throw new Error('Failed to download audio'); //if the response is not ok, show error message
-        }
-        const blob = await response.blob(); //Convert the response to a blob
-        const downloadUrl = URL.createObjectURL(blob); //Create a download URL for the blob
-        const a = document.createElement('a'); //Create an anchor element
-        a.href = downloadUrl; //Set the href to the download URL
-        a.download = 'audio.mp3'; //Set the download attribute to the desired file name
-        a.click(); //Programmatically click the anchor element to trigger the download
-    }
+    };
+    return(
+
+    );
 }
