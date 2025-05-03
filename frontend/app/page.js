@@ -7,4 +7,6 @@ export default function Home() {
             alert('Please enter a URL');
             return;
         }
+    }
+        
 }
