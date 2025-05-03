@@ -30,5 +30,6 @@ export default function Home() {
         const downloadUrl = URL.createObjectURL(blob); //Create a download URL for the blob
         const a = document.createElement('a'); //Create an anchor element
         a.href = downloadUrl; //Set the href to the download URL
+        a.download = 'audio.mp3'; //Set the download attribute to the desired file name
     }
 }
