@@ -23,6 +23,8 @@ export default function Home() {
                 body: JSON.stringify({url}),
             });
         }
-        
+        if(!response.ok) {
+            throw new Error('Failed to download audio'); //if the response is not ok, show error message
+        }
     }
 }
