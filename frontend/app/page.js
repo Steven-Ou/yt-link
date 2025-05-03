@@ -27,5 +27,6 @@ export default function Home() {
             throw new Error('Failed to download audio'); //if the response is not ok, show error message
         }
         const blob = await response.blob(); //Convert the response to a blob
+        const downloadUrl = URL.createObjectURL(blob); //Create a download URL for the blob
     }
 }
