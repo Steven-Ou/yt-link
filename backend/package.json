@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "cors": "^2.8.5",
     "express": "^5.1.0",
     "node": "^22.15.0",
     "server.js": "^1.0.0"
