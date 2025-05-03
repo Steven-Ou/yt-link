@@ -3,5 +3,5 @@ import {useState} from 'react';
 export default function Home() {
     const [url, setUrl] = useState('');
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
+    const [error, setError] = useState('');
 }
