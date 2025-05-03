@@ -23,7 +23,7 @@ app.post('/download', (req, res) => {
             return res.status(500).json({error: 'Failed to download audio'}); //Send error response
         }
         res.download(path.join(__dirname, filename),(err)=>{
-            fs.unlinkSync
+            fs.unlinkSync(path.join(__dirname,filename)); //cleaning up the file
         });
     });
 });
