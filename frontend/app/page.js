@@ -14,5 +14,14 @@ export default function Home() {
         setLoading(true); //Set loading state to true
         setError(''); //Reset error state
         
+        try{ // fetching data from the backend
+            const response = await fetch('http://localhost:5000/download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({url}),
+            });
+        }
     }
 }
