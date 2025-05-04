@@ -7,25 +7,25 @@ import path from 'path';
 
 export async function POST(request) {
   const { playlistUrl } = await request.json();
-  if (!playlistUrl) return NextResponse.json({ error: 'No playlist URL' }, { status: 400 });
+  if (!playlistUrl) {
+    return NextResponse.json({ error: 'No playlist URL provided' }, { status: 400 });
+  }
 
   const folder = `playlist_${Date.now()}`;
   fs.mkdirSync(folder);
 
   try {
-    // Download playlist
     await new Promise((res, rej) =>
       exec(
         `yt-dlp -x --audio-format mp3 -o "${folder}/%(playlist_index)s - %(title)s.%(ext)s" "${playlistUrl}"`,
         err => (err ? rej(err) : res())
       )
     );
-    // Zip it
     const zipName = `${folder}.zip`;
     await new Promise((res, rej) =>
       exec(`zip -r ${zipName} ${folder}`, err => (err ? rej(err) : res()))
     );
-    // Stream back
+
     const filePath = path.resolve(zipName);
     const stream = fs.createReadStream(filePath);
     return new NextResponse(stream, {
@@ -35,8 +35,8 @@ export async function POST(request) {
         'Content-Disposition': `attachment; filename="${zipName}"`,
       },
     });
-  } catch (err) {
-    console.error('API /api/download-playlist error:', err);
+  } catch (error) {
+    console.error('API /download-playlist error:', error);
     return NextResponse.json({ error: 'Playlist download failed' }, { status: 500 });
   } finally {
     fs.rmSync(folder, { recursive: true, force: true });
