@@ -17,17 +17,22 @@ app.use(cors({
 app.use(express.json()); //Parse JSON data in requests
 //Download Route
 app.post('/download', (req, res) => {
-    const {url} =req.body; //Extract URL from request body
+    const { url } =req.body; //Extract URL from request body
 
     const folderName = `album_${Date.now()}`; //Generate a unique folder name
     fs.mkdirSync(folderName); //Create a new folder for the album
     const command = `yt-dlp -x --audio-format mp3 -o "${folderName}/%(title)s.%(ext)s" "${url}`; //Command to download audio
 
-    exec(command,(error) => {
+    exec(command,(error, stdout, stderr) => {
         if(error){
             console.error(`Error: ${error.message}`); //Log error if command fails
             return res.status(500).json({error: 'Failed to download audio'}); //Send error response
         }
+        if (stderr) {
+            console.error(`stderr: ${stderr}`);
+        }
+        console.log(`stdout: ${stdout}`);
+        
         const zipFile = `${folderName}.zip`; //Name of the zip file
         const zipCommand = `zip -r ${zipFile} ${folderName}`; //Command to zip the folder
         //Sends the mp3 file to the client
