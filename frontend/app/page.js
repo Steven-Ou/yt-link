@@ -8,6 +8,7 @@ export default function Home() {
     const [playlistUrl, setPlaylistUrl] = useState(""); //State to store the playlist URL
 
     const downloadMP3 = async () => {
+        if (!url) return alert("Enter video URL");
         try {
             const response = await fetch('http://localhost:5000/download', {
                 method: 'POST',
@@ -17,15 +18,16 @@ export default function Home() {
                 body: JSON.stringify({ url }),
             });
     
-            if (response.ok) {
-                // Handle the successful response
-                // You can redirect the user or perform further actions based on the response
-                alert("Download started...");
-            } else {
-                alert("Failed to download MP3");
-            }
-        } catch (error) {
-            console.error("Error:", error);
+            if (!response.ok) throw new Error("Failed to start download");
+            const blob = await response.blob();
+            const href = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = href;
+            a.download = "audio.zip"; // or get filename from response headers
+            a.click();
+        
+        } catch (err) {
+            console.error("Error:", err);
             alert("An error occurred while downloading");
         }
     };
