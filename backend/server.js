@@ -1,28 +1,28 @@
 //Backend/server.js
 //Dependencies
-const cors = require('cors');//Connects the frontend and backend
-const express = require('express'); //Web Framework to handle HTTP requests
-const app = express(); //Creating an instance of express
-// Allow requests from any localhost port (e.g., 3000, 3001, 3003, etc.)
-const corsOptions = {
-    origin: function (origin, callback) {
-      if (!origin || origin.startsWith('http://localhost')) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    methods: ['GET', 'POST'],
-    credentials: true
-  };
+const express = require('express');
+const cors = require('cors');
+const app = express();
+
+// Dynamically allow any localhost origin
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || /^http:\/\/localhost:\d+$/.test(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST'],
+  credentials: true,
+}));
+app.use(express.json());
   const { exec } = require('child_process'); //Execute system commands
 const fs = require('fs');//deleting files after it is used
 const path = require('path');//to let it work with all OS
 //Setting up Express App
 const PORT = 5000; //Port number for the server
 //Middleware
-app.use(cors(corsOptions)); //Enable CORS for all routes
-app.use(express.json()); //Parse JSON data in requests
 //Download Route
 app.post('/download', (req, res) => {
     const { url } =req.body; //Extract URL from request body
