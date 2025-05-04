@@ -37,7 +37,6 @@ export default function Home() {
                 color='primary'
                 fullWidth
                 onClick={downloadMP3}
-                disabled={loading}
             >
                 Download MP3
             </Button>
