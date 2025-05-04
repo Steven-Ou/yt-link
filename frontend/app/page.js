@@ -1,6 +1,7 @@
+"use client";
 import { Typography } from '@mui/material';
 import { Container } from '@mui/system';
-import {useState} from 'react';
+import {use, useState} from 'react';
 
 export default function Home() {
     const [url, setUrl] = useState(''); //storing the URL
