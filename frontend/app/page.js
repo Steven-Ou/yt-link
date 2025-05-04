@@ -56,8 +56,9 @@ export default function Home() {
             <Button
                 variant='contained'
                 color='secondary'
+                onClick={downloadPlaylist}
             >
-
+                Download Playlist
             </Button>
         </Container>
     );
