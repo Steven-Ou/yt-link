@@ -45,6 +45,10 @@ export default function Home() {
             <Typography variant='h4' gutterBottom align='center'>
                 🎧 YouTube to MP3 Converter
             </Typography>
+
+            <Typography variant='h6' gutterBottom>
+                Convert a Single Video
+            </Typography>
         </Container>
     );
 }
