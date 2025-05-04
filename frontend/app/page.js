@@ -31,8 +31,27 @@ export default function Home() {
     };
     const downloadPlaylist = async () => {
         if (!playlistUrl) return alert("Enter playlist URL");
-        window.location.href = `http://localhost:5000/download-playlist?url=${encodeURIComponent(playlistUrl)}`;
-      };
+
+    try {
+        const response = await fetch('http://localhost:5000/download-playlist', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ playlistUrl }),
+        });
+
+        if (response.ok) {
+            // Handle the successful response
+            alert("Playlist download started...");
+        } else {
+            alert("Failed to download Playlist");
+        }
+    } catch (error) {
+        console.error("Error:", error);
+        alert("An error occurred while downloading");
+    }
+};
     return(
         <Container maxWidth="sm" style={{marginTop: 80}}>
             <Typography variant='h4' gutterBottom align='center'>
