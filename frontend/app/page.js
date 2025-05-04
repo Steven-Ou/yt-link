@@ -11,6 +11,10 @@ export default function Home() {
         if (!url) return alert("Enter video URL");
             window.location.href = `http://localhost:5000/download?url=${encodeURIComponent(url)}`;
     };
+    const downloadPlaylist = () => {
+        if (!playlistUrl) return alert("Enter playlist URL");
+        window.location.href = `http://localhost:5000/download-playlist?url=${encodeURIComponent(playlistUrl)}`;
+      };
     return(
         <Container maxWidth="sm" style={{marginTop: 80}}>
             <Typography variant='h4' gutterBottom align='center'>
