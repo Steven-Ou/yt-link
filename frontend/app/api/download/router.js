@@ -1,4 +1,4 @@
-export const runtime = 'nodejs'; // Use Node.js runtime for server-side code
+export const runtime = 'nodejs';             // opt into Node.js APIs
 
 import { NextResponse } from 'next/server';
 import { exec } from 'child_process';
@@ -7,44 +7,40 @@ import path from 'path';
 
 export async function POST(request) {
   const { url } = await request.json();
-  if (!url) {
-    return NextResponse.json({ error: 'No URL provided' }, { status: 400 });
-  }
+  if (!url) return NextResponse.json({ error: 'No URL provided' }, { status: 400 });
 
   const folder = `album_${Date.now()}`;
   fs.mkdirSync(folder);
 
   try {
-    // 1) Download audio
-    await new Promise((resolve, reject) =>
+    // Download MP3
+    await new Promise((res, rej) =>
       exec(
         `yt-dlp -x --audio-format mp3 -o "${folder}/%(title)s.%(ext)s" "${url}"`,
-        (err) => (err ? reject(err) : resolve())
+        err => (err ? rej(err) : res())
       )
     );
-    // 2) Zip folder
+    // Zip it
     const zipName = `${folder}.zip`;
-    await new Promise((resolve, reject) =>
-      exec(`zip -r ${zipName} ${folder}`, (err) => (err ? reject(err) : resolve()))
+    await new Promise((res, rej) =>
+      exec(`zip -r ${zipName} ${folder}`, err => (err ? rej(err) : res()))
     );
-    // 3) Stream ZIP back
+    // Stream ZIP response
     const filePath = path.resolve(zipName);
-    const fileStream = fs.createReadStream(filePath);
-    const res = new NextResponse(fileStream, {
+    const stream = fs.createReadStream(filePath);
+    return new NextResponse(stream, {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="${zipName}"`,
       },
     });
-    // Cleanup after stream
-    fileStream.on('close', () => {
-      fs.rmSync(folder, { recursive: true, force: true });
-      fs.unlinkSync(filePath);
-    });
-    return res;
   } catch (error) {
-    console.error('API /download error:', error);
+    console.error('API /api/download error:', error);
     return NextResponse.json({ error: 'Download failed' }, { status: 500 });
+  } finally {
+    // Cleanup
+    fs.rmSync(folder, { recursive: true, force: true });
+    fs.unlinkSync(`${folder}.zip`);
   }
 }
