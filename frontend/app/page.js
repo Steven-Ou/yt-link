@@ -51,6 +51,9 @@ export default function Home() {
             </Typography>
             <TextField
                 label="YouTube Video URL"
+                variant='outlined'
+                fullWidth
+                value={url}
             >
 
             </TextField>
