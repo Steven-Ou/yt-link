@@ -57,6 +57,8 @@ export default function Home() {
                 variant='contained'
                 color='secondary'
                 onClick={downloadPlaylist}
+                fullWidth
+                style={{marginBottom: 16}}
             >
                 Download Playlist
             </Button>
