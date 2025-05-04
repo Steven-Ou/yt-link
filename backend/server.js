@@ -9,7 +9,11 @@ const path = require('path');//to let it work with all OS
 const app= express(); //Creating an instance of express
 const PORT = 5000; //Port number for the server
 //Middleware
-app.use(cors()); //Allows backend to accept requests from the frontend
+app.use(cors({
+    origin: 'http://localhost:3000', //Allow requests from the frontend
+    methods: ['POST'], //Allow only POST requests
+    allowedHeaders: ['Content-Type'], //Allow specific headers
+})); //Allows backend to accept requests from the frontend
 app.use(express.json()); //Parse JSON data in requests
 //Download Route
 app.post('/download', (req, res) => {
