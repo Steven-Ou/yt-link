@@ -39,7 +39,7 @@ export default function Home() {
         }
     };
     return(
-        <Container>
+        <Container maxWidth="sm" style={{marginTop: 80}}>
             
         </Container>
     );
