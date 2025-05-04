@@ -1,8 +1,12 @@
 {
   "name": "yt-link",
+  "version": "1.0.0",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "cd backend && node server.js",
     "client": "cd frontend && npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^8.0.0"
   }
 }
