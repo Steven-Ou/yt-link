@@ -10,11 +10,23 @@ const PORT = 5000;
 
 //CORS Middleware - ALLOW ALL localhost ORIGINS
 app.use(cors({
-    origin: '*', // Allow all origins during development (change this in production)
-    methods: ['GET', 'POST'],
+    origin: function (origin, callback) {
+      console.log("Origin received:", origin);
+      // Allow requests with no origin (like from curl or mobile apps) or those starting with http://localhost:
+      if (!origin || origin.startsWith('http://localhost:')) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    // Include OPTIONS so the browser’s preflight can pass
+    methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type'],
     credentials: true
-}));
+  }));
+  
+  // Optionally, can also handle options for all routes:
+app.options('*', cors());
 //JSON body parser
 app.use(express.json());
 //Download Route
