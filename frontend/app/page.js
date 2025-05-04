@@ -1,7 +1,7 @@
 "use client";
 import { Button, Divider, TextField, Typography } from '@mui/material';
 import { Container } from '@mui/system';
-import {use, useState} from 'react';
+
 
 export default function Home() {
     // Single video
@@ -16,8 +16,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ playlistUrl }),
-    });
-   
+    });   
 };
     return(
         <Container maxWidth="sm" style={{marginTop: 80}}>
