@@ -3,18 +3,25 @@
 const cors = require('cors');//Connects the frontend and backend
 const express = require('express'); //Web Framework to handle HTTP requests
 const app = express(); //Creating an instance of express
-const allowOrigin = require('http://localhost:3003'); //CORS middleware to allow cross-origin requests
-const { exec } = require('child_process'); //Execute system commands
+// Allow requests from any localhost port (e.g., 3000, 3001, 3003, etc.)
+const corsOptions = {
+    origin: function (origin, callback) {
+      if (!origin || origin.startsWith('http://localhost')) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: ['GET', 'POST'],
+    credentials: true
+  };
+  const { exec } = require('child_process'); //Execute system commands
 const fs = require('fs');//deleting files after it is used
 const path = require('path');//to let it work with all OS
 //Setting up Express App
 const PORT = 5000; //Port number for the server
 //Middleware
-app.use(cors({
-    origin: allowOrigin, //Allow requests from the frontend
-    methods: ['GET','POST'], //Allow only POST requests
-    credentials: true, //Allow credentials
-})); //Allows backend to accept requests from the frontend
+app.use(cors(corsOptions)); //Enable CORS for all routes
 app.use(express.json()); //Parse JSON data in requests
 //Download Route
 app.post('/download', (req, res) => {
