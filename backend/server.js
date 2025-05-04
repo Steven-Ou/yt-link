@@ -24,8 +24,10 @@ app.post('/download', (req, res) => {
             console.error(`Error: ${error.message}`); //Log error if command fails
             return res.status(500).json({error: 'Failed to download audio'}); //Send error response
         }
+        const zipFile = `${folderName}.zip`; //Name of the zip file
+        const zipCommand = `zip -r ${zipFile} ${folderName}`; //Command to zip the folder
         //Sends the mp3 file to the client
-        res.download(path.join(__dirname, filename),(err)=>{
+        res.download(path.join(__dirname, zipFile),(err)=>{
             fs.unlinkSync(path.join(__dirname,filename)); //cleaning up the file
         });
     });
