@@ -54,6 +54,7 @@ export default function Home() {
                 variant='outlined'
                 fullWidth
                 value={url}
+                onChange={(e)=> setUrl(e.target.value)}
             />
         </Container>
     );
