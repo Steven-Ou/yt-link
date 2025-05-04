@@ -15,7 +15,7 @@ export default function Home() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ url:videoUrl }),
+                body: JSON.stringify({ url: url }),
             });
     
             if (!response.ok) throw new Error("Failed to start download");
@@ -40,7 +40,7 @@ export default function Home() {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ playlistUrl }),
+            body: JSON.stringify({ playlistUrl: playlistUrl }),
         });
 
         if (response.ok) {

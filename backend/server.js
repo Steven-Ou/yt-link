@@ -11,6 +11,7 @@ const PORT = 5000;
 //CORS Middleware - ALLOW ALL localhost ORIGINS
 app.use(cors({
     origin: function (origin, callback) {
+      console.log("Origin received:", origin);
       if (!origin || origin.startsWith('http://localhost:')) {
         callback(null, true);
       } else {
