@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 import { NextResponse } from 'next/server';
 import { exec } from 'child_process';
 import fs from 'fs';
@@ -5,43 +7,39 @@ import path from 'path';
 
 export async function POST(request) {
   const { playlistUrl } = await request.json();
-  if (!playlistUrl) {
-    return NextResponse.json({ error: 'No playlist URL provided' }, { status: 400 });
-  }
+  if (!playlistUrl) return NextResponse.json({ error: 'No playlist URL' }, { status: 400 });
 
   const folder = `playlist_${Date.now()}`;
   fs.mkdirSync(folder);
 
   try {
-    // 1) Download entire playlist
-    await new Promise((resolve, reject) =>
+    // Download playlist
+    await new Promise((res, rej) =>
       exec(
         `yt-dlp -x --audio-format mp3 -o "${folder}/%(playlist_index)s - %(title)s.%(ext)s" "${playlistUrl}"`,
-        (err) => (err ? reject(err) : resolve())
+        err => (err ? rej(err) : res())
       )
     );
-    // 2) Zip folder
+    // Zip it
     const zipName = `${folder}.zip`;
-    await new Promise((resolve, reject) =>
-      exec(`zip -r ${zipName} ${folder}`, (err) => (err ? reject(err) : resolve()))
+    await new Promise((res, rej) =>
+      exec(`zip -r ${zipName} ${folder}`, err => (err ? rej(err) : res()))
     );
-    // 3) Stream ZIP back
+    // Stream back
     const filePath = path.resolve(zipName);
-    const fileStream = fs.createReadStream(filePath);
-    const res = new NextResponse(fileStream, {
+    const stream = fs.createReadStream(filePath);
+    return new NextResponse(stream, {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="${zipName}"`,
       },
     });
-    fileStream.on('close', () => {
-      fs.rmSync(folder, { recursive: true, force: true });
-      fs.unlinkSync(filePath);
-    });
-    return res;
-  } catch (error) {
-    console.error('API /download-playlist error:', error);
+  } catch (err) {
+    console.error('API /api/download-playlist error:', err);
     return NextResponse.json({ error: 'Playlist download failed' }, { status: 500 });
+  } finally {
+    fs.rmSync(folder, { recursive: true, force: true });
+    fs.unlinkSync(`${folder}.zip`);
   }
 }
