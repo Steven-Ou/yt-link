@@ -1,28 +1,28 @@
 //Backend/server.js
-//Dependencies
 const express = require('express');
 const cors = require('cors');
-const app = express();
+const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
-// Dynamically allow any localhost origin
+const app = express();
+const PORT = 5000;
+
+// ✅ CORS Middleware - ALLOW ALL localhost ORIGINS
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || /^http:\/\/localhost:\d+$/.test(origin)) {
+  origin: function (origin, callback) {
+    if (!origin || origin.startsWith('http://localhost')) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
     }
   },
   methods: ['GET', 'POST'],
-  credentials: true,
+  credentials: true
 }));
+
+// ✅ JSON body parser
 app.use(express.json());
-  const { exec } = require('child_process'); //Execute system commands
-const fs = require('fs');//deleting files after it is used
-const path = require('path');//to let it work with all OS
-//Setting up Express App
-const PORT = 5000; //Port number for the server
-//Middleware
 //Download Route
 app.post('/download', (req, res) => {
     const { url } =req.body; //Extract URL from request body
