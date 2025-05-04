@@ -11,24 +11,13 @@ const PORT = 5000;
 // CORS Middleware - allow all localhost origins
 
 // In backend/server.js, near the top (before defining any routes):
-const corsOptions = {
-    origin: function (origin, callback) {
-      console.log("Origin received:", origin);
-      // Allow requests with no origin (like curl/Postman) or those starting with 'http://localhost:'
-      if (!origin || origin.startsWith('http://localhost:')) {
-        // Instead of returning true, echo back the origin
-        callback(null, origin);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type'],
-    credentials: true
-  };
-  
-  app.use(cors(corsOptions));
-  
+
+app.use(cors({
+  origin: true,// This automatically reflects the request’s origin
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type'],
+  credentials: true
+}));
 
 
 // JSON body parser (must come after CORS configuration)
