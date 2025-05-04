@@ -45,6 +45,14 @@ export default function Home() {
             <Typography variant='h6' gutterBottom>
                 Convert a Full Playlist (Album)
             </Typography>
+            <TextField
+                label="YouTube Playlist URL"
+                variant='outlined'
+                fullWidth
+                value={playlistUrl}
+                onChange={(e)=> setPlaylistUrl(e.target.value)}
+                style={{marginBottom: 16}}
+            />
         </Container>
     );
 }
