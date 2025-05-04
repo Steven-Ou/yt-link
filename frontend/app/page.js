@@ -15,7 +15,7 @@ export default function Home() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ url }),
+                body: JSON.stringify({ url:videoUrl }),
             });
     
             if (!response.ok) throw new Error("Failed to start download");

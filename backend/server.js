@@ -8,20 +8,20 @@ const path = require('path');
 const app = express();
 const PORT = 5000;
 
-// ✅ CORS Middleware - ALLOW ALL localhost ORIGINS
+//CORS Middleware - ALLOW ALL localhost ORIGINS
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || origin.startsWith('http://localhost')) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  methods: ['GET', 'POST'],
-  credentials: true
-}));
-
-// ✅ JSON body parser
+    origin: function (origin, callback) {
+      if (!origin || origin.startsWith('http://localhost:')) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type'],
+    credentials: true
+  }));
+//JSON body parser
 app.use(express.json());
 //Download Route
 app.post('/download', (req, res) => {
@@ -29,7 +29,7 @@ app.post('/download', (req, res) => {
 
     const folderName = `album_${Date.now()}`; //Generate a unique folder name
     fs.mkdirSync(folderName); //Create a new folder for the album
-    const command = `yt-dlp -x --audio-format mp3 -o "${folderName}/%(title)s.%(ext)s" "${url}`; //Command to download audio
+    const command = `yt-dlp -x --audio-format mp3 -o "${folderName}/%(title)s.%(ext)s" "${url}"`; //Command to download audio
 
     exec(command,(error, stdout, stderr) => {
         if(error){
