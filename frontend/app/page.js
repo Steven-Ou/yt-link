@@ -55,6 +55,7 @@ export default function Home() {
                 fullWidth
                 value={url}
                 onChange={(e)=> setUrl(e.target.value)}
+                style={{marginBottom: 16}}
             />
         </Container>
     );
