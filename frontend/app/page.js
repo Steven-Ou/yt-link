@@ -41,6 +41,10 @@ export default function Home() {
                 Download MP3
             </Button>
             <Divider style={{margin:"40px 0"}}/>
+
+            <Typography variant='h6' gutterBottom>
+                Convert a Full Playlist (Album)
+            </Typography>
         </Container>
     );
 }
