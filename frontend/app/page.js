@@ -54,9 +54,7 @@ export default function Home() {
                 variant='outlined'
                 fullWidth
                 value={url}
-            >
-
-            </TextField>
+            />
         </Container>
     );
 }
