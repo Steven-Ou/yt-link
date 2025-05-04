@@ -32,9 +32,15 @@ app.post('/download', (req, res) => {
             console.error(`stderr: ${stderr}`);
         }
         console.log(`stdout: ${stdout}`);
-        
+
         const zipFile = `${folderName}.zip`; //Name of the zip file
         const zipCommand = `zip -r ${zipFile} ${folderName}`; //Command to zip the folder
+        exec(zipCommand, (zipError) => {
+            if (zipError) {
+                console.error(`Error zipping the folder: ${zipError.message}`);
+                return res.status(500).json({ error: 'Failed to create ZIP' });
+            }
+            
         //Sends the mp3 file to the client
         res.download(path.join(__dirname, zipFile),(err)=>{
             fs.rmSync(path.join(__dirname,folderName),{recursive:true, force:true}); //Delete the folder after sending
