@@ -17,7 +17,7 @@ app.post('/download', (req, res) => {
 
     const folderName = `album_${Date.now()}`; //Generate a unique folder name
     fs.mkdirSync(folderName); //Create a new folder for the album
-    const command = `yt-dlp -x --audio-format mp3 -o "${folderName}/%(title)s`; //Command to download audio
+    const command = `yt-dlp -x --audio-format mp3 -o "${folderName}/%(title)s.%(ext)s" "${url}`; //Command to download audio
 
     exec(command,(error) => {
         if(error){
