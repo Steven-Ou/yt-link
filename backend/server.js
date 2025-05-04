@@ -10,18 +10,11 @@ const PORT = 5000;
 
 //CORS Middleware - ALLOW ALL localhost ORIGINS
 app.use(cors({
-    origin: function (origin, callback) {
-      console.log("Origin received:", origin);
-      if (!origin || origin.startsWith('http://localhost:')) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
+    origin: '*', // Allow all origins during development (change this in production)
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type'],
     credentials: true
-  }));
+}));
 //JSON body parser
 app.use(express.json());
 //Download Route
