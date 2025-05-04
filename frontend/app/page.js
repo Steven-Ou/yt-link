@@ -41,8 +41,8 @@ export default function Home() {
     };
     return(
         <Container maxWidth="sm" style={{marginTop: 80}}>
-            <Typography>
-                
+            <Typography variant='h4' gutterBottom align='center'>
+
             </Typography>
         </Container>
     );
