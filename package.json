@@ -1,15 +1,11 @@
 {
   "name": "yt-link",
   "version": "1.0.0",
+  "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "server": "cd backend && node server.js",
-    "client": "cd frontend && npm run dev"
+    "start": "concurrently \"npm run dev --prefix frontend\" \"node backend/server.js\""
   },
   "devDependencies": {
     "concurrently": "^8.0.0"
-  },
-  "dependencies": {
-    "cors": "^2.8.5"
   }
 }
