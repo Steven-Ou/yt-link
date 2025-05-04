@@ -1,5 +1,5 @@
 "use client";
-import { Button, TextField, Typography } from '@mui/material';
+import { Button, Divider, TextField, Typography } from '@mui/material';
 import { Container } from '@mui/system';
 import {use, useState} from 'react';
 
@@ -40,6 +40,7 @@ export default function Home() {
             >
                 Download MP3
             </Button>
+            <Divider style={{margin:"40px 0"}}/>
         </Container>
     );
 }
