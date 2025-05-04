@@ -1,3 +1,4 @@
+import { Typography } from '@mui/material';
 import { Container } from '@mui/system';
 import {useState} from 'react';
 
@@ -40,7 +41,9 @@ export default function Home() {
     };
     return(
         <Container maxWidth="sm" style={{marginTop: 80}}>
-            
+            <Typography>
+                
+            </Typography>
         </Container>
     );
 }
