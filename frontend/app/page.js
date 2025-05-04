@@ -1,9 +1,14 @@
 "use client";
+import { useState } from 'react';
 import { Button, Divider, TextField, Typography } from '@mui/material';
 import { Container } from '@mui/system';
 
 
 export default function Home() {
+    //States variables
+  const [url, setUrl] = useState('');             
+  const [playlistUrl, setPlaylistUrl] = useState('');
+
     // Single video
     const downloadMP3 = async () => {
         if (!url) return alert('Enter video URL');
