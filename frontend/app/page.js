@@ -8,15 +8,28 @@ export default function Home() {
     const [playlistUrl, setPlaylistUrl] = useState(""); //State to store the playlist URL
 
     const downloadMP3 = async () => {
-        if (!url) return alert("Enter video URL");
-        const response = await fetch('http://localhost:5000/download', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ url })
-    });
-    const downloadPlaylist = () => {
+        try {
+            const response = await fetch('http://localhost:5000/download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ url }),
+            });
+    
+            if (response.ok) {
+                // Handle the successful response
+                // You can redirect the user or perform further actions based on the response
+                alert("Download started...");
+            } else {
+                alert("Failed to download MP3");
+            }
+        } catch (error) {
+            console.error("Error:", error);
+            alert("An error occurred while downloading");
+        }
+    };
+    const downloadPlaylist = async () => {
         if (!playlistUrl) return alert("Enter playlist URL");
         window.location.href = `http://localhost:5000/download-playlist?url=${encodeURIComponent(playlistUrl)}`;
       };
@@ -70,4 +83,4 @@ export default function Home() {
         </Container>
     );
 }
-}
+
