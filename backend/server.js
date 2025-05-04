@@ -3,6 +3,7 @@
 const cors = require('cors');//Connects the frontend and backend
 const express = require('express'); //Web Framework to handle HTTP requests
 const app = express(); //Creating an instance of express
+const allowOrigin = require('http://localhost:3003'); //CORS middleware to allow cross-origin requests
 const { exec } = require('child_process'); //Execute system commands
 const fs = require('fs');//deleting files after it is used
 const path = require('path');//to let it work with all OS
@@ -10,9 +11,9 @@ const path = require('path');//to let it work with all OS
 const PORT = 5000; //Port number for the server
 //Middleware
 app.use(cors({
-    origin: 'http://localhost:3000', //Allow requests from the frontend
-    methods: ['POST'], //Allow only POST requests
-    allowedHeaders: ['Content-Type'], //Allow specific headers
+    origin: allowOrigin, //Allow requests from the frontend
+    methods: ['GET','POST'], //Allow only POST requests
+    credentials: true, //Allow credentials
 })); //Allows backend to accept requests from the frontend
 app.use(express.json()); //Parse JSON data in requests
 //Download Route
