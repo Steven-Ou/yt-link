@@ -40,13 +40,16 @@ app.post('/download', (req, res) => {
                 console.error(`Error zipping the folder: ${zipError.message}`);
                 return res.status(500).json({ error: 'Failed to create ZIP' });
             }
-            
-        //Sends the mp3 file to the client
-        res.download(path.join(__dirname, zipFile),(err)=>{
-            fs.rmSync(path.join(__dirname,folderName),{recursive:true, force:true}); //Delete the folder after sending
-            fs.unlinkSync(path.join(__dirname,filename)); //cleaning up the file
+        // Send the ZIP file to the client
+        res.download(path.join(__dirname, zipFile), (err) => {
+            if (err) {
+                console.error(`Error sending file: ${err.message}`);
+            }
+            fs.rmSync(path.join(__dirname, folderName), { recursive: true, force: true });
+            fs.unlinkSync(path.join(__dirname, zipFile)); // Cleanup the ZIP file
         });
     });
+});
 });
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`); //Log server start
