@@ -4,55 +4,20 @@ import { Container } from '@mui/system';
 import {use, useState} from 'react';
 
 export default function Home() {
-    const [url, setUrl] = useState(""); //State to store the URL
-    const [playlistUrl, setPlaylistUrl] = useState(""); //State to store the playlist URL
-
-    const downloadMP3 = async () => {
-        if (!url) return alert("Enter video URL");
-        try {
-            const response = await fetch('http://localhost:5000/download', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ url: url }),
-            });
-    
-            if (!response.ok) throw new Error("Failed to start download");
-            const blob = await response.blob();
-            const href = window.URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = href;
-            a.download = "audio.zip"; // or get filename from response headers
-            a.click();
-        
-        } catch (err) {
-            console.error("Error:", err);
-            alert("An error occurred while downloading");
-        }
-    };
-    const downloadPlaylist = async () => {
-        if (!playlistUrl) return alert("Enter playlist URL");
-
-    try {
-        const response = await fetch('http://localhost:5000/download-playlist', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ playlistUrl: playlistUrl }),
-        });
-
-        if (response.ok) {
-            // Handle the successful response
-            alert("Playlist download started...");
-        } else {
-            alert("Failed to download Playlist");
-        }
-    } catch (error) {
-        console.error("Error:", error);
-        alert("An error occurred while downloading");
-    }
+    // Single video
+    await fetch('/api/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: videoUrl }),
+    });
+  
+    // Playlist
+    await fetch('/api/download-playlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playlistUrl }),
+    });
+   
 };
     return(
         <Container maxWidth="sm" style={{marginTop: 80}}>
