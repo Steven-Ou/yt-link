@@ -14,6 +14,9 @@ app.use(express.json()); //Parse JSON data in requests
 //Download Route
 app.post('/download', (req, res) => {
     const {url} =req.body; //Extract URL from request body
+
+    const folderName = `album_${Date.now()}`; //Generate a unique folder name
+    fs.mkdirSync(folderName); //Create a new folder for the album
     const filename = `audo_${Date.now()}.mp3`; //Generate a unique filename
     const command = `yt-dlp -x --audio-format mp3 -o "${filename}" "${url}"`; //Command to download audio
 
