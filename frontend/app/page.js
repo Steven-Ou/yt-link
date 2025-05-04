@@ -7,10 +7,15 @@ export default function Home() {
     const [url, setUrl] = useState(""); //State to store the URL
     const [playlistUrl, setPlaylistUrl] = useState(""); //State to store the playlist URL
 
-    const downloadMP3 = () => {
+    const downloadMP3 = async () => {
         if (!url) return alert("Enter video URL");
-            window.location.href = `http://localhost:5000/download?url=${encodeURIComponent(url)}`;
-    };
+        const response = await fetch('http://localhost:5000/download', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ url })
+    });
     const downloadPlaylist = () => {
         if (!playlistUrl) return alert("Enter playlist URL");
         window.location.href = `http://localhost:5000/download-playlist?url=${encodeURIComponent(playlistUrl)}`;
@@ -64,4 +69,5 @@ export default function Home() {
             </Button>
         </Container>
     );
+}
 }
