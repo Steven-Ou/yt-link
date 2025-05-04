@@ -28,6 +28,7 @@ app.post('/download', (req, res) => {
         const zipCommand = `zip -r ${zipFile} ${folderName}`; //Command to zip the folder
         //Sends the mp3 file to the client
         res.download(path.join(__dirname, zipFile),(err)=>{
+            fs.rmSync(path.join(__dirname,folderName),{recursive:true}); //Delete the folder after sending
             fs.unlinkSync(path.join(__dirname,filename)); //cleaning up the file
         });
     });
