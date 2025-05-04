@@ -42,7 +42,7 @@ export default function Home() {
     return(
         <Container maxWidth="sm" style={{marginTop: 80}}>
             <Typography variant='h4' gutterBottom align='center'>
-
+                🎧 YouTube to MP3 Converter
             </Typography>
         </Container>
     );
