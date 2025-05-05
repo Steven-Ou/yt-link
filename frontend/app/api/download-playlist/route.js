@@ -27,12 +27,14 @@ export async function POST(request) {
     fs.mkdirSync(folderPath);
     console.log(`Directory created: ${folderPath}`);
 
-     // --- Execute yt-dlp with corrected error handling ---
-     const command = `yt-dlp -x --audio-format mp3 -o "
-     ${path.join(folderPath, '%(playlist_index)s.%(title)s.%(ext)s')}
-     " --verbose ${playlistUrl}`;     
-     console.log(`Executing command: ${command}`);
- 
+    // --- Construct the yt-dlp command carefully ---
+    // Define the output template WITHOUT the extension placeholder
+    const outputTemplate = path.join(folderPath, '%(playlist_index)s.%(title)s');
+    // Construct the command, ensuring no extra whitespace/newlines in arguments
+    const command = `yt-dlp -x --audio-format mp3 -o "${outputTemplate}" --verbose ${playlistUrl}`; 
+    console.log(`Executing command: ${command}`); // Check this log carefully after the change!
+
+
      await new Promise((resolve, reject) => {
        exec(command, (error, stdout, stderr) => {
          // Log output regardless
