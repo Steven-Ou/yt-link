@@ -1,15 +1,17 @@
-// Example Path: /app/api/combine-mp3/route.js OR /app/api/convert/route.js
-// Ensure this code is in the correct API route file causing the EROFS error.
+// /app/api/convert/route.js OR /app/api/combine-mp3/route.js
 
+// Fixes yt-dlp ENOENT using yt-dlp-exec.
+// NOTE: This does NOT fix potential issues with ffmpeg availability on Vercel.
 export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
-import os from 'os'; // Import os module
+import { spawn } from 'child_process'; // Keep spawn for ffmpeg
+import os from 'os';
+import ytDlpExec from 'yt-dlp-exec'; // Use yt-dlp-exec
 
-// Helper function to sort files based on playlist index prefix
+// Helper function to sort files
 const sortFilesByPlaylistIndex = (a, b) => {
     const regex = /^(\d+)\./;
     const matchA = a.match(regex);
@@ -20,14 +22,13 @@ const sortFilesByPlaylistIndex = (a, b) => {
 };
 
 export async function POST(request) {
-    console.log('--- COMBINE PLAYLIST TO SINGLE MP3 API ROUTE HIT (Vercel Path Fix) ---');
-    // *** Use os.tmpdir() for all temporary paths ***
+    console.log('--- COMBINE PLAYLIST MP3 (Fix yt-dlp ENOENT) API ROUTE HIT ---');
     const baseTempDir = os.tmpdir();
     const uniqueFolderName = `playlist_mp3s_${Date.now()}`;
-    const folderPath = path.join(baseTempDir, uniqueFolderName); // Path inside /tmp
+    const folderPath = path.join(baseTempDir, uniqueFolderName);
 
-    let ffmpegListPath = null; // Keep track for cleanup
-    let finalMp3Path = null; // Keep track for cleanup
+    let ffmpegListPath = null;
+    let finalMp3Path = null;
 
     try {
         const { playlistUrl } = await request.json();
@@ -35,33 +36,20 @@ export async function POST(request) {
             return NextResponse.json({ error: 'No playlist URL provided' }, { status: 400 });
         }
         console.log(`Received playlist URL: ${playlistUrl}`);
-        console.log(`Attempting to create temporary directory: ${folderPath}`); // Should be /tmp/...
-        // Create directory inside /tmp
+        console.log(`Attempting to create temporary directory: ${folderPath}`);
         fs.mkdirSync(folderPath, { recursive: true });
         console.log(`MP3 download directory created: ${folderPath}`);
 
-        // --- 1. Download Individual MP3s with yt-dlp ---
-        console.log(`Spawning yt-dlp to download and extract MP3s into ${folderPath}`);
-        const ytdlpArgs = [
-            '-x',
-            '--audio-format', 'mp3',
-            // Output template targeting the temporary folder path
-            '-o', path.join(folderPath, '%(playlist_index)s.%(title)s.%(ext)s'),
-            playlistUrl
-        ];
-        console.log('yt-dlp args:', ytdlpArgs);
+        // --- 1. Download Individual MP3s using yt-dlp-exec ---
+        console.log(`Executing yt-dlp-exec to download MP3s into ${folderPath}`);
+        const outputPathTemplate = path.join(folderPath, '%(playlist_index)s.%(title)s.%(ext)s');
 
-        await new Promise((resolve, reject) => {
-            const ytDlpProcess = spawn('yt-dlp', ytdlpArgs, { shell: false });
-            let stderrOutput = '';
-            ytDlpProcess.stderr.on('data', (data) => { console.error(`yt-dlp stderr: ${data}`); stderrOutput += data; });
-            ytDlpProcess.on('error', (err) => reject(new Error(`yt-dlp spawn error: ${err.message}`)));
-            ytDlpProcess.on('close', (code) => {
-                if (code === 0) resolve();
-                else reject(new Error(`yt-dlp failed with code ${code}. Stderr: ${stderrOutput.substring(0,500)}`));
-            });
+        const ytDlpOutput = await ytDlpExec(playlistUrl, {
+            extractAudio: true,
+            audioFormat: 'mp3',
+            output: outputPathTemplate,
         });
-        console.log('yt-dlp MP3 download/extraction finished.');
+        console.log('yt-dlp-exec playlist output:', ytDlpOutput);
 
         // --- 2. List and Sort MP3 Files ---
         let files = fs.readdirSync(folderPath);
@@ -69,52 +57,51 @@ export async function POST(request) {
         files.sort(sortFilesByPlaylistIndex);
 
         if (files.length === 0) {
-            throw new Error('yt-dlp did not produce any MP3 files.');
+             const stderrSnippet = ytDlpOutput?.stderr ? ytDlpOutput.stderr.substring(0, 500) : 'N/A';
+             throw new Error(`yt-dlp did not produce any MP3 files. Stderr: ${stderrSnippet}`);
         }
 
         if (files.length === 1) {
-             console.warn("Only one MP3 file found. Skipping concatenation, serving the single file.");
-             // The final path is just the single file inside the temp folder
+             console.warn("Only one MP3 file found. Skipping concatenation.");
              finalMp3Path = path.join(folderPath, files[0]);
         } else {
             console.log(`Found and sorted MP3 files for concatenation:`, files);
 
-            // --- 3. Create File List for FFmpeg (Only if multiple files) ---
-            ffmpegListPath = path.join(folderPath, 'mylist.txt'); // List file also inside /tmp folder
+            // --- 3. Create File List for FFmpeg ---
+            ffmpegListPath = path.join(folderPath, 'mylist.txt');
             const fileListContent = files.map(file => `file '${path.join(folderPath, file).replace(/'/g, "'\\''")}'`).join('\n');
             fs.writeFileSync(ffmpegListPath, fileListContent);
             console.log(`Generated FFmpeg file list: ${ffmpegListPath}`);
 
-            // --- 4. Run FFmpeg to Concatenate MP3s (Only if multiple files) ---
-            // Output the combined file also to the /tmp directory initially
+            // --- 4. Run FFmpeg to Concatenate MP3s ---
+            // *** NOTE: This assumes ffmpeg is available in the Vercel environment's PATH ***
+            // *** This might fail with ENOENT if ffmpeg isn't installed/accessible ***
             finalMp3Path = path.join(baseTempDir, `${uniqueFolderName}_combined.mp3`);
             console.log(`Spawning ffmpeg to combine MP3s into: ${finalMp3Path}`);
 
-            const ffmpegArgs = [
-                '-f', 'concat',
-                '-safe', '0',
-                '-i', ffmpegListPath,
-                '-c', 'copy',
-                finalMp3Path // Output path inside /tmp
-            ];
+            const ffmpegArgs = [ '-f', 'concat', '-safe', '0', '-i', ffmpegListPath, '-c', 'copy', finalMp3Path ];
             console.log('ffmpeg args:', ffmpegArgs);
 
             await new Promise((resolve, reject) => {
                 const ffmpegProcess = spawn('ffmpeg', ffmpegArgs, { shell: false });
-                let stderrOutput = '';
-                ffmpegProcess.stderr.on('data', (data) => { console.error(`ffmpeg stderr: ${data}`); stderrOutput += data; });
-                ffmpegProcess.on('error', (err) => reject(new Error(`ffmpeg spawn error: ${err.message}`)));
+                let ffmpegStderr = '';
+                ffmpegProcess.stderr.on('data', (data) => { console.error(`ffmpeg stderr: ${data}`); ffmpegStderr += data; });
+                ffmpegProcess.on('error', (err) => {
+                    // This is where ffmpeg ENOENT would likely happen
+                    console.error(`ffmpeg spawn error: ${err.message}`);
+                    reject(new Error(`ffmpeg spawn error: ${err.message}. Is ffmpeg installed/available in the environment?`));
+                });
                 ffmpegProcess.on('close', (code) => {
                     if (code === 0) {
                          console.log('ffmpeg MP3 concatenation finished successfully.');
                          resolve();
                     } else {
-                         reject(new Error(`ffmpeg failed with code ${code}. Stderr: ${stderrOutput.substring(0,500)}`));
+                         reject(new Error(`ffmpeg failed with code ${code}. Stderr: ${ffmpegStderr.substring(0,500)}`));
                     }
                 });
             });
             console.log('FFmpeg MP3 concatenation finished.');
-        } // End of 'else' for multiple files
+        }
 
         // --- 5. Respond with the combined (or single) MP3 ---
         if (!finalMp3Path || !fs.existsSync(finalMp3Path)) {
@@ -122,23 +109,20 @@ export async function POST(request) {
         }
         const stats = fs.statSync(finalMp3Path);
         const dataStream = fs.createReadStream(finalMp3Path);
-        const filenameForUser = path.basename(finalMp3Path); // Get filename part
+        const filenameForUser = path.basename(finalMp3Path);
 
         console.log(`Streaming final MP3: ${finalMp3Path}, Size: ${stats.size}`);
 
-        // Encode filename for header
         const fallbackFilename = 'combined_playlist.mp3';
         const encodedFilename = encodeURIComponent(filenameForUser);
         const contentDispositionValue = `attachment; filename="${fallbackFilename}"; filename*=UTF-8''${encodedFilename}`;
 
-        // Use ReadableStream for response and cleanup
         const responseStream = new ReadableStream({
             start(controller) {
                 dataStream.on('data', (chunk) => controller.enqueue(chunk));
                 dataStream.on('end', () => {
                     console.log('Combined MP3 stream ended.');
                     controller.close();
-                    // Clean up AFTER stream ends
                     cleanupTempFiles(folderPath, finalMp3Path);
                 });
                 dataStream.on('error', (err) => {
@@ -164,25 +148,24 @@ export async function POST(request) {
         });
 
     } catch (error) {
-        console.error("API /api/combine-playlist-mp3 final catch error:", error);
-        // Ensure cleanup happens on error before this point
-        cleanupTempFiles(folderPath, finalMp3Path); // Pass potentially existing paths
-        return NextResponse.json({ error: `Playlist MP3 combination failed: ${error.message}` }, { status: 500 });
+        console.error("API /api/combine-mp3 final catch error:", error);
+        let errorMessage = `Playlist MP3 combination failed: ${error.message}`;
+         if (error.stderr) { // Add stderr from yt-dlp errors if present
+             errorMessage += `\nStderr: ${error.stderr.substring(0, 500)}`;
+         }
+        cleanupTempFiles(folderPath, finalMp3Path);
+        return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
-    // NOTE: No finally block needed as cleanup is handled by stream events or catch block
 }
 
 // Updated cleanup function
 function cleanupTempFiles(tempFolderPath, finalFilePath) {
-     // Use setTimeout to slightly delay cleanup
      setTimeout(() => {
         try {
-            // Delete the folder containing individual MP3s and the list file
             if (tempFolderPath && fs.existsSync(tempFolderPath)) {
                 console.log(`CLEANUP: Removing folder: ${tempFolderPath}`);
                 fs.rmSync(tempFolderPath, { recursive: true, force: true });
             }
-            // Delete the combined/final MP3 file
             if (finalFilePath && fs.existsSync(finalFilePath)) {
                 console.log(`CLEANUP: Removing final file: ${finalFilePath}`);
                 fs.unlinkSync(finalFilePath);
@@ -190,5 +173,5 @@ function cleanupTempFiles(tempFolderPath, finalFilePath) {
         } catch (cleanupError) {
             console.error("CLEANUP: Error:", cleanupError);
         }
-    }, 2000); // Delay might help ensure stream closes fully
+    }, 2000);
 }
