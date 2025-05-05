@@ -1,159 +1,135 @@
+// /app/api/download-playlist/route.js
+
+// Fixes EROFS by using /tmp and ENOENT by using yt-dlp-exec.
+// Uses adm-zip for creating the zip file.
 export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import AdmZip from 'adm-zip';
-// Remove: import { exec } from 'child_process';
-import { spawn } from 'child_process'; // <--- Import spawn here
-// Remove: import { promisify } from 'util';
-// Remove: const execPromise = promisify(exec);
+import os from 'os';
+import AdmZip from 'adm-zip'; // Use adm-zip
+import ytDlpExec from 'yt-dlp-exec'; // Use yt-dlp-exec
 
 export async function POST(request) {
-  console.log('--- DOWNLOAD PLAYLIST API ROUTE HIT ---');
-  let folder;
-  let filePath;
+  console.log('--- DOWNLOAD PLAYLIST (ZIP - Fix EROFS/ENOENT) API ROUTE HIT ---');
+  const { playlistUrl } = await request.json();
+  if (!playlistUrl) {
+    return NextResponse.json({ error: 'No playlist URL provided' }, { status: 400 });
+  }
+
+  // Use /tmp directory
+  const baseTempDir = os.tmpdir();
+  const uniqueFolderName = `playlist_${Date.now()}`;
+  const folderPath = path.join(baseTempDir, uniqueFolderName); // Download folder inside /tmp
+  const zipFileName = `${uniqueFolderName}.zip`;
+  const zipFilePath = path.join(baseTempDir, zipFileName); // Zip file also inside /tmp
 
   try {
-    const { playlistUrl } = await request.json();
-    if (!playlistUrl) {
-      return NextResponse.json({ error: 'No playlist URL provided' }, { status: 400 });
-    }
-    console.log(`Received playlist URL: ${playlistUrl}`);
+    console.log(`Attempting to create temporary directory: ${folderPath}`);
+    fs.mkdirSync(folderPath, { recursive: true });
+    console.log(`Temporary directory created: ${folderPath}`);
 
-    folder = `playlist_${Date.now()}`;
-    const folderPath = path.resolve(folder);
-    console.log(`Attempting to create directory: ${folderPath}`);
-    fs.mkdirSync(folderPath);
-    console.log(`Directory created: ${folderPath}`);
+    // --- 1. Download Playlist MP3s using yt-dlp-exec ---
+    console.log(`Executing yt-dlp-exec to download playlist MP3s into ${folderPath}`);
+    const outputPathTemplate = path.join(folderPath, '%(playlist_index)s.%(title)s.%(ext)s');
 
-    // --- Define output for yt-dlp ---
-    const outputTemplate = path.join(folderPath, '%(playlist_index)s.%(title)s.%(ext)s'); // Use .%(ext)s
-    // Remove: const command = ... (old exec command)
-
-    // --- Execute yt-dlp using spawn ---
-    console.log(`Spawning command: yt-dlp`);
-
-    // Define arguments for spawn
-    const args = [
-        '-x',                           // Extract audio
-        '--audio-format', 'mp3',        // Convert to mp3
-        // IMPORTANT: Change output template to include extension placeholder .%(ext)s
-        // yt-dlp handles intermediate files; let it name the final mp3 correctly.
-        '-o', path.join(folderPath, '%(playlist_index)s.%(title)s.%(ext)s'),
-       // '--verbose', // Consider removing verbose for less output unless debugging
-        playlistUrl                     // The playlist URL
-    ];
-
-    console.log('yt-dlp args:', args);
-
-    // *** Start of the CORRECTED spawn block ***
-    await new Promise((resolve, reject) => { // THIS is the promise we await
-        const ytDlpProcess = spawn('yt-dlp', args, {
-            shell: false
-        });
-
-        let stderrOutput = '';
-
-        ytDlpProcess.stdout.on('data', (data) => {
-             // Optional: log progress minimally
-             // process.stdout.write('.'); // Example: print dots for progress
-        });
-
-        ytDlpProcess.stderr.on('data', (data) => {
-            console.error(`yt-dlp stderr: ${data}`);
-            stderrOutput += data.toString();
-        });
-
-        ytDlpProcess.on('error', (spawnError) => {
-            console.error(`Failed to start yt-dlp process: ${spawnError.message}`);
-            reject(new Error(`Failed to start yt-dlp: ${spawnError.message}`));
-        });
-
-        ytDlpProcess.on('close', (code) => {
-            console.log(`yt-dlp process exited with code ${code}`);
-            if (code === 0) {
-                console.log('yt-dlp finished successfully.');
-                resolve(); // Success!
-            } else {
-                console.error(`yt-dlp exited with error code ${code}. Check stderr.`);
-                const shortStderr = stderrOutput.substring(0, 500);
-                reject(new Error(`yt-dlp failed with exit code ${code}. Stderr snippet: ${shortStderr}...`));
-            }
-        });
+    const ytDlpOutput = await ytDlpExec(playlistUrl, {
+        extractAudio: true,
+        audioFormat: 'mp3',
+        output: outputPathTemplate,
+        // Add playlist specific flags if needed (e.g., --playlist-items)
     });
-    // *** End of the CORRECTED spawn block ***
 
-    console.log(`Proceeding after yt-dlp spawn execution.`);
+    console.log('yt-dlp-exec playlist output:', ytDlpOutput);
 
-    // --- Check, Zip, and Respond (Your existing logic) ---
+    // --- 2. Check if files were downloaded ---
     const files = fs.readdirSync(folderPath);
-    console.log(`Files found in ${folderPath}:`, files);
-    if (files.length === 0) {
-        console.error(`No files downloaded by yt-dlp into ${folderPath}. Aborting zip.`);
-        // Make sure folder is cleaned up even if empty
-        throw new Error('yt-dlp did not download any files.');
-    }
-
-    // Filter for expected .mp3 files (optional but good practice)
     const mp3Files = files.filter(f => f.toLowerCase().endsWith('.mp3'));
+    console.log(`Files found in ${folderPath}:`, mp3Files);
     if (mp3Files.length === 0) {
-        console.error(`No MP3 files found in ${folderPath} after yt-dlp run. Files present: ${files.join(', ')}`);
-        throw new Error('yt-dlp completed, but no MP3 files were found.');
+        const stderrSnippet = ytDlpOutput?.stderr ? ytDlpOutput.stderr.substring(0, 500) : 'N/A';
+        throw new Error(`yt-dlp did not download any MP3 files into ${folderPath}. Stderr: ${stderrSnippet}`);
     }
-    console.log(`MP3 files to be zipped:`, mp3Files);
 
-
+    // --- 3. Create Zip file using adm-zip ---
+    console.log(`Attempting to zip folder: ${folderPath} into ${zipFilePath}`);
     const zip = new AdmZip();
-    const outputFile = `${folder}.zip`;
-    filePath = path.resolve(outputFile);
-    console.log(`Attempting to zip folder: ${folderPath} into ${filePath}`);
-    zip.addLocalFolder(folderPath); // Add contents of the folder
-    console.log(`Attempting to write zip file: ${filePath}`);
-    zip.writeZip(filePath);
-    console.log(`Zip file should be written: ${filePath}`);
+    zip.addLocalFolder(folderPath); // Add contents of the temp folder
+    console.log(`Attempting to write zip file: ${zipFilePath}`);
+    zip.writeZip(zipFilePath); // Write zip file to /tmp
+    console.log(`Zip file written: ${zipFilePath}`);
 
-    console.log(`Checking for zip file existence at: ${filePath}`);
-    const stats = fs.statSync(filePath);
-    console.log(`Zip file found, size: ${stats.size}. Creating read stream.`);
-    const data = fs.createReadStream(filePath);
+    // --- 4. Prepare and Stream the Zip File ---
+    if (!fs.existsSync(zipFilePath)) {
+        throw new Error(`Zip file was not found after writing: ${zipFilePath}`);
+    }
+    const stats = fs.statSync(zipFilePath);
+    const dataStream = fs.createReadStream(zipFilePath);
+    const filenameForUser = zipFileName; // Use the generated zip filename
 
-    const response = new NextResponse(data, {
+    console.log(`Streaming Zip file: ${zipFilePath}, Size: ${stats.size}`);
+
+    // Use ReadableStream for response and cleanup
+    const responseStream = new ReadableStream({
+        start(controller) {
+            dataStream.on('data', (chunk) => controller.enqueue(chunk));
+            dataStream.on('end', () => {
+                console.log('Zip file stream ended.');
+                controller.close();
+                // Clean up BOTH the folder and the zip file
+                cleanupTempFiles(folderPath, zipFilePath);
+            });
+            dataStream.on('error', (err) => {
+                console.error('Zip file stream error:', err);
+                controller.error(err);
+                cleanupTempFiles(folderPath, zipFilePath);
+            });
+        },
+        cancel() {
+            console.log('Zip file stream cancelled.');
+            dataStream.destroy();
+            cleanupTempFiles(folderPath, zipFilePath);
+        }
+    });
+
+    return new NextResponse(responseStream, {
       status: 200,
       headers: {
-        'Content-Disposition': `attachment; filename="${path.basename(filePath)}"`,
         'Content-Type': 'application/zip',
+        // Filename encoding usually not needed for simple zip names, but can add if required
+        'Content-Disposition': `attachment; filename="${filenameForUser}"`,
         'Content-Length': stats.size.toString(),
       },
     });
-    return response;
 
   } catch (error) {
     console.error("API /api/download-playlist final catch error:", error);
-    return NextResponse.json({ error: `Playlist download failed: ${error.message}` }, { status: 500 });
-  } finally {
-     // Ensure cleanup runs
-     setTimeout(() => {
-        try {
-            const folderPathToDelete = folder ? path.resolve(folder) : null;
-            const zipFilePathToDelete = filePath ? path.resolve(filePath) : null;
-
-            if (folderPathToDelete && fs.existsSync(folderPathToDelete)) {
-                console.log(`FINALLY: Cleaning up folder: ${folderPathToDelete}`);
-                fs.rmSync(folderPathToDelete, { recursive: true, force: true });
-            } else if (folder) {
-                 console.log(`FINALLY: Folder already deleted or never created: ${folderPathToDelete}`);
-            }
-
-            if (zipFilePathToDelete && fs.existsSync(zipFilePathToDelete)) {
-                console.log(`FINALLY: Cleaning up file: ${zipFilePathToDelete}`);
-                fs.unlinkSync(zipFilePathToDelete);
-            } else if (filePath) {
-                 console.log(`FINALLY: Zip file already deleted or never created: ${zipFilePathToDelete}`);
-            }
-        } catch (cleanupError) {
-            console.error("FINALLY: Cleanup error:", cleanupError);
-        }
-     }, 5000); // Consider if this delay is still needed/optimal
+    let errorMessage = `Playlist download failed: ${error.message}`;
+    if (error.stderr) {
+        errorMessage += `\nStderr: ${error.stderr.substring(0, 500)}`;
+    }
+    // Clean up potentially partially created folder/zip
+    cleanupTempFiles(folderPath, zipFilePath);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
+
+// Updated cleanup function for folder and zip file
+function cleanupTempFiles(tempFolderPath, finalZipPath) {
+     setTimeout(() => {
+        try {
+            if (tempFolderPath && fs.existsSync(tempFolderPath)) {
+                console.log(`CLEANUP: Removing folder: ${tempFolderPath}`);
+                fs.rmSync(tempFolderPath, { recursive: true, force: true });
+            }
+            if (finalZipPath && fs.existsSync(finalZipPath)) {
+                console.log(`CLEANUP: Removing zip file: ${finalZipPath}`);
+                fs.unlinkSync(finalZipPath);
+            }
+        } catch (cleanupError) {
+            console.error("CLEANUP: Error:", cleanupError);
+        }
+    }, 2000); // Increased delay slightly for zip operations
+}
+
