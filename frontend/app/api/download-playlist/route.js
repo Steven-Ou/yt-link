@@ -27,34 +27,38 @@ export async function POST(request) {
     fs.mkdirSync(folderPath);
     console.log(`Directory created: ${folderPath}`);
 
-    // --- Execute yt-dlp with detailed logging ---
-    const command = `yt-dlp -o "${path.join(folderPath, '%(playlist_index)s.%(title)s.%(ext)s')}" --verbose ${playlistUrl}`; // Added --verbose flag
-    console.log(`Executing command: ${command}`);
-
-    await new Promise((resolve, reject) => {
-      exec(command, (error, stdout, stderr) => {
-        console.log('yt-dlp stdout:\n', stdout);
-        console.error('yt-dlp stderr:\n', stderr);
-        if (error) {
-          console.error(`yt-dlp exec error: ${error.message}`);
-          // Reject the promise with a more informative error
-          return reject(new Error(`yt-dlp failed: ${error.message}. Stderr: ${stderr}`));
-        }
-        // Even if no exec error, stderr might contain important info/warnings
-        if (stderr) {
-           console.warn('yt-dlp produced stderr output.');
-           // Decide if stderr indicates failure - simplistic check below
-           if (/error|failed|traceback/i.test(stderr)) {
-               return reject(new Error(`yt-dlp likely failed. Stderr: ${stderr}`));
-           }
-        }
-        console.log('yt-dlp command finished successfully (apparently).');
-        resolve();
-      });
-    });
-    // --- End yt-dlp execution ---
-
-    // Check if folder contains files before zipping
+     // --- Execute yt-dlp with corrected error handling ---
+     const command = `yt-dlp -o "${path.join(folderPath, '%(playlist_index)s.%(title)s.%(ext)s')}" --verbose ${playlistUrl}`;
+     console.log(`Executing command: ${command}`);
+ 
+     await new Promise((resolve, reject) => {
+       exec(command, (error, stdout, stderr) => {
+         // Log output regardless
+         console.log('yt-dlp stdout:\n', stdout);
+         console.error('yt-dlp stderr:\n', stderr); // Log stderr even if not treating as error
+ 
+         // PRIMARY FAILURE CHECK: Did exec return an error object?
+         if (error) {
+           console.error(`yt-dlp exec error detected: ${error.message}`);
+           // Reject the promise ONLY if exec reports an error
+           return reject(new Error(`yt-dlp failed with error: ${error.message}. Stderr: ${stderr}`));
+         }
+ 
+         // Optional: Log stderr presence as a warning, but don't reject based on it
+         if (stderr) {
+            console.warn('yt-dlp produced stderr output (logged above). Continuing unless exec error occurred.');
+         }
+ 
+         console.log('yt-dlp command finished without exec error.');
+         resolve(); // Resolve the promise as exec didn't return an error object
+       });
+     });
+     // --- End yt-dlp execution ---
+ 
+     // The rest of your code (checking files, zipping, streaming) follows...
+     console.log(`Proceeding after yt-dlp execution.`); // Add this log
+ 
+     // Check if folder contains files before zipping
     const files = fs.readdirSync(folderPath);
     console.log(`Files found in ${folderPath}:`, files);
     if (files.length === 0) {
