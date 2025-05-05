@@ -1,17 +1,67 @@
 // /app/api/download/route.js
 
-// Use yt-dlp-exec to ensure binary is available on Vercel
+// Use execFile with resolved path for yt-dlp binary
 export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
-// Removed: import { spawn } from 'child_process';
+import { execFile } from 'child_process'; // Use execFile
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import ytDlpExec from 'yt-dlp-exec'; // Import the package
+// Keep yt-dlp-exec installed for its binary, but find the path manually
+// import ytDlpExec from 'yt-dlp-exec'; // No longer calling the wrapper function
+
+// --- Find the yt-dlp binary path ---
+let ytDlpPath;
+try {
+    // This attempts to find the binary installed by yt-dlp-exec
+    // Adjust the relative path if necessary based on yt-dlp-exec's structure
+    // Common paths might be 'yt-dlp-exec/bin/yt-dlp' or similar
+    // Use require.resolve which throws an error if not found
+    const packagePath = require.resolve('yt-dlp-exec');
+    // Go up from the package's main file path to find the likely bin directory
+    // This assumes a standard package structure; might need adjustment
+    const binPathGuess = path.join(path.dirname(packagePath), '../bin/yt-dlp'); // Common structure guess
+    const binPathGuessExe = path.join(path.dirname(packagePath), '../bin/yt-dlp.exe'); // Windows guess
+
+    if (fs.existsSync(binPathGuess)) {
+        ytDlpPath = binPathGuess;
+    } else if (fs.existsSync(binPathGuessExe)) {
+        ytDlpPath = binPathGuessExe; // Use .exe if found (for Windows)
+    } else {
+         // Fallback: Try finding it directly within node_modules if the above guess fails
+         const directPath = path.join(process.cwd(), 'node_modules', 'yt-dlp-exec', 'bin', 'yt-dlp');
+         const directPathExe = path.join(process.cwd(), 'node_modules', 'yt-dlp-exec', 'bin', 'yt-dlp.exe');
+         if (fs.existsSync(directPath)) {
+            ytDlpPath = directPath;
+         } else if (fs.existsSync(directPathExe)) {
+             ytDlpPath = directPathExe;
+         } else {
+            throw new Error('yt-dlp binary not found via require.resolve or direct path.');
+         }
+    }
+    console.log(`Found yt-dlp binary at: ${ytDlpPath}`);
+    // Optional: Check execute permissions (might not work reliably in all envs)
+    // try { fs.accessSync(ytDlpPath, fs.constants.X_OK); } catch { console.warn(`Warning: yt-dlp binary at ${ytDlpPath} might not have execute permissions.`); }
+
+} catch (err) {
+    console.error("Error finding yt-dlp path:", err);
+    // Handle error - perhaps yt-dlp-exec isn't installed correctly
+    // Set path to null or a default to indicate failure
+    ytDlpPath = null;
+}
+// --- End find binary path ---
+
 
 export async function POST(request) {
-  console.log('--- SINGLE DOWNLOAD (yt-dlp-exec) API ROUTE HIT ---');
+  console.log('--- SINGLE DOWNLOAD (execFile) API ROUTE HIT ---');
+
+  // Check if ytDlpPath was found
+  if (!ytDlpPath) {
+      console.error("yt-dlp binary path could not be determined. Ensure 'yt-dlp-exec' is installed.");
+      return NextResponse.json({ error: "Server configuration error: yt-dlp not found." }, { status: 500 });
+  }
+
   const { url } = await request.json();
   if (!url) {
     return NextResponse.json({ error: 'No URL provided' }, { status: 400 });
@@ -25,22 +75,41 @@ export async function POST(request) {
     fs.mkdirSync(tempDir, { recursive: true });
     console.log(`Temporary directory created: ${tempDir}`);
 
-    // --- 1. Download Single MP3 using yt-dlp-exec ---
-    console.log(`Executing yt-dlp-exec to download and convert`);
+    // --- 1. Download Single MP3 using execFile ---
+    console.log(`Executing yt-dlp binary directly from: ${ytDlpPath}`);
 
     // Define output path template using video title
-    const outputPath = path.join(tempDir, '%(title)s.%(ext)s');
+    const outputTemplate = path.join(tempDir, '%(title)s.%(ext)s');
 
-    // Execute using the library
-    const ytDlpOutput = await ytDlpExec(url, {
-      // Options mapping (check library docs for exact mapping if needed)
-      extractAudio: true,         // -x
-      audioFormat: 'mp3',         // --audio-format mp3
-      output: outputPath,         // -o
-      // Add any other necessary flags here
+    // Define arguments for execFile
+    const args = [
+        url, // URL first
+        '-x', // Extract audio
+        '--audio-format', 'mp3', // Specify MP3 format
+        '-o', outputTemplate // Output template
+        // Add other flags as needed
+    ];
+
+    console.log('yt-dlp execFile args:', args);
+
+    // Execute using execFile - returns stdout/stderr in callback or promise
+    await new Promise((resolve, reject) => {
+        execFile(ytDlpPath, args, (error, stdout, stderr) => {
+            // Log output regardless
+            if (stdout) console.log('yt-dlp stdout:\n', stdout);
+            if (stderr) console.error('yt-dlp stderr:\n', stderr);
+
+            if (error) {
+                console.error(`yt-dlp execFile error: ${error.message}`);
+                // Include stderr in rejection if available
+                error.stderrContent = stderr; // Attach stderr for better debugging
+                return reject(error);
+            }
+            // If no error object, assume success
+            console.log('yt-dlp execFile finished successfully.');
+            resolve({ stdout, stderr });
+        });
     });
-
-    console.log('yt-dlp-exec output:', ytDlpOutput); // Library might provide stdout/stderr
 
     // Find the downloaded MP3 file (as filename is dynamic)
     console.log(`Searching for MP3 file in ${tempDir}`);
@@ -51,64 +120,46 @@ export async function POST(request) {
         actualMp3Path = path.join(tempDir, mp3File);
         console.log(`Found downloaded MP3: ${actualMp3Path}`);
     } else {
-        // Check stderr from output if available, or provide generic error
-        const stderrSnippet = ytDlpOutput?.stderr ? ytDlpOutput.stderr.substring(0, 500) : 'N/A';
-        throw new Error(`yt-dlp finished, but no MP3 file was found in ${tempDir}. Files present: ${files.join(', ')}. Stderr: ${stderrSnippet}`);
+        throw new Error(`yt-dlp finished, but no MP3 file was found in ${tempDir}. Files present: ${files.join(', ')}.`);
     }
 
     console.log('yt-dlp MP3 download and conversion finished.');
 
-    // --- 2. Prepare and Stream the Dynamically Named MP3 File ---
+    // --- 2. Prepare and Stream the MP3 File ---
+    // (Rest of the streaming logic remains the same as before)
     const stats = fs.statSync(actualMp3Path);
     const dataStream = fs.createReadStream(actualMp3Path);
     const filenameForUser = path.basename(actualMp3Path);
-
     console.log(`Streaming MP3 file: ${actualMp3Path}, Size: ${stats.size}, Filename for user: ${filenameForUser}`);
-
-    // Encode filename for header
     const fallbackFilename = 'downloaded_audio.mp3';
     const encodedFilename = encodeURIComponent(filenameForUser);
     const contentDispositionValue = `attachment; filename="${fallbackFilename}"; filename*=UTF-8''${encodedFilename}`;
     console.log(`Setting Content-Disposition: ${contentDispositionValue}`);
-
-    // Use ReadableStream for better cleanup handling
     const responseStream = new ReadableStream({
-        start(controller) {
+        start(controller) { /* ... stream handling ... */
             dataStream.on('data', (chunk) => controller.enqueue(chunk));
-            dataStream.on('end', () => {
-                console.log('File stream ended.');
-                controller.close();
-                cleanupTempFiles(tempDir);
-            });
-            dataStream.on('error', (err) => {
-                console.error('File stream error:', err);
-                controller.error(err);
-                cleanupTempFiles(tempDir);
-            });
+            dataStream.on('end', () => { controller.close(); cleanupTempFiles(tempDir); });
+            dataStream.on('error', (err) => { controller.error(err); cleanupTempFiles(tempDir); });
         },
-        cancel() {
-            console.log('Response stream cancelled by client.');
-            dataStream.destroy();
-            cleanupTempFiles(tempDir);
+        cancel() { /* ... cancel handling ... */
+             dataStream.destroy(); cleanupTempFiles(tempDir);
         }
     });
-
     return new NextResponse(responseStream, {
       status: 200,
-      headers: {
+      headers: { /* ... headers ... */
         'Content-Type': 'audio/mpeg',
         'Content-Disposition': contentDispositionValue,
         'Content-Length': stats.size.toString(),
-      },
+       },
     });
 
   } catch (error) {
-    // Catch errors from ytDlpExec or fs operations
     console.error('API /api/download final catch error:', error);
-    // Check if it's a yt-dlp specific error (library might throw custom errors)
     let errorMessage = `Download failed: ${error.message}`;
-    if (error.stderr) { // Check if the error object has stderr attached
-        errorMessage += `\nStderr: ${error.stderr.substring(0, 500)}`;
+    // Add stderr if the error object contains it (attached in the promise reject)
+    if (error.stderrContent) {
+        errorMessage += `\nStderr: ${error.stderrContent.substring(0, 500)}`;
     }
     cleanupTempFiles(tempDir);
     return NextResponse.json({ error: errorMessage }, { status: 500 });
