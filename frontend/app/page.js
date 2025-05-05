@@ -49,10 +49,13 @@ export default function Home() {
     //States variables
     const [url, setUrl] = useState('');
     const [playlistUrl, setPlaylistUrl] = useState('');
-
+    const [isLoadingMp3, setIsLoadingMp3] = useState(false);
+    const [isLoadingZip, setIsLoadingZip] = useState(false);
+    const [isLoadingVideo, setIsLoadingVideo] = useState(false);
     // Single video
     const downloadMP3 = async () => {
         if (!url) return alert('Enter video URL');
+        setIsLoadingMp3(true); //Start loading
         try {
             const res = await fetch('/api/download', {
               method: 'POST',
