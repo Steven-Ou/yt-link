@@ -28,7 +28,9 @@ export async function POST(request) {
     console.log(`Directory created: ${folderPath}`);
 
      // --- Execute yt-dlp with corrected error handling ---
-     const command = `yt-dlp -o "${path.join(folderPath, '%(playlist_index)s.%(title)s.%(ext)s')}" --verbose ${playlistUrl}`;
+     const command = `yt-dlp -x --audio-format mp3 -o "
+     ${path.join(folderPath, '%(playlist_index)s.%(title)s.%(ext)s')}
+     " --verbose ${playlistUrl}`;     
      console.log(`Executing command: ${command}`);
  
      await new Promise((resolve, reject) => {
