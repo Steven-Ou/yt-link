@@ -12,7 +12,7 @@ export default function Home() {
     // Single video
     const downloadMP3 = async () => {
         if (!url) return alert('Enter video URL');
-        const res = await fetch('app/api/download/', {
+        const res = await fetch('/api/download', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url }),
@@ -27,7 +27,7 @@ export default function Home() {
     
       const downloadPlaylist = async () => {
         if (!playlistUrl) return alert('Enter playlist URL');
-        const res = await fetch('app/api/download-playlist/', {
+        const res = await fetch('/api/download-playlist', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ playlistUrl }),
