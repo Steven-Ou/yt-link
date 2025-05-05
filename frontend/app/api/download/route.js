@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 
 export async function POST(request) {
+  console.log('--- DOWNLOAD API ROUTE HIT ---');
   const { url } = await request.json();
   if (!url) {
     return NextResponse.json({ error: 'No URL provided' }, { status: 400 });

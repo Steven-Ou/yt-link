@@ -6,6 +6,8 @@ import fs from 'fs';
 import path from 'path';
 
 export async function POST(request) {
+  console.log('--- DOWNLOAD PLAYLIST API ROUTE HIT ---');
+  
   const { playlistUrl } = await request.json();
   if (!playlistUrl) {
     return NextResponse.json({ error: 'No playlist URL provided' }, { status: 400 });
