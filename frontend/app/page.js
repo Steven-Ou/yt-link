@@ -221,6 +221,7 @@ export default function Home() {
                  {isLoadingZip ? 'Downloading Zip...' : 'Download Playlist As Zip'}
             </Button>
             <Divider style={{margin:"40px 0"}}/>
+            {/* --- NEW: Playlist download as single combined VIDEO --- */}
             <Typography variant='h6' gutterBottom>
                 Convert a Album to MP3
             </Typography>
