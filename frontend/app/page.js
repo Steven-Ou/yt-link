@@ -129,8 +129,8 @@ export default function Home() {
         alert('Combining videos can take a long time, especially for long playlists. Please be patient.');
         setIsLoadingVideo(true); // Start loading
         try {
-            // *** IMPORTANT: Replace '/api/combine-video' with your actual endpoint path ***
-            const res = await fetch('/api/combine-video', {
+            // *** IMPORTANT: Replace '/api/convert' with your actual endpoint path ***
+            const res = await fetch('/api/convert', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ playlistUrl }),
