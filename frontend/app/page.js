@@ -198,7 +198,7 @@ export default function Home() {
 
              {/* Playlist Section */}
             <Typography variant='h6' gutterBottom>
-                Convert a Full Playlist (Album)
+                Download a Whole Album
             </Typography>
             <TextField
                 label="YouTube Playlist URL"
@@ -220,7 +220,19 @@ export default function Home() {
             >
                  {isLoadingZip ? 'Downloading Zip...' : 'Download Playlist As Zip'}
             </Button>
-
+            <Divider style={{margin:"40px 0"}}/>
+            <Typography variant='h6' gutterBottom>
+                Convert a Album to MP3
+            </Typography>
+            <TextField
+                label="YouTube Playlist URL"
+                variant='outlined'
+                fullWidth
+                value={playlistUrl}
+                onChange={(e)=> setPlaylistUrl(e.target.value)}
+                style={{marginBottom: 16}}
+                disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo} // Disable input while loading
+            />
             {/* --- NEW: Button for Combined Video --- */}
             <Button
                 variant='contained'
