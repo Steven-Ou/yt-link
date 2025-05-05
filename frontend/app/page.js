@@ -66,7 +66,7 @@ export default function Home() {
             if (!res.ok) {
                 const errorBody = await res.json().catch(() => ({ error: 'Unknown server error' }));
                 console.error("Server error response:", errorBody);
-                return alert('Error downloading: ' + (errorBody.error || res.statusText));
+                throw new Error(errorBody.error || res.statusText); // Throw error to be caught
             }
 
             // Use the helper function to get the best possible filename
