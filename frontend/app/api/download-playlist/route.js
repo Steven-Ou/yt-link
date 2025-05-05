@@ -4,10 +4,13 @@ import { NextResponse } from 'next/server';
 import { exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import AdmZip from 'adm-zip'; // Use import syntax
+import { exec } from 'child_process'; // Use import syntax
+import { promisify } from 'util'; // To promisify exec if needed, or use Promise wrapper
 
 export async function POST(request) {
   console.log('--- DOWNLOAD PLAYLIST API ROUTE HIT ---');
-  
+
   const { playlistUrl } = await request.json();
   if (!playlistUrl) {
     return NextResponse.json({ error: 'No playlist URL provided' }, { status: 400 });
