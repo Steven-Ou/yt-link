@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { spawn } from 'child_process'; // Use spawn for robustness
 import fs from 'fs';
 import path from 'path';
+import os from 'os'; // Import os to use tmpdir() for better portability
 
 export async function POST(request) {
   console.log('--- SINGLE DOWNLOAD (MP3 DIRECT) API ROUTE HIT ---');
@@ -14,42 +15,40 @@ export async function POST(request) {
     return NextResponse.json({ error: 'No URL provided' }, { status: 400 });
   }
 
-  // Use a temporary directory for the download
-  const tempDir = path.join('/tmp', `single_dl_${Date.now()}`); // Use /tmp or os.tmpdir() if available
-  let downloadedFilePath = null; // Keep track of the actual downloaded file path
+  // Use OS temporary directory for better portability
+  const tempDir = path.join(os.tmpdir(), `single_dl_${Date.now()}`);
+  // Define the expected final MP3 path
+  const expectedMp3Filename = 'downloaded_audio.mp3'; // Keep a fixed name for simplicity
+  const expectedMp3Path = path.join(tempDir, expectedMp3Filename);
+  let actualFilePathToStream = null; // Track the file to stream for cleanup
 
   try {
     console.log(`Attempting to create temporary directory: ${tempDir}`);
-    // Ensure parent directory exists if needed, handle potential errors
-    // For simplicity here, assuming /tmp exists and is writable
     fs.mkdirSync(tempDir, { recursive: true });
     console.log(`Temporary directory created: ${tempDir}`);
 
     // --- 1. Download Single MP3 with yt-dlp using spawn ---
-    console.log(`Spawning yt-dlp to download single MP3`);
+    console.log(`Spawning yt-dlp to download and convert to single MP3`);
 
     // Define arguments for spawn
     const ytdlpArgs = [
         '-x', // Extract audio
         '--audio-format', 'mp3', // Specify MP3 format
-        // Output to the temp directory. Use a generic name or try to get title.
-        // Using fixed name simplifies finding it later. Add --print filename to get actual name.
-        '-o', path.join(tempDir, 'downloaded_audio.%(ext)s'), // Fixed name + extension placeholder
-        '--print', 'filename', // Ask yt-dlp to print the final filename to stdout
+        // Explicitly set the *final* output filename as .mp3
+        '-o', expectedMp3Path,
+        // Remove: '--print', 'filename', // Not needed anymore
         url // The URL for the single video/audio
     ];
     console.log('yt-dlp args:', ytdlpArgs);
 
-    let stdoutData = '';
     let stderrData = '';
 
-    const downloadedFilename = await new Promise((resolve, reject) => {
+    await new Promise((resolve, reject) => { // No need to capture filename from promise anymore
         const ytDlpProcess = spawn('yt-dlp', ytdlpArgs, { shell: false });
 
-        ytDlpProcess.stdout.on('data', (data) => {
-            console.log(`yt-dlp stdout: ${data}`);
-            stdoutData += data.toString().trim(); // Capture stdout to get filename
-        });
+        // No need to capture stdout anymore
+        // ytDlpProcess.stdout.on('data', (data) => { ... });
+
         ytDlpProcess.stderr.on('data', (data) => {
             console.error(`yt-dlp stderr: ${data}`);
             stderrData += data.toString();
@@ -59,67 +58,52 @@ export async function POST(request) {
         });
         ytDlpProcess.on('close', (code) => {
             if (code === 0) {
-                // yt-dlp prints the final path to stdout because of --print filename
-                console.log(`yt-dlp finished successfully. Filename from stdout: ${stdoutData}`);
-                // Basic check if stdoutData looks like a path within our tempDir
-                if (stdoutData && stdoutData.startsWith(tempDir) && stdoutData.endsWith('.mp3')) {
-                     resolve(stdoutData); // Resolve with the actual path printed by yt-dlp
+                // Check if the expected MP3 file exists
+                if (fs.existsSync(expectedMp3Path)) {
+                    console.log(`yt-dlp finished successfully. Found expected MP3: ${expectedMp3Path}`);
+                    resolve(); // Just resolve, we know the path
                 } else {
-                     // Fallback: try to find the mp3 file if stdout wasn't as expected
-                     console.warn("Could not reliably get filename from stdout. Searching directory...");
-                     const files = fs.readdirSync(tempDir);
-                     const mp3File = files.find(f => f.toLowerCase().endsWith('.mp3'));
-                     if (mp3File) {
-                         console.log(`Found MP3 file via directory scan: ${mp3File}`);
-                         resolve(path.join(tempDir, mp3File));
-                     } else {
-                        reject(new Error(`yt-dlp finished, but no MP3 file found in ${tempDir}. Files: ${files.join(', ')}. Stderr: ${stderrData.substring(0, 300)}`));
-                     }
+                    // If the expected file isn't there, something went wrong
+                    const files = fs.readdirSync(tempDir); // See what IS there
+                    reject(new Error(`yt-dlp finished successfully (code 0), but the expected MP3 file (${expectedMp3Filename}) was not found in ${tempDir}. Files present: ${files.join(', ')}`));
                 }
             } else {
-                reject(new Error(`yt-dlp failed with code ${code}. Stderr: ${stderrData.substring(0, 500)}`));
+                reject(new Error(`yt-dlp failed with exit code ${code}. Stderr: ${stderrData.substring(0, 500)}`));
             }
         });
     });
 
-    console.log('yt-dlp MP3 download finished.');
-    downloadedFilePath = downloadedFilename; // Store the path for cleanup
-
-    if (!fs.existsSync(downloadedFilePath)) {
-         throw new Error(`Downloaded file path reported but not found: ${downloadedFilePath}`);
-    }
+    console.log('yt-dlp MP3 download and conversion finished.');
+    actualFilePathToStream = expectedMp3Path; // Store the path for streaming & cleanup
 
     // --- 2. Prepare and Stream the MP3 File ---
-    const stats = fs.statSync(downloadedFilePath);
-    const dataStream = fs.createReadStream(downloadedFilePath);
-    const filenameForUser = path.basename(downloadedFilePath); // Get just the filename part
+    const stats = fs.statSync(actualFilePathToStream);
+    const dataStream = fs.createReadStream(actualFilePathToStream);
+    const filenameForUser = expectedMp3Filename; // Use the fixed name or derive from URL if needed
 
-    console.log(`Streaming MP3 file: ${downloadedFilePath}, Size: ${stats.size}`);
+    console.log(`Streaming MP3 file: ${actualFilePathToStream}, Size: ${stats.size}`);
 
     // Use ReadableStream for better cleanup handling with NextResponse
     const responseStream = new ReadableStream({
         start(controller) {
             dataStream.on('data', (chunk) => {
-                controller.enqueue(chunk); // Pass chunk to the response stream
+                controller.enqueue(chunk);
             });
             dataStream.on('end', () => {
                 console.log('File stream ended.');
-                controller.close(); // Signal end of response stream
-                 // Clean up AFTER the stream ends
-                 cleanupTempFiles(tempDir, null); // Only clean the folder now
+                controller.close();
+                cleanupTempFiles(tempDir); // Clean up AFTER the stream ends
             });
             dataStream.on('error', (err) => {
                 console.error('File stream error:', err);
-                controller.error(err); // Signal error in response stream
-                // Clean up even on stream error
-                cleanupTempFiles(tempDir, null);
+                controller.error(err);
+                cleanupTempFiles(tempDir); // Clean up on stream error
             });
         },
         cancel() {
             console.log('Response stream cancelled by client.');
-            dataStream.destroy(); // Stop reading the file if client cancels
-            // Clean up on cancellation
-            cleanupTempFiles(tempDir, null);
+            dataStream.destroy();
+            cleanupTempFiles(tempDir); // Clean up on cancellation
         }
     });
 
@@ -127,39 +111,26 @@ export async function POST(request) {
     return new NextResponse(responseStream, {
       status: 200,
       headers: {
-        // Set appropriate content type for MP3
         'Content-Type': 'audio/mpeg',
-        // Suggest a filename for the user
         'Content-Disposition': `attachment; filename="${filenameForUser}"`,
-        // Set content length
         'Content-Length': stats.size.toString(),
       },
     });
 
   } catch (error) {
     console.error('API /api/download final catch error:', error);
-    // Ensure cleanup happens on error too
-    cleanupTempFiles(tempDir, null); // Clean up folder if it exists
+    cleanupTempFiles(tempDir); // Clean up folder if it exists on error
     return NextResponse.json({ error: `Download failed: ${error.message}` }, { status: 500 });
   }
-  // NOTE: No finally block here - cleanup is handled by the stream events
 }
 
-
-// Helper function for cleanup
-function cleanupTempFiles(folderPath, zipFilePath) {
-     // Use setTimeout to slightly delay cleanup, ensuring response headers are sent
-     // This is less critical with ReadableStream handling, but can prevent race conditions
+// Updated Helper function for cleanup (only needs folder path)
+function cleanupTempFiles(folderPath) {
      setTimeout(() => {
         try {
             if (folderPath && fs.existsSync(folderPath)) {
                 console.log(`CLEANUP: Removing folder: ${folderPath}`);
                 fs.rmSync(folderPath, { recursive: true, force: true });
-            }
-            // Only try to delete zip if path was provided (for the zip version)
-            if (zipFilePath && fs.existsSync(zipFilePath)) {
-                console.log(`CLEANUP: Removing file: ${zipFilePath}`);
-                fs.unlinkSync(zipFilePath);
             }
         } catch (cleanupError) {
             console.error("CLEANUP: Error:", cleanupError);
