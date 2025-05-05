@@ -6,40 +6,35 @@ import { Container } from '@mui/system';
 // Helper function to parse Content-Disposition header
 function getFilenameFromHeaders(headers) {
     const disposition = headers.get('Content-Disposition');
-    // Default filename if parsing fails
-    let filename = 'downloaded_audio.mp3';
+    // Default filename if parsing fails - adjust based on expected type
+    let filename = 'downloaded_file'; // More generic default
 
     if (disposition) {
         console.log("Parsing Content-Disposition:", disposition);
-        // Try to match filename*=UTF-8''my%20filename.mp3 (RFC 5987)
-        // This regex looks for filename*=UTF-8'' followed by encoded characters
+        // Try filename*=UTF-8''...
         const utf8FilenameRegex = /filename\*=UTF-8''([\w%.-]+)(?:; ?|$)/i;
         const utf8Match = disposition.match(utf8FilenameRegex);
         if (utf8Match && utf8Match[1]) {
             try {
-                // Decode the URI-encoded filename
                 filename = decodeURIComponent(utf8Match[1]);
                 console.log(`Successfully parsed filename* (decoded): ${filename}`);
-                return filename; // Prioritize filename* if found and decoded
+                return filename;
             } catch (e) {
                 console.error("Error decoding filename*:", e);
-                // If decoding fails, fall through to try the simple filename
             }
         }
 
-        // Fallback: Try to match the simpler filename="my filename.mp3"
-        // This regex looks for filename= followed by a quoted or unquoted string
+        // Fallback: Try filename="..."
         const asciiFilenameRegex = /filename=(?:(")([^"]*)\1|([^;\n]*))/i;
         const asciiMatch = disposition.match(asciiFilenameRegex);
-        // Use group 2 if quoted, otherwise use group 3 if unquoted
         if (asciiMatch && (asciiMatch[2] || asciiMatch[3])) {
             filename = asciiMatch[2] || asciiMatch[3];
+            // Basic sanitization for ASCII filename - remove path characters if any
+             filename = filename.replace(/[\\/]/g, '_');
             console.log(`Parsed simple filename= parameter: ${filename}`);
-            // No decoding needed for this simple format (usually ASCII)
             return filename;
         }
     }
-    // If no filename parameter is found or parsed correctly
     console.log(`Could not parse filename from headers, using default: ${filename}`);
     return filename;
 }
@@ -49,15 +44,18 @@ export default function Home() {
     //States variables
     const [url, setUrl] = useState('');
     const [playlistUrl, setPlaylistUrl] = useState('');
+    // Add loading states for user feedback
     const [isLoadingMp3, setIsLoadingMp3] = useState(false);
     const [isLoadingZip, setIsLoadingZip] = useState(false);
     const [isLoadingVideo, setIsLoadingVideo] = useState(false);
-    // Single video
+
+
+    // Single video download
     const downloadMP3 = async () => {
         if (!url) return alert('Enter video URL');
-        setIsLoadingMp3(true); //Start loading
+        setIsLoadingMp3(true); // Start loading
         try {
-            const res = await fetch('/api/download', {
+            const res = await fetch('/api/download', { // Endpoint for single MP3
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ url }),
@@ -69,30 +67,30 @@ export default function Home() {
                 throw new Error(errorBody.error || res.statusText); // Throw error to be caught
             }
 
-            // Use the helper function to get the best possible filename
             const filename = getFilenameFromHeaders(res.headers);
-
             const blob = await res.blob();
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            // Set the correctly parsed filename for the download attribute
             a.download = filename;
-            document.body.appendChild(a); // Append link to body (needed for Firefox)
+            document.body.appendChild(a);
             a.click();
-            document.body.removeChild(a); // Clean up link
-            URL.revokeObjectURL(a.href); // Clean up blob URL
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
 
         } catch (error) {
             console.error("Client-side download error:", error);
-            alert('An error occurred during the download process.');
+            alert(`Error downloading MP3: ${error.message}`);
+        } finally {
+             setIsLoadingMp3(false); // Stop loading regardless of outcome
         }
       };
 
-      // Playlist download - assumes server sends simple zip name
-      const downloadPlaylist = async () => {
+      // Playlist download as ZIP
+      const downloadPlaylistZip = async () => {
         if (!playlistUrl) return alert('Enter playlist URL');
-        try { // Add try...catch
-            const res = await fetch('/api/download-playlist', { // Assuming this endpoint sends a zip
+        setIsLoadingZip(true); // Start loading
+        try {
+            const res = await fetch('/api/download-playlist', { // Endpoint for playlist ZIP
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ playlistUrl }),
@@ -100,38 +98,83 @@ export default function Home() {
 
             if (!res.ok) {
                  const errorBody = await res.json().catch(() => ({ error: 'Unknown server error' }));
-                 console.error("Server error response (playlist):", errorBody);
-                 return alert('Error downloading playlist: ' + (errorBody.error || res.statusText));
+                 console.error("Server error response (playlist zip):", errorBody);
+                 throw new Error(errorBody.error || res.statusText);
             }
 
-            // For playlists, we might expect a simpler zip name from the server
-            // Or use the same parsing function if that endpoint also sends complex names
-            const playlistFilename = getFilenameFromHeaders(res.headers); // Reuse parser, adjust default if needed
+            // Assuming the zip endpoint also sends Content-Disposition
+            const filename = getFilenameFromHeaders(res.headers) || 'playlist.zip'; // Default zip name
 
             const blob = await res.blob();
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            // Use the parsed name, or maybe a default like 'playlist.zip' if preferred
-            a.download = playlistFilename || 'playlist.zip';
+            a.download = filename;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(a.href);
 
         } catch (error) {
-             console.error("Client-side playlist download error:", error);
-             alert('An error occurred during the playlist download process.');
+             console.error("Client-side playlist zip download error:", error);
+             alert(`Error downloading playlist zip: ${error.message}`);
+        } finally {
+            setIsLoadingZip(false); // Stop loading
         }
       };
+
+      // --- NEW: Playlist download as single combined VIDEO ---
+      const downloadCombinedVideo = async () => {
+        if (!playlistUrl) return alert('Enter playlist URL');
+        // Add a warning about potential long processing time
+        alert('Combining videos can take a long time, especially for long playlists. Please be patient.');
+        setIsLoadingVideo(true); // Start loading
+        try {
+            // *** IMPORTANT: Replace '/api/combine-video' with your actual endpoint path ***
+            const res = await fetch('/api/combine-video', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ playlistUrl }),
+            });
+
+            if (!res.ok) {
+                 const errorBody = await res.json().catch(() => ({ error: 'Unknown server error' }));
+                 console.error("Server error response (combine video):", errorBody);
+                 throw new Error(errorBody.error || res.statusText);
+            }
+
+            // Get filename (e.g., playlist_combined.mp4) from headers
+            const filename = getFilenameFromHeaders(res.headers) || 'combined_video.mp4'; // Default video name
+
+            const blob = await res.blob();
+            // Check blob type if needed - should be video/mp4 or similar
+            console.log("Received blob type:", blob.type);
+
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+
+        } catch (error) {
+             console.error("Client-side combined video download error:", error);
+             alert(`Error downloading combined video: ${error.message}`);
+        } finally {
+            setIsLoadingVideo(false); // Stop loading
+        }
+      };
+
 
     return(
         <Container maxWidth="sm" style={{marginTop: 80}}>
             <Typography variant='h4' gutterBottom align='center'>
-                🎧 YouTube to MP3 Converter
+                🎧 YouTube Downloader 🎬
             </Typography>
 
+             {/* Single Video Section */}
             <Typography variant='h6' gutterBottom>
-                Convert a Single Video
+                Convert a Single Video to MP3
             </Typography>
             <TextField
                 label="YouTube Video URL"
@@ -140,17 +183,20 @@ export default function Home() {
                 value={url}
                 onChange={(e)=> setUrl(e.target.value)}
                 style={{marginBottom: 16}}
+                disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo} // Disable input while loading
             />
             <Button
                 variant='contained'
                 color='primary'
                 fullWidth
                 onClick={downloadMP3}
+                disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo} // Disable button while loading
             >
-                Download MP3
+                {isLoadingMp3 ? 'Downloading MP3...' : 'Download MP3'}
             </Button>
             <Divider style={{margin:"40px 0"}}/>
 
+             {/* Playlist Section */}
             <Typography variant='h6' gutterBottom>
                 Convert a Full Playlist (Album)
             </Typography>
@@ -161,18 +207,35 @@ export default function Home() {
                 value={playlistUrl}
                 onChange={(e)=> setPlaylistUrl(e.target.value)}
                 style={{marginBottom: 16}}
+                disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo} // Disable input while loading
             />
+            {/* Button for Playlist ZIP */}
             <Button
                 variant='contained'
                 color='secondary'
-                onClick={downloadPlaylist}
+                onClick={downloadPlaylistZip} // Renamed function for clarity
                 fullWidth
                 style={{marginBottom: 16}}
+                disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo} // Disable button while loading
             >
-                Download Playlist As Zip
+                 {isLoadingZip ? 'Downloading Zip...' : 'Download Playlist As Zip'}
             </Button>
-             {/* Consider adding a button for the combined MP3 playlist endpoint if you have it */}
-             {/* <Button variant='contained' color='secondary' onClick={downloadCombinedPlaylist} fullWidth>
+
+            {/* --- NEW: Button for Combined Video --- */}
+            <Button
+                variant='contained'
+                // Choose a different color or style if desired
+                color='warning' // Example: use warning color for potentially long operation
+                onClick={downloadCombinedVideo}
+                fullWidth
+                style={{marginBottom: 16}}
+                disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo} // Disable button while loading
+            >
+                 {isLoadingVideo ? 'Combining Video...' : 'Download Playlist As Single Video'}
+            </Button>
+
+            {/* Consider adding a button for the combined MP3 playlist endpoint if you have it */}
+            {/* <Button variant='contained' color='secondary' onClick={downloadCombinedPlaylistMp3} fullWidth>
                  Download Playlist As Single MP3
              </Button> */}
         </Container>
