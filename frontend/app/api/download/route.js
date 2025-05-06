@@ -1,20 +1,21 @@
 // /app/api/download/route.js
 
-// Use youtube-dl-exec package
+// Uses yt-dlp-wrap which downloads the binary to /tmp if needed.
+// Uses video title for output filename.
 export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
-// Removed: import { execFile } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-// Import the new package
-import youtubeDlExec from 'youtube-dl-exec';
+// Import the new library
+import YTDlpWrap from 'yt-dlp-wrap';
 
-// No need to manually find the path anymore, let the library handle it.
+// Instantiate the wrapper
+const ytDlpWrap = new YTDlpWrap();
 
 export async function POST(request) {
-  console.log('--- SINGLE DOWNLOAD (youtube-dl-exec) API ROUTE HIT ---');
+  console.log('--- SINGLE DOWNLOAD (yt-dlp-wrap) API ROUTE HIT ---');
 
   const { url } = await request.json();
   if (!url) {
@@ -29,22 +30,25 @@ export async function POST(request) {
     fs.mkdirSync(tempDir, { recursive: true });
     console.log(`Temporary directory created: ${tempDir}`);
 
-    // --- 1. Download Single MP3 using youtube-dl-exec ---
-    console.log(`Executing youtube-dl-exec to download and convert`);
+    // --- 1. Download Single MP3 using yt-dlp-wrap ---
+    console.log(`Executing yt-dlp-wrap to download and convert`);
 
     // Define output path template using video title
     const outputTemplate = path.join(tempDir, '%(title)s.%(ext)s');
 
-    // Execute using the library - options are similar
-    // It returns a promise that resolves with stdout
-    const stdout = await youtubeDlExec(url, {
-      extractAudio: true,         // -x
-      audioFormat: 'mp3',         // --audio-format mp3
-      output: outputTemplate,     // -o
-      // Add any other necessary flags here
-    });
+    // Define arguments for yt-dlp-wrap
+    const args = [
+        url, // URL first
+        '-x', // Extract audio
+        '--audio-format', 'mp3', // Specify MP3 format
+        '-o', outputTemplate // Output template
+    ];
+    console.log('yt-dlp-wrap args:', args);
 
-    console.log('youtube-dl-exec stdout:', stdout); // Log stdout
+    // Execute using the wrapper instance
+    await ytDlpWrap.exec(args);
+    console.log('yt-dlp-wrap download execution finished.');
+
 
     // Find the downloaded MP3 file (as filename is dynamic)
     console.log(`Searching for MP3 file in ${tempDir}`);
@@ -55,14 +59,13 @@ export async function POST(request) {
         actualMp3Path = path.join(tempDir, mp3File);
         console.log(`Found downloaded MP3: ${actualMp3Path}`);
     } else {
-        // youtube-dl-exec might throw an error with stderr attached
-        throw new Error(`youtube-dl finished, but no MP3 file was found in ${tempDir}. Files present: ${files.join(', ')}.`);
+        throw new Error(`yt-dlp finished, but no MP3 file was found in ${tempDir}. Files present: ${files.join(', ')}.`);
     }
 
     console.log('MP3 download and conversion finished.');
 
     // --- 2. Prepare and Stream the MP3 File ---
-    // (Rest of the streaming logic remains the same)
+    // (Streaming logic remains the same)
     const stats = fs.statSync(actualMp3Path);
     const dataStream = fs.createReadStream(actualMp3Path);
     const filenameForUser = path.basename(actualMp3Path);
@@ -91,10 +94,10 @@ export async function POST(request) {
     });
 
   } catch (error) {
-    // Catch errors from youtubeDlExec or fs operations
     console.error('API /api/download final catch error:', error);
     let errorMessage = `Download failed: ${error.message}`;
-    if (error.stderr) { // Check if the error object has stderr attached by the library
+    // yt-dlp-wrap might attach stderr to the error object
+    if (error.stderr) {
         errorMessage += `\nStderr: ${error.stderr.substring(0, 500)}`;
     }
     cleanupTempFiles(tempDir);
