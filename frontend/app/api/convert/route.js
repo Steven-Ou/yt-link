@@ -1,7 +1,5 @@
-// /app/api/convert/route.js OR /app/api/combine-mp3/route.js
-
-
-// Uses youtube-dl-exec and explicitly sets the binary path.
+// /app/api/convert/route.js 
+// Uses yt-dlp-wrap which downloads the binary to /tmp if needed.
 // Keeps spawn for ffmpeg. Uses playlist title for output filename.
 export const runtime = 'nodejs';
 
@@ -10,9 +8,13 @@ import { spawn } from 'child_process'; // Keep spawn for ffmpeg
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-// Import the library and its path helper
-import youtubeDl from 'youtube-dl-exec';
-import { youtubeDlPath } from 'youtube-dl-exec'; // Import the path
+// Import the new library
+import YTDlpWrap from 'yt-dlp-wrap';
+
+// Instantiate the wrapper - it will manage the binary download/path
+const ytDlpWrap = new YTDlpWrap();
+// Optional: Log the path it intends to use/download to
+// YTDlpWrap.getBinaryPath().then(p => console.log("yt-dlp-wrap binary path:", p));
 
 // Helper function to sort files
 const sortFilesByPlaylistIndex = (a, b) => { /* ... same as before ... */
@@ -30,37 +32,7 @@ function sanitizeFilename(name) { /* ... same as before ... */
 }
 
 export async function POST(request) {
-    console.log('--- COMBINE PLAYLIST MP3 (Explicit youtube-dl Path) API ROUTE HIT ---');
-    console.log(`Using youtube-dl binary path: ${youtubeDlPath}`); // Log the path being used
-
-    // Check if the path seems valid (simple check)
-    if (!youtubeDlPath || !fs.existsSync(youtubeDlPath)) {
-         console.error(`youtube-dl binary path is invalid or file does not exist: ${youtubeDlPath}`);
-         // Attempt to log directory contents for debugging
-         try {
-            const dir = path.dirname(youtubeDlPath);
-            console.error(`Contents of directory ${dir}:`, fs.readdirSync(dir));
-         } catch (e) { console.error("Could not read directory for debugging."); }
-         return NextResponse.json({ error: "Server configuration error: youtube-dl binary not found." }, { status: 500 });
-    }
-     // Optional: Check execute permissions explicitly here if needed
-     try {
-         fs.accessSync(youtubeDlPath, fs.constants.X_OK);
-         console.log(`Execute permission confirmed for: ${youtubeDlPath}`);
-     } catch (permError) {
-         console.error(`Execute permission may be missing for ${youtubeDlPath}: ${permError.message}`);
-         // Attempting chmod might still be needed if permissions are the issue
-         try {
-             console.log(`Attempting to chmod +x ${youtubeDlPath}`);
-             fs.chmodSync(youtubeDlPath, 0o755);
-             fs.accessSync(youtubeDlPath, fs.constants.X_OK); // Re-check
-             console.log(`Execute permission confirmed after chmod.`);
-         } catch (chmodError) {
-             console.error(`chmod failed or permission still denied after chmod: ${chmodError.message}`);
-             return NextResponse.json({ error: `Server configuration error: youtube-dl permissions issue.` }, { status: 500 });
-         }
-     }
-
+    console.log('--- COMBINE PLAYLIST MP3 (yt-dlp-wrap) API ROUTE HIT ---');
 
     const baseTempDir = os.tmpdir();
     const uniqueFolderName = `playlist_dl_${Date.now()}`;
@@ -77,51 +49,63 @@ export async function POST(request) {
         }
         console.log(`Received playlist URL: ${playlistUrl}`);
 
-        // --- 0. Get Playlist Title (using youtube-dl-exec with explicit path) ---
+        // --- 0. Get Playlist Title (using yt-dlp-wrap) ---
         try {
             console.log(`Fetching playlist title for: ${playlistUrl}`);
-            const playlistInfo = await youtubeDl(playlistUrl, {
-                flatPlaylist: true,
-                dumpSingleJson: true,
-            }, { // Pass execution options including the binary path
-                binaryPath: youtubeDlPath
-            });
+            // Define arguments for getting title
+            const titleArgs = [
+                playlistUrl,
+                '--flat-playlist',
+                '--dump-single-json'
+            ];
+            console.log('yt-dlp-wrap args (for title):', titleArgs);
+            // Use the exec method of the wrapper instance
+            const titleJson = await ytDlpWrap.exec(titleArgs);
+
+            const playlistInfo = JSON.parse(titleJson);
             if (playlistInfo && playlistInfo.title) {
                 playlistTitle = sanitizeFilename(playlistInfo.title);
                 console.log(`Using sanitized playlist title: ${playlistTitle}`);
-            } else { console.warn("Could not extract playlist title, using default."); }
+            } else {
+                 console.warn("Could not extract playlist title from JSON, using default.");
+            }
         } catch (titleError) {
             console.error(`Failed to fetch playlist title: ${titleError.message}. Using default name.`);
-             if (titleError.stderr) { console.error("Stderr (title fetch):", titleError.stderr); }
+            // The library might attach stderr to the error object
+            if (titleError.stderr) { console.error("Stderr (title fetch):", titleError.stderr); }
         }
 
         // Define final output path
         finalMp3Path = path.join(baseTempDir, `${playlistTitle}.mp3`);
         console.log(`Final combined MP3 path set to: ${finalMp3Path}`);
 
-        // --- 1. Download Individual MP3s (using youtube-dl-exec with explicit path) ---
+        // --- 1. Download Individual MP3s (using yt-dlp-wrap) ---
         console.log(`Attempting to create temporary directory: ${folderPath}`);
         fs.mkdirSync(folderPath, { recursive: true });
         console.log(`MP3 download directory created: ${folderPath}`);
-        console.log(`Executing youtube-dl to download items into: ${folderPath}`);
+        console.log(`Executing yt-dlp-wrap to download items into: ${folderPath}`);
         const outputPathTemplate = path.join(folderPath, '%(playlist_index)s.%(title)s.%(ext)s');
 
-        // Execute download with explicit path
-        const downloadStdout = await youtubeDl(playlistUrl, {
-            extractAudio: true,
-            audioFormat: 'mp3',
-            output: outputPathTemplate,
-        }, { // Pass execution options including the binary path
-            binaryPath: youtubeDlPath
-        });
-        console.log('youtube-dl download stdout:', downloadStdout);
+        // Define download arguments
+        const downloadArgs = [
+            playlistUrl,
+            '-x', // Extract audio
+            '--audio-format', 'mp3', // Specify MP3 format
+            '-o', outputPathTemplate // Output template
+        ];
+        console.log('yt-dlp-wrap args (for download):', downloadArgs);
+
+        // Execute download using the wrapper instance
+        // We don't necessarily need the stdout here unless debugging
+        await ytDlpWrap.exec(downloadArgs);
+        console.log('yt-dlp-wrap download execution finished.');
 
 
         // --- 2. List and Sort MP3 Files ---
         let files = fs.readdirSync(folderPath);
         files = files.filter(f => f.toLowerCase().endsWith('.mp3'));
         files.sort(sortFilesByPlaylistIndex);
-        if (files.length === 0) { throw new Error(`youtube-dl did not produce any MP3 files.`); }
+        if (files.length === 0) { throw new Error(`yt-dlp did not produce any MP3 files.`); }
 
         // --- 3. Combine if necessary (using spawn for ffmpeg) ---
         let sourceMp3Path = null;
@@ -189,7 +173,8 @@ export async function POST(request) {
     } catch (error) {
         console.error("API /api/combine-mp3 final catch error:", error);
         let errorMessage = `Playlist MP3 combination failed: ${error.message}`;
-         if (error.stderr) { // Add stderr if present
+         // yt-dlp-wrap might attach stderr to the error object
+         if (error.stderr) {
              errorMessage += `\nStderr: ${error.stderr.substring(0, 500)}`;
          }
         cleanupTempFiles(folderPath, finalMp3Path);
