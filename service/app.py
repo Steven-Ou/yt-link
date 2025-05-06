@@ -62,6 +62,8 @@ def process_single_mp3():
                 logging.info(f"Saved cookie data to: {cookie_file_path}")
                 args.extend(['--cookies', cookie_file_path])
             except Exception as e: logging.error(f"Failed to write cookie file: {e}")
+        # Add '--' to signal the end of options before the URL
+        args.append('--')
         args.append(url)
 
         logging.info(f"Running yt-dlp for URL: {url}")
