@@ -1,6 +1,6 @@
 // /app/api/download-playlist/route.js
 
-// Uses youtube-dl-exec, /tmp for paths, and adm-zip.
+// Uses yt-dlp-wrap for downloads, /tmp for paths, and adm-zip.
 export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
@@ -8,13 +8,14 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import AdmZip from 'adm-zip';
-// Import the new package
-import youtubeDlExec from 'youtube-dl-exec';
+// Import the new library
+import YTDlpWrap from 'yt-dlp-wrap';
 
-// No need to manually find the path anymore
+// Instantiate the wrapper
+const ytDlpWrap = new YTDlpWrap();
 
 export async function POST(request) {
-  console.log('--- DOWNLOAD PLAYLIST (ZIP - youtube-dl-exec) API ROUTE HIT ---');
+  console.log('--- DOWNLOAD PLAYLIST (ZIP - yt-dlp-wrap) API ROUTE HIT ---');
   const { playlistUrl } = await request.json();
   if (!playlistUrl) {
     return NextResponse.json({ error: 'No playlist URL provided' }, { status: 400 });
@@ -32,27 +33,31 @@ export async function POST(request) {
     fs.mkdirSync(folderPath, { recursive: true });
     console.log(`Temporary directory created: ${folderPath}`);
 
-    // --- 1. Download Playlist MP3s using youtube-dl-exec ---
-    console.log(`Executing youtube-dl-exec to download playlist MP3s into ${folderPath}`);
+    // --- 1. Download Playlist MP3s using yt-dlp-wrap ---
+    console.log(`Executing yt-dlp-wrap to download playlist MP3s into ${folderPath}`);
     const outputPathTemplate = path.join(folderPath, '%(playlist_index)s.%(title)s.%(ext)s');
 
-    // Execute using the library
-    const stdout = await youtubeDlExec(playlistUrl, {
-        extractAudio: true,         // -x
-        audioFormat: 'mp3',         // --audio-format mp3
-        output: outputPathTemplate, // -o
+    // Define arguments
+    const args = [
+        playlistUrl,
+        '-x', // Extract audio
+        '--audio-format', 'mp3', // Specify MP3 format
+        '-o', outputPathTemplate // Output template
         // Add playlist specific flags if needed
-    });
+    ];
+    console.log('yt-dlp-wrap args:', args);
 
-    console.log('youtube-dl-exec playlist stdout:', stdout);
+    // Execute using the wrapper instance
+    await ytDlpWrap.exec(args);
+    console.log('yt-dlp-wrap playlist download execution finished.');
+
 
     // --- 2. Check if files were downloaded ---
     const files = fs.readdirSync(folderPath);
     const mp3Files = files.filter(f => f.toLowerCase().endsWith('.mp3'));
     console.log(`Files found in ${folderPath}:`, mp3Files);
     if (mp3Files.length === 0) {
-        // Try to get more info from potential error object if library throws one
-        throw new Error(`youtube-dl did not download any MP3 files into ${folderPath}.`);
+        throw new Error(`yt-dlp did not download any MP3 files into ${folderPath}.`);
     }
 
     // --- 3. Create Zip file using adm-zip ---
@@ -64,50 +69,38 @@ export async function POST(request) {
     console.log(`Zip file written: ${zipFilePath}`);
 
     // --- 4. Prepare and Stream the Zip File ---
+    // (Streaming logic remains the same)
     if (!fs.existsSync(zipFilePath)) {
         throw new Error(`Zip file was not found after writing: ${zipFilePath}`);
     }
     const stats = fs.statSync(zipFilePath);
     const dataStream = fs.createReadStream(zipFilePath);
     const filenameForUser = zipFileName;
-
     console.log(`Streaming Zip file: ${zipFilePath}, Size: ${stats.size}`);
-
-    // Use ReadableStream for response and cleanup
     const responseStream = new ReadableStream({
-        start(controller) {
+        start(controller) { /* ... stream handling ... */
             dataStream.on('data', (chunk) => controller.enqueue(chunk));
-            dataStream.on('end', () => {
-                console.log('Zip file stream ended.');
-                controller.close();
-                cleanupTempFiles(folderPath, zipFilePath);
-            });
-            dataStream.on('error', (err) => {
-                console.error('Zip file stream error:', err);
-                controller.error(err);
-                cleanupTempFiles(folderPath, zipFilePath);
-            });
+            dataStream.on('end', () => { controller.close(); cleanupTempFiles(folderPath, zipFilePath); });
+            dataStream.on('error', (err) => { controller.error(err); cleanupTempFiles(folderPath, zipFilePath); });
         },
-        cancel() {
-            console.log('Zip file stream cancelled.');
-            dataStream.destroy();
-            cleanupTempFiles(folderPath, zipFilePath);
+        cancel() { /* ... cancel handling ... */
+             dataStream.destroy(); cleanupTempFiles(folderPath, zipFilePath);
         }
     });
-
     return new NextResponse(responseStream, {
       status: 200,
-      headers: {
+      headers: { /* ... headers ... */
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="${filenameForUser}"`,
         'Content-Length': stats.size.toString(),
-      },
+       },
     });
 
   } catch (error) {
     console.error("API /api/download-playlist final catch error:", error);
     let errorMessage = `Playlist download failed: ${error.message}`;
-    if (error.stderr) { // Check if error object has stderr
+    // yt-dlp-wrap might attach stderr to the error object
+    if (error.stderr) {
         errorMessage += `\nStderr: ${error.stderr.substring(0, 500)}`;
     }
     cleanupTempFiles(folderPath, zipFilePath);
@@ -132,3 +125,4 @@ function cleanupTempFiles(tempFolderPath, finalZipPath) {
         }
     }, 2000);
 }
+
