@@ -1,8 +1,10 @@
 'use client';
 import { useState } from 'react';
-import {Box, Button, Container, Divider, Drawer, List, ListItem,
-ListItemButton, ListItemIcon, ListItemText, TextField, Toolbar,
-Typography, CssBaseline}from '@mui/material';
+import {
+    Box, Button, Container, Divider, Drawer, List, ListItem,
+    ListItemButton, ListItemIcon, ListItemText, TextField, Toolbar,
+    Typography, CssBaseline
+} from '@mui/material';
 import {
     Home as HomeIcon, Download as DownloadIcon, QueueMusic as QueueMusicIcon,
     VideoLibrary as VideoLibraryIcon, Coffee as CoffeeIcon
@@ -37,7 +39,6 @@ export default function Home() {
     const [url, setUrl] = useState('');
     const [playlistUrl, setPlaylistUrl] = useState('');
     const [combineVideoUrl, setCombineVideoUrl] = useState('');
-    // *** NEW STATE for cookie data ***
     const [cookieData, setCookieData] = useState('');
 
     const [isLoadingMp3, setIsLoadingMp3] = useState(false);
@@ -50,15 +51,14 @@ export default function Home() {
         setIsLoadingMp3(true);
         try {
             console.log("Sending URL:", url);
-            console.log("Sending Cookie Data Length:", cookieData?.length || 0); // Log length, not content
+            console.log("Sending Cookie Data Length:", cookieData?.length || 0);
 
             const res = await fetch('/api/download', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              // *** Include cookieData in the body ***
               body: JSON.stringify({
                   url: url,
-                  cookieData: cookieData.trim() || null // Send trimmed data or null if empty/whitespace
+                  cookieData: cookieData.trim() || null
                 }),
             });
 
@@ -75,26 +75,26 @@ export default function Home() {
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(a.href);
-            // Optionally clear cookie field after successful download
-            // setCookieData('');
         } catch (error) {
             console.error("Client-side download error:", error);
             alert(`Error downloading MP3: ${error.message}`);
         } finally {
-             setIsLoadingMp3(false); 
+             setIsLoadingMp3(false);
         }
       };
 
-      // --- Playlist download as ZIP (Does NOT include cookie handling yet) ---
+      // Playlist download as ZIP
       const downloadPlaylistZip = async () => {
-        // ... (Keep existing code - add cookie handling here if needed later) ...
         if (!playlistUrl) return alert('Enter playlist URL for Zip download');
         setIsLoadingZip(true);
         try {
+            // NOTE: This fetch call does not currently send cookieData.
+            // You would need to add a cookie input field for this section
+            // and modify this fetch call if you want cookie support here.
             const res = await fetch('/api/download-playlist', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ playlistUrl }), // Only sends URL for now
+              body: JSON.stringify({ playlistUrl }),
             });
              if (!res.ok) {
                  const errorBody = await res.json().catch(() => ({ error: 'Unknown server error' }));
@@ -117,17 +117,18 @@ export default function Home() {
         }
       };
 
-      // --- Playlist download as single combined VIDEO (Does NOT include cookie handling yet) ---
+      // Playlist download as single combined VIDEO
       const downloadCombinedVideo = async () => {
-        // ... (Keep existing code - add cookie handling here if needed later) ...
          if (!combineVideoUrl) return alert('Enter playlist URL for Single Video download');
         alert('Combining videos can take a long time, especially for long playlists. Please be patient.');
         setIsLoadingVideo(true);
         try {
+             // NOTE: This fetch call does not currently send cookieData.
+             // Add cookie handling if needed.
             const res = await fetch('/api/convert', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ playlistUrl: combineVideoUrl }), // Only sends URL for now
+              body: JSON.stringify({ playlistUrl: combineVideoUrl }),
             });
              if (!res.ok) {
                  const errorBody = await res.json().catch(() => ({ error: 'Unknown server error' }));
@@ -155,7 +156,6 @@ export default function Home() {
     const renderContent = () => {
         switch (currentView) {
             case 'welcome':
-                // ... (welcome message remains the same) ...
                  return (
                     <Box sx={{ textAlign: 'center', mt: 8 }}>
                         <Typography variant="h2" component="h1" gutterBottom>
@@ -165,7 +165,8 @@ export default function Home() {
                             Welcome! Select an option from the menu to get started.
                         </Typography>
                          <Typography variant="body1" color="text.secondary" sx={{mt: 2, maxWidth: '600px', mx: 'auto'}}>
-                            Note: Some videos (age-restricted, private, etc.) may require you to paste your YouTube cookies (exported via a browser extension) into the designated field in the 'Single MP3' section for the download to work. This is optional and advanced.
+                            {/* Fixed the apostrophe below using &apos; */}
+                            Note: Some videos (age-restricted, private, etc.) may require you to paste your YouTube cookies (exported via a browser extension) into the designated field in the &apos;Single MP3&apos; section for the download to work. This is optional and advanced.
                         </Typography>
                     </Box>
                 );
@@ -182,7 +183,6 @@ export default function Home() {
                             style={{marginBottom: 16}}
                             disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}
                         />
-                        {/* *** NEW Cookie Text Area *** */}
                         <TextField
                             label="Paste YouTube Cookies Here (Optional)"
                             helperText="Export cookies using a browser extension (e.g., 'Get cookies.txt') and paste the content here if needed for restricted videos."
@@ -203,7 +203,6 @@ export default function Home() {
                     </Container>
                 );
             case 'zip':
-                 // ... (zip download form remains the same) ...
                  return (
                     <Container maxWidth="sm" sx={{ mt: 4 }}>
                         <Typography variant='h6' gutterBottom>
@@ -226,7 +225,6 @@ export default function Home() {
                     </Container>
                 );
             case 'combine':
-                 // ... (combine video form remains the same) ...
                  return (
                      <Container maxWidth="sm" sx={{ mt: 4 }}>
                         <Typography variant='h6' gutterBottom>
@@ -290,7 +288,8 @@ export default function Home() {
                         <Divider />
                         {/* Donation Link */}
                         <ListItem disablePadding sx={{ mt: 2 }}>
-                            <ListItemButton component="a" href="https://www.buymeacoffee.com/yourlink" target="_blank" rel="noopener noreferrer">
+                            {/* Replace '#' with your actual donation link */}
+                            <ListItemButton component="a" href="#" target="_blank" rel="noopener noreferrer">
                                 <ListItemIcon><CoffeeIcon /></ListItemIcon><ListItemText primary="Buy Me A Coffee" />
                             </ListItemButton>
                         </ListItem>
