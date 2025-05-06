@@ -1,85 +1,18 @@
-// /app/api/convert/route.js 
+// /app/api/convert/route.js OR /app/api/combine-mp3/route.js
 
+// Uses youtube-dl-exec for downloads, keeps spawn for ffmpeg.
 // Uses playlist title for output filename.
-// Uses execFile for yt-dlp, spawn for ffmpeg.
-// Includes enhanced logging for yt-dlp path resolution.
 export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
-import { execFile, spawn } from 'child_process'; // Need both
+import { spawn } from 'child_process'; // Keep spawn for ffmpeg
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+// Import the new package
+import youtubeDlExec from 'youtube-dl-exec';
 
-// Keep yt-dlp-exec installed for its binary
-// import ytDlpExec from 'yt-dlp-exec'; // No longer calling the wrapper
-
-// --- Find the yt-dlp binary path (with enhanced logging) ---
-let ytDlpPath = null;
-const searchPaths = [];
-try {
-    console.log("Attempting to find yt-dlp binary path...");
-    console.log("Current working directory (process.cwd()):", process.cwd());
-    // Method 1: Via require.resolve
-    try {
-        const packagePath = require.resolve('yt-dlp-exec');
-        console.log("Path resolved by require.resolve('yt-dlp-exec'):", packagePath);
-        const binPathGuess1 = path.join(path.dirname(packagePath), '../bin/yt-dlp');
-        const binPathGuessExe1 = path.join(path.dirname(packagePath), '../bin/yt-dlp.exe');
-        searchPaths.push(binPathGuess1, binPathGuessExe1);
-        if (fs.existsSync(binPathGuess1)) { ytDlpPath = binPathGuess1; }
-        else if (fs.existsSync(binPathGuessExe1)) { ytDlpPath = binPathGuessExe1; }
-        console.log("Path after require.resolve method:", ytDlpPath);
-    } catch (resolveError) { console.warn("require.resolve('yt-dlp-exec') failed:", resolveError.message); }
-    // Method 2: Direct path relative to cwd
-    if (!ytDlpPath) {
-        console.log("Trying direct path from node_modules...");
-        const directPath = path.join(process.cwd(), 'node_modules', 'yt-dlp-exec', 'bin', 'yt-dlp');
-        const directPathExe = path.join(process.cwd(), 'node_modules', 'yt-dlp-exec', 'bin', 'yt-dlp.exe');
-        searchPaths.push(directPath, directPathExe);
-        if (fs.existsSync(directPath)) { ytDlpPath = directPath; }
-        else if (fs.existsSync(directPathExe)) { ytDlpPath = directPathExe; }
-        console.log("Path after direct node_modules method:", ytDlpPath);
-    }
-     // Method 3: Check common Vercel path structure
-     if (!ytDlpPath) {
-        console.log("Trying potential Vercel path structure...");
-        const vercelPath = path.resolve(__dirname, 'node_modules', 'yt-dlp-exec', 'bin', 'yt-dlp');
-        const vercelPathExe = path.resolve(__dirname, 'node_modules', 'yt-dlp-exec', 'bin', 'yt-dlp.exe');
-         searchPaths.push(vercelPath, vercelPathExe);
-        if (fs.existsSync(vercelPath)) { ytDlpPath = vercelPath; }
-        else if (fs.existsSync(vercelPathExe)) { ytDlpPath = vercelPathExe; }
-         console.log("Path after Vercel __dirname method:", ytDlpPath);
-     }
-    if (ytDlpPath) {
-        console.log(`Successfully determined yt-dlp binary path: ${ytDlpPath}`);
-        try { // Check permissions
-            fs.accessSync(ytDlpPath, fs.constants.X_OK);
-            console.log(`Execute permission confirmed for: ${ytDlpPath}`);
-        } catch (permError) {
-            console.error(`Execute permission DENIED for ${ytDlpPath}: ${permError.message}`);
-            try { // Attempt chmod
-                 console.log(`Attempting to chmod +x ${ytDlpPath}`);
-                 fs.chmodSync(ytDlpPath, 0o755);
-                 console.log(`chmod successful.`);
-                 fs.accessSync(ytDlpPath, fs.constants.X_OK);
-                 console.log(`Execute permission confirmed after chmod.`);
-            } catch (chmodError) {
-                 console.error(`chmod failed or permission still denied after chmod: ${chmodError.message}`);
-                 throw new Error(`yt-dlp binary found but lacks execute permissions and chmod failed: ${ytDlpPath}`);
-            }
-        }
-    } else {
-        console.error("Failed to find yt-dlp binary after checking multiple paths.");
-        console.error("Paths searched:", searchPaths);
-        throw new Error('yt-dlp binary not found in expected locations.');
-    }
-} catch (err) {
-    console.error("CRITICAL Error during yt-dlp path resolution:", err);
-    ytDlpPath = null;
-}
-// --- End find binary path ---
-
+// No need to manually find the path anymore
 
 // Helper function to sort files
 const sortFilesByPlaylistIndex = (a, b) => { /* ... same as before ... */
@@ -92,26 +25,20 @@ const sortFilesByPlaylistIndex = (a, b) => { /* ... same as before ... */
 };
 
 // Helper function to sanitize filenames
-function sanitizeFilename(name) {
-    // Remove characters invalid in most file systems, replace with underscore
+function sanitizeFilename(name) { /* ... same as before ... */
     return name.replace(/[<>:"/\\|?*]/g, '_').trim() || 'untitled';
 }
 
 export async function POST(request) {
-    console.log('--- COMBINE PLAYLIST MP3 (Playlist Title Name) API ROUTE HIT ---');
-
-    if (!ytDlpPath) {
-        console.error("yt-dlp binary path could not be determined. Ensure 'yt-dlp-exec' is installed.");
-        return NextResponse.json({ error: "Server configuration error: yt-dlp not found." }, { status: 500 });
-    }
+    console.log('--- COMBINE PLAYLIST MP3 (youtube-dl-exec) API ROUTE HIT ---');
 
     const baseTempDir = os.tmpdir();
-    const uniqueFolderName = `playlist_dl_${Date.now()}`; // Folder for individual downloads
+    const uniqueFolderName = `playlist_dl_${Date.now()}`;
     const folderPath = path.join(baseTempDir, uniqueFolderName);
 
     let ffmpegListPath = null;
-    let finalMp3Path = null; // Will be based on playlist title
-    let playlistTitle = 'combined_playlist'; // Default title
+    let finalMp3Path = null;
+    let playlistTitle = 'combined_playlist';
 
     try {
         const { playlistUrl } = await request.json();
@@ -120,96 +47,71 @@ export async function POST(request) {
         }
         console.log(`Received playlist URL: ${playlistUrl}`);
 
-        // --- 0. Get Playlist Title ---
+        // --- 0. Get Playlist Title (using youtube-dl-exec) ---
         try {
             console.log(`Fetching playlist title for: ${playlistUrl}`);
-            const titleArgs = [
-                playlistUrl,
-                '--flat-playlist', // Don't extract info for each video
-                '--dump-single-json' // Get metadata for the playlist itself
-            ];
-            console.log('yt-dlp execFile args (for title):', titleArgs);
-            const { stdout: titleJson } = await new Promise((resolve, reject) => {
-                 execFile(ytDlpPath, titleArgs, (error, stdout, stderr) => {
-                     if (stderr) console.error('yt-dlp stderr (title fetch):\n', stderr);
-                     if (error) {
-                         console.error(`yt-dlp execFile error (title fetch): ${error.message}`);
-                         error.stderrContent = stderr;
-                         return reject(error); // Reject if title fetch fails
-                     }
-                     resolve({ stdout, stderr });
-                 });
-             });
-
-            const playlistInfo = JSON.parse(titleJson);
+            // Use youtube-dl-exec to get JSON metadata
+            const playlistInfo = await youtubeDlExec(playlistUrl, {
+                flatPlaylist: true,     // --flat-playlist
+                dumpSingleJson: true, // --dump-single-json
+            });
+            // The library returns the parsed JSON directly if dumpSingleJson is used
             if (playlistInfo && playlistInfo.title) {
-                playlistTitle = sanitizeFilename(playlistInfo.title); // Sanitize the title
+                playlistTitle = sanitizeFilename(playlistInfo.title);
                 console.log(`Using sanitized playlist title: ${playlistTitle}`);
             } else {
                  console.warn("Could not extract playlist title from JSON, using default.");
             }
         } catch (titleError) {
             console.error(`Failed to fetch or parse playlist title: ${titleError.message}. Using default name.`);
-            // Keep the default playlistTitle = 'combined_playlist'
+             if (titleError.stderr) {
+                 console.error("Stderr (title fetch):", titleError.stderr);
+             }
         }
 
-        // --- Now define the final output path using the title ---
+        // Define final output path using the title
         finalMp3Path = path.join(baseTempDir, `${playlistTitle}.mp3`);
         console.log(`Final combined MP3 path set to: ${finalMp3Path}`);
 
-
-        // --- 1. Download Individual MP3s using execFile ---
+        // --- 1. Download Individual MP3s using youtube-dl-exec ---
         console.log(`Attempting to create temporary directory: ${folderPath}`);
         fs.mkdirSync(folderPath, { recursive: true });
         console.log(`MP3 download directory created: ${folderPath}`);
-        console.log(`Executing yt-dlp binary to download items into: ${folderPath}`);
+        console.log(`Executing youtube-dl-exec to download items into: ${folderPath}`);
         const outputPathTemplate = path.join(folderPath, '%(playlist_index)s.%(title)s.%(ext)s');
-        const downloadArgs = [ playlistUrl, '-x', '--audio-format', 'mp3', '-o', outputPathTemplate ];
-        console.log('yt-dlp execFile args (for download):', downloadArgs);
 
-        await new Promise((resolve, reject) => {
-            console.log(`Calling execFile with path: ${ytDlpPath}`);
-            const child = execFile(ytDlpPath, downloadArgs, (error, stdout, stderr) => {
-                if (stdout) console.log('yt-dlp stdout (download):\n', stdout);
-                if (stderr) console.error('yt-dlp stderr (download):\n', stderr);
-                if (error) {
-                    console.error(`yt-dlp execFile FAILED (download). Error Code: ${error.code}, Signal: ${error.signal}`);
-                    console.error(`Error Message: ${error.message}`);
-                    error.stderrContent = stderr;
-                    return reject(error);
-                }
-                console.log('yt-dlp execFile finished successfully (download).');
-                resolve({ stdout, stderr });
-            });
-             child.on('spawn', () => console.log(`execFile successfully spawned the download process for ${ytDlpPath}`));
-             child.on('error', (spawnError) => console.error(`execFile child process emitted 'error' event (download): ${spawnError.message}`));
+        // Execute download
+        const downloadStdout = await youtubeDlExec(playlistUrl, {
+            extractAudio: true,
+            audioFormat: 'mp3',
+            output: outputPathTemplate,
         });
+        console.log('youtube-dl-exec download stdout:', downloadStdout);
 
 
         // --- 2. List and Sort MP3 Files ---
         let files = fs.readdirSync(folderPath);
         files = files.filter(f => f.toLowerCase().endsWith('.mp3'));
         files.sort(sortFilesByPlaylistIndex);
-        if (files.length === 0) { throw new Error(`yt-dlp did not produce any MP3 files.`); }
+        if (files.length === 0) { throw new Error(`youtube-dl did not produce any MP3 files.`); }
 
-        // --- 3. Combine if necessary ---
-        let sourceMp3Path = null; // Path to the file we will stream
+        // --- 3. Combine if necessary (using spawn for ffmpeg) ---
+        let sourceMp3Path = null;
         if (files.length === 1) {
              console.warn("Only one MP3 file found. Skipping concatenation.");
-             // Move the single file to the final path name
              const singleFilePath = path.join(folderPath, files[0]);
-             fs.renameSync(singleFilePath, finalMp3Path); // Rename the single file
+             fs.renameSync(singleFilePath, finalMp3Path);
              console.log(`Renamed single file to: ${finalMp3Path}`);
              sourceMp3Path = finalMp3Path;
         } else {
             console.log(`Found ${files.length} MP3 files for concatenation.`);
-            // Create File List for FFmpeg
+            // Create File List
             ffmpegListPath = path.join(folderPath, 'mylist.txt');
             const fileListContent = files.map(file => `file '${path.join(folderPath, file).replace(/'/g, "'\\''")}'`).join('\n');
             fs.writeFileSync(ffmpegListPath, fileListContent);
             console.log(`Generated FFmpeg file list: ${ffmpegListPath}`);
 
-            // Run FFmpeg (using spawn)
+            // Run FFmpeg (using spawn) - still requires ffmpeg in environment
             console.log(`Spawning ffmpeg to combine MP3s into: ${finalMp3Path}`);
             const ffmpegArgs = [ '-f', 'concat', '-safe', '0', '-i', ffmpegListPath, '-c', 'copy', finalMp3Path ];
             console.log('ffmpeg args:', ffmpegArgs);
@@ -224,7 +126,7 @@ export async function POST(request) {
                 });
             });
             console.log('FFmpeg MP3 concatenation finished.');
-            sourceMp3Path = finalMp3Path; // The combined file is the source
+            sourceMp3Path = finalMp3Path;
         }
 
         // --- 4. Respond with the final MP3 ---
@@ -233,20 +135,15 @@ export async function POST(request) {
         }
         const stats = fs.statSync(sourceMp3Path);
         const dataStream = fs.createReadStream(sourceMp3Path);
-        // Use the sanitized playlist title (or default) for the user-facing filename
-        const filenameForUser = path.basename(sourceMp3Path); // Already includes .mp3
-
+        const filenameForUser = path.basename(sourceMp3Path);
         console.log(`Streaming final MP3: ${sourceMp3Path}, Size: ${stats.size}`);
-
-        // Encode filename for header
-        const fallbackFilename = 'combined_playlist.mp3'; // Simple fallback
+        const fallbackFilename = 'combined_playlist.mp3';
         const encodedFilename = encodeURIComponent(filenameForUser);
         const contentDispositionValue = `attachment; filename="${fallbackFilename}"; filename*=UTF-8''${encodedFilename}`;
-
         const responseStream = new ReadableStream({
             start(controller) { /* ... stream handling ... */
                  dataStream.on('data', (chunk) => controller.enqueue(chunk));
-                 dataStream.on('end', () => { controller.close(); cleanupTempFiles(folderPath, sourceMp3Path); }); // Clean up folder and final file
+                 dataStream.on('end', () => { controller.close(); cleanupTempFiles(folderPath, sourceMp3Path); });
                  dataStream.on('error', (err) => { controller.error(err); cleanupTempFiles(folderPath, sourceMp3Path); });
             },
             cancel() { /* ... cancel handling ... */
@@ -266,15 +163,15 @@ export async function POST(request) {
     } catch (error) {
         console.error("API /api/combine-mp3 final catch error:", error);
         let errorMessage = `Playlist MP3 combination failed: ${error.message}`;
-         if (error.stderrContent) { // Add stderr from yt-dlp errors if present
-             errorMessage += `\nStderr: ${error.stderrContent.substring(0, 500)}`;
+         if (error.stderr) { // Add stderr if present
+             errorMessage += `\nStderr: ${error.stderr.substring(0, 500)}`;
          }
-        cleanupTempFiles(folderPath, finalMp3Path); // Clean up potentially created files/folders
+        cleanupTempFiles(folderPath, finalMp3Path);
         return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
 }
 
-// Updated cleanup function - cleans download folder and final output file
+// Updated cleanup function
 function cleanupTempFiles(tempFolderPath, finalFilePath) {
      setTimeout(() => {
         try {
@@ -282,7 +179,6 @@ function cleanupTempFiles(tempFolderPath, finalFilePath) {
                 console.log(`CLEANUP: Removing folder: ${tempFolderPath}`);
                 fs.rmSync(tempFolderPath, { recursive: true, force: true });
             }
-            // Make sure we don't try to delete the folder path if it was used as the final path (single file case)
             if (finalFilePath && finalFilePath !== tempFolderPath && fs.existsSync(finalFilePath)) {
                 console.log(`CLEANUP: Removing final file: ${finalFilePath}`);
                 fs.unlinkSync(finalFilePath);
