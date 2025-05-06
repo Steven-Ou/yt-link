@@ -81,7 +81,7 @@ export default function Home() {
             console.error("Client-side download error:", error);
             alert(`Error downloading MP3: ${error.message}`);
         } finally {
-             setIsLoadingMp3(false);
+             setIsLoadingMp3(false); 
         }
       };
 
