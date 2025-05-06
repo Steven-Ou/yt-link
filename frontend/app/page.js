@@ -7,7 +7,8 @@ import {
 } from '@mui/material';
 import {
     Home as HomeIcon, Download as DownloadIcon, QueueMusic as QueueMusicIcon,
-    VideoLibrary as VideoLibraryIcon, Coffee as CoffeeIcon
+    VideoLibrary as VideoLibraryIcon, Coffee as CoffeeIcon,
+    Cookie as CookieIcon // Optional: Icon for cookie field
  } from '@mui/icons-material';
 
 // Helper function to parse Content-Disposition header (keep this)
@@ -37,8 +38,9 @@ const drawerWidth = 240;
 export default function Home() {
     const [currentView, setCurrentView] = useState('welcome');
     const [url, setUrl] = useState('');
-    const [playlistUrl, setPlaylistUrl] = useState('');
-    const [combineVideoUrl, setCombineVideoUrl] = useState('');
+    const [playlistUrl, setPlaylistUrl] = useState(''); // Used for Zip download
+    const [combineVideoUrl, setCombineVideoUrl] = useState(''); // Used for Combine download
+    // *** Single state for cookie data, used by all sections ***
     const [cookieData, setCookieData] = useState('');
 
     const [isLoadingMp3, setIsLoadingMp3] = useState(false);
@@ -52,35 +54,23 @@ export default function Home() {
         try {
             console.log("Sending URL:", url);
             console.log("Sending Cookie Data Length:", cookieData?.length || 0);
-
             const res = await fetch('/api/download', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                   url: url,
-                  cookieData: cookieData.trim() || null
+                  cookieData: cookieData.trim() || null // Send cookie data
                 }),
             });
-
-             if (!res.ok) {
-                const errorBody = await res.json().catch(() => ({ error: 'Unknown server error' }));
-                throw new Error(errorBody.error || res.statusText);
-            }
+             if (!res.ok) { /* ... error handling ... */ throw new Error((await res.json().catch(()=>({error:res.statusText}))).error); }
             const filename = getFilenameFromHeaders(res.headers);
             const blob = await res.blob();
             const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            a.href = URL.createObjectURL(blob); a.download = filename;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
             URL.revokeObjectURL(a.href);
-        } catch (error) {
-            console.error("Client-side download error:", error);
-            alert(`Error downloading MP3: ${error.message}`);
-        } finally {
-             setIsLoadingMp3(false);
-        }
+        } catch (error) { /* ... error handling ... */ alert(`Error downloading MP3: ${error.message}`); }
+        finally { setIsLoadingMp3(false); }
       };
 
       // Playlist download as ZIP
@@ -88,33 +78,26 @@ export default function Home() {
         if (!playlistUrl) return alert('Enter playlist URL for Zip download');
         setIsLoadingZip(true);
         try {
-            // NOTE: This fetch call does not currently send cookieData.
-            // You would need to add a cookie input field for this section
-            // and modify this fetch call if you want cookie support here.
+             console.log("Sending Playlist URL (Zip):", playlistUrl);
+             console.log("Sending Cookie Data Length (Zip):", cookieData?.length || 0);
             const res = await fetch('/api/download-playlist', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ playlistUrl }),
+              // *** Include cookieData in the body ***
+              body: JSON.stringify({
+                  playlistUrl: playlistUrl,
+                  cookieData: cookieData.trim() || null // Send cookie data
+                }),
             });
-             if (!res.ok) {
-                 const errorBody = await res.json().catch(() => ({ error: 'Unknown server error' }));
-                 throw new Error(errorBody.error || res.statusText);
-            }
+             if (!res.ok) { /* ... error handling ... */ throw new Error((await res.json().catch(()=>({error:res.statusText}))).error); }
             const filename = getFilenameFromHeaders(res.headers) || 'playlist.zip';
             const blob = await res.blob();
             const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            a.href = URL.createObjectURL(blob); a.download = filename;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
             URL.revokeObjectURL(a.href);
-        } catch (error) {
-             console.error("Client-side playlist zip download error:", error);
-             alert(`Error downloading playlist zip: ${error.message}`);
-        } finally {
-            setIsLoadingZip(false);
-        }
+        } catch (error) { /* ... error handling ... */ alert(`Error downloading playlist zip: ${error.message}`); }
+        finally { setIsLoadingZip(false); }
       };
 
       // Playlist download as single combined VIDEO
@@ -123,81 +106,71 @@ export default function Home() {
         alert('Combining videos can take a long time, especially for long playlists. Please be patient.');
         setIsLoadingVideo(true);
         try {
-             // NOTE: This fetch call does not currently send cookieData.
-             // Add cookie handling if needed.
-            const res = await fetch('/api/convert', {
+            console.log("Sending Playlist URL (Combine):", combineVideoUrl);
+            console.log("Sending Cookie Data Length (Combine):", cookieData?.length || 0);
+            const res = await fetch('/api/convert', { // Or your combine endpoint
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ playlistUrl: combineVideoUrl }),
+              // *** Include cookieData in the body ***
+              body: JSON.stringify({
+                  playlistUrl: combineVideoUrl,
+                  cookieData: cookieData.trim() || null // Send cookie data
+                }),
             });
-             if (!res.ok) {
-                 const errorBody = await res.json().catch(() => ({ error: 'Unknown server error' }));
-                 throw new Error(errorBody.error || res.statusText);
-            }
+             if (!res.ok) { /* ... error handling ... */ throw new Error((await res.json().catch(()=>({error:res.statusText}))).error); }
             const filename = getFilenameFromHeaders(res.headers) || 'combined_video.mp4';
             const blob = await res.blob();
             console.log("Received blob type:", blob.type);
             const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            a.href = URL.createObjectURL(blob); a.download = filename;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
             URL.revokeObjectURL(a.href);
-        } catch (error) {
-             console.error("Client-side combined video download error:", error);
-             alert(`Error downloading combined video: ${error.message}`);
-        } finally {
-            setIsLoadingVideo(false);
-        }
+        } catch (error) { /* ... error handling ... */ alert(`Error downloading combined video: ${error.message}`); }
+        finally { setIsLoadingVideo(false); }
       };
+
+    // --- Cookie Text Field Component ---
+    // Extracted for reusability
+    const CookieInputField = () => (
+        <TextField
+            label="Paste YouTube Cookies Here (Optional)"
+            helperText="Needed for age-restricted/private videos. Export using a browser extension (e.g., 'Get cookies.txt')."
+            variant='outlined' fullWidth multiline rows={4}
+            value={cookieData}
+            onChange={(e) => setCookieData(e.target.value)}
+            style={{marginBottom: 16}}
+            placeholder="Starts with # Netscape HTTP Cookie File..."
+            disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}
+            InputProps={{ // Optional: Add an icon
+                startAdornment: (
+                <ListItemIcon sx={{minWidth: '40px', color: 'action.active', mr: 1}}>
+                    <CookieIcon />
+                </ListItemIcon>
+                ),
+            }}
+        />
+    );
 
     // Function to render the main content based on currentView
     const renderContent = () => {
         switch (currentView) {
             case 'welcome':
-                 return (
+                 return ( /* ... welcome message ... */
                     <Box sx={{ textAlign: 'center', mt: 8 }}>
-                        <Typography variant="h2" component="h1" gutterBottom>
-                            YT Link V2 {/* Your Project Title */}
-                        </Typography>
-                        <Typography variant="h5" color="text.secondary">
-                            Welcome! Select an option from the menu to get started.
-                        </Typography>
+                        <Typography variant="h2" component="h1" gutterBottom>YT Link V2</Typography>
+                        <Typography variant="h5" color="text.secondary">Welcome!</Typography>
                          <Typography variant="body1" color="text.secondary" sx={{mt: 2, maxWidth: '600px', mx: 'auto'}}>
-                            {/* Fixed the apostrophe below using &apos; */}
-                            Note: Some videos (age-restricted, private, etc.) may require you to paste your YouTube cookies (exported via a browser extension) into the designated field in the &apos;Single MP3&apos; section for the download to work. This is optional and advanced.
+                            Select an option from the menu. Note: Some videos/playlists may require pasting YouTube cookies (exported via a browser extension) into the optional field for the download to work.
                         </Typography>
                     </Box>
                 );
             case 'single':
                 return (
                     <Container maxWidth="sm" sx={{ mt: 4 }}>
-                        <Typography variant='h6' gutterBottom>
-                            Convert a Single Video to MP3
-                        </Typography>
-                        <TextField
-                            label="YouTube Video URL"
-                            variant='outlined' fullWidth value={url}
-                            onChange={(e)=> setUrl(e.target.value)}
-                            style={{marginBottom: 16}}
-                            disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}
-                        />
-                        <TextField
-                            label="Paste YouTube Cookies Here (Optional)"
-                            helperText="Export cookies using a browser extension (e.g., 'Get cookies.txt') and paste the content here if needed for restricted videos."
-                            variant='outlined' fullWidth multiline rows={4}
-                            value={cookieData}
-                            onChange={(e) => setCookieData(e.target.value)}
-                            style={{marginBottom: 16}}
-                            placeholder="Starts with # Netscape HTTP Cookie File..."
-                            disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}
-                        />
-                        <Button
-                            variant='contained' color='primary' fullWidth
-                            onClick={downloadMP3}
-                            disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}
-                        >
+                        <Typography variant='h6' gutterBottom>Convert Single Video to MP3</Typography>
+                        <TextField label="YouTube Video URL" variant='outlined' fullWidth value={url} onChange={(e)=> setUrl(e.target.value)} style={{marginBottom: 16}} disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo} />
+                        <CookieInputField /> {/* Use reusable component */}
+                        <Button variant='contained' color='primary' fullWidth onClick={downloadMP3} disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}>
                             {isLoadingMp3 ? 'Downloading MP3...' : 'Download MP3'}
                         </Button>
                     </Container>
@@ -205,21 +178,10 @@ export default function Home() {
             case 'zip':
                  return (
                     <Container maxWidth="sm" sx={{ mt: 4 }}>
-                        <Typography variant='h6' gutterBottom>
-                            Download Playlist as Zip
-                        </Typography>
-                        <TextField
-                            label="YouTube Playlist URL (for Zip)"
-                            variant='outlined' fullWidth value={playlistUrl}
-                            onChange={(e)=> setPlaylistUrl(e.target.value)}
-                            style={{marginBottom: 16}}
-                            disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}
-                        />
-                        <Button
-                            variant='contained' color='secondary' onClick={downloadPlaylistZip}
-                            fullWidth style={{marginBottom: 16}}
-                            disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}
-                        >
+                        <Typography variant='h6' gutterBottom>Download Playlist as Zip</Typography>
+                        <TextField label="YouTube Playlist URL (for Zip)" variant='outlined' fullWidth value={playlistUrl} onChange={(e)=> setPlaylistUrl(e.target.value)} style={{marginBottom: 16}} disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo} />
+                        <CookieInputField /> {/* Use reusable component */}
+                        <Button variant='contained' color='secondary' onClick={downloadPlaylistZip} fullWidth style={{marginBottom: 16}} disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}>
                              {isLoadingZip ? 'Downloading Zip...' : 'Download Playlist As Zip'}
                         </Button>
                     </Container>
@@ -227,21 +189,10 @@ export default function Home() {
             case 'combine':
                  return (
                      <Container maxWidth="sm" sx={{ mt: 4 }}>
-                        <Typography variant='h6' gutterBottom>
-                            Convert Playlist to Single Video
-                        </Typography>
-                        <TextField
-                            label="YouTube Playlist URL (for Single Video)"
-                            variant='outlined' fullWidth value={combineVideoUrl}
-                            onChange={(e)=> setCombineVideoUrl(e.target.value)}
-                            style={{marginBottom: 16}}
-                            disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}
-                        />
-                        <Button
-                            variant='contained' color='warning' onClick={downloadCombinedVideo}
-                            fullWidth style={{marginBottom: 16}}
-                            disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}
-                        >
+                        <Typography variant='h6' gutterBottom>Convert Playlist to Single Video</Typography>
+                        <TextField label="YouTube Playlist URL (for Single Video)" variant='outlined' fullWidth value={combineVideoUrl} onChange={(e)=> setCombineVideoUrl(e.target.value)} style={{marginBottom: 16}} disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo} />
+                        <CookieInputField /> {/* Use reusable component */}
+                        <Button variant='contained' color='warning' onClick={downloadCombinedVideo} fullWidth style={{marginBottom: 16}} disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}>
                              {isLoadingVideo ? 'Combining Video...' : 'Download Playlist As Single Video'}
                         </Button>
                     </Container>
@@ -264,35 +215,15 @@ export default function Home() {
                 <Box sx={{ overflow: 'auto' }}>
                     <List>
                         {/* Menu Items */}
-                        <ListItem disablePadding>
-                            <ListItemButton selected={currentView === 'welcome'} onClick={() => setCurrentView('welcome')}>
-                                <ListItemIcon><HomeIcon /></ListItemIcon><ListItemText primary="Welcome" />
-                            </ListItemButton>
-                        </ListItem>
+                        {/* ... (ListItems remain the same) ... */}
+                         <ListItem disablePadding><ListItemButton selected={currentView === 'welcome'} onClick={() => setCurrentView('welcome')}><ListItemIcon><HomeIcon /></ListItemIcon><ListItemText primary="Welcome" /></ListItemButton></ListItem>
                         <Divider />
-                         <ListItem disablePadding>
-                            <ListItemButton selected={currentView === 'single'} onClick={() => setCurrentView('single')}>
-                                <ListItemIcon><DownloadIcon /></ListItemIcon><ListItemText primary="Single MP3" />
-                            </ListItemButton>
-                        </ListItem>
-                        <ListItem disablePadding>
-                            <ListItemButton selected={currentView === 'zip'} onClick={() => setCurrentView('zip')}>
-                                <ListItemIcon><QueueMusicIcon /></ListItemIcon><ListItemText primary="Playlist Zip" />
-                            </ListItemButton>
-                        </ListItem>
-                        <ListItem disablePadding>
-                            <ListItemButton selected={currentView === 'combine'} onClick={() => setCurrentView('combine')}>
-                                <ListItemIcon><VideoLibraryIcon /></ListItemIcon><ListItemText primary="Combine Video" />
-                            </ListItemButton>
-                        </ListItem>
+                         <ListItem disablePadding><ListItemButton selected={currentView === 'single'} onClick={() => setCurrentView('single')}><ListItemIcon><DownloadIcon /></ListItemIcon><ListItemText primary="Single MP3" /></ListItemButton></ListItem>
+                        <ListItem disablePadding><ListItemButton selected={currentView === 'zip'} onClick={() => setCurrentView('zip')}><ListItemIcon><QueueMusicIcon /></ListItemIcon><ListItemText primary="Playlist Zip" /></ListItemButton></ListItem>
+                        <ListItem disablePadding><ListItemButton selected={currentView === 'combine'} onClick={() => setCurrentView('combine')}><ListItemIcon><VideoLibraryIcon /></ListItemIcon><ListItemText primary="Combine Video" /></ListItemButton></ListItem>
                         <Divider />
-                        {/* Donation Link */}
-                        <ListItem disablePadding sx={{ mt: 2 }}>
-                            {/* Replace '#' with your actual donation link */}
-                            <ListItemButton component="a" href="#" target="_blank" rel="noopener noreferrer">
-                                <ListItemIcon><CoffeeIcon /></ListItemIcon><ListItemText primary="Buy Me A Coffee" />
-                            </ListItemButton>
-                        </ListItem>
+                        <ListItem disablePadding sx={{ mt: 2 }}><ListItemButton component="a" href="https://www.buymeacoffee.com/yourlink" target="_blank" rel="noopener noreferrer"><ListItemIcon><CoffeeIcon /></ListItemIcon><ListItemText primary="Buy Me A Coffee" /></ListItemButton></ListItem>
+
                     </List>
                 </Box>
             </Drawer>
