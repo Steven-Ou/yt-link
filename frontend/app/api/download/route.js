@@ -1,7 +1,6 @@
 // /app/api/download/route.js
 
-// Uses yt-dlp-wrap which downloads the binary to /tmp if needed.
-// Uses video title for output filename.
+// Uses node-yt-dlp library.
 export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
@@ -9,13 +8,10 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 // Import the new library
-import YTDlpWrap from 'yt-dlp-wrap';
-
-// Instantiate the wrapper
-const ytDlpWrap = new YTDlpWrap();
+import YTDlp from 'node-yt-dlp';
 
 export async function POST(request) {
-  console.log('--- SINGLE DOWNLOAD (yt-dlp-wrap) API ROUTE HIT ---');
+  console.log('--- SINGLE DOWNLOAD (node-yt-dlp) API ROUTE HIT ---');
 
   const { url } = await request.json();
   if (!url) {
@@ -30,24 +26,26 @@ export async function POST(request) {
     fs.mkdirSync(tempDir, { recursive: true });
     console.log(`Temporary directory created: ${tempDir}`);
 
-    // --- 1. Download Single MP3 using yt-dlp-wrap ---
-    console.log(`Executing yt-dlp-wrap to download and convert`);
+    // --- 1. Download Single MP3 using node-yt-dlp ---
+    console.log(`Executing node-yt-dlp to download and convert`);
 
     // Define output path template using video title
     const outputTemplate = path.join(tempDir, '%(title)s.%(ext)s');
 
-    // Define arguments for yt-dlp-wrap
+    // Execute using the library's exec method
+    // It takes an array of arguments.
     const args = [
-        url, // URL first
+        url,
         '-x', // Extract audio
         '--audio-format', 'mp3', // Specify MP3 format
         '-o', outputTemplate // Output template
     ];
-    console.log('yt-dlp-wrap args:', args);
+    console.log('node-yt-dlp args:', args);
 
-    // Execute using the wrapper instance
-    await ytDlpWrap.exec(args);
-    console.log('yt-dlp-wrap download execution finished.');
+    // The exec method returns a promise that resolves when done
+    // It might provide stdout/stderr streams via event emitters if needed
+    await YTDlp.exec(args);
+    console.log('node-yt-dlp download execution finished.');
 
 
     // Find the downloaded MP3 file (as filename is dynamic)
@@ -59,10 +57,9 @@ export async function POST(request) {
         actualMp3Path = path.join(tempDir, mp3File);
         console.log(`Found downloaded MP3: ${actualMp3Path}`);
     } else {
-        throw new Error(`yt-dlp finished, but no MP3 file was found in ${tempDir}. Files present: ${files.join(', ')}.`);
+        // Check logs for errors during exec if possible
+        throw new Error(`node-yt-dlp finished, but no MP3 file was found in ${tempDir}. Files present: ${files.join(', ')}.`);
     }
-
-    console.log('MP3 download and conversion finished.');
 
     // --- 2. Prepare and Stream the MP3 File ---
     // (Streaming logic remains the same)
@@ -73,7 +70,6 @@ export async function POST(request) {
     const fallbackFilename = 'downloaded_audio.mp3';
     const encodedFilename = encodeURIComponent(filenameForUser);
     const contentDispositionValue = `attachment; filename="${fallbackFilename}"; filename*=UTF-8''${encodedFilename}`;
-    console.log(`Setting Content-Disposition: ${contentDispositionValue}`);
     const responseStream = new ReadableStream({
         start(controller) { /* ... stream handling ... */
             dataStream.on('data', (chunk) => controller.enqueue(chunk));
@@ -95,9 +91,9 @@ export async function POST(request) {
 
   } catch (error) {
     console.error('API /api/download final catch error:', error);
+    // node-yt-dlp might throw specific errors or attach details
     let errorMessage = `Download failed: ${error.message}`;
-    // yt-dlp-wrap might attach stderr to the error object
-    if (error.stderr) {
+    if (error.stderr) { // Check standard error properties
         errorMessage += `\nStderr: ${error.stderr.substring(0, 500)}`;
     }
     cleanupTempFiles(tempDir);
@@ -106,7 +102,7 @@ export async function POST(request) {
 }
 
 // Helper function for cleanup
-function cleanupTempFiles(folderPath) {
+function cleanupTempFiles(folderPath) { /* ... same as before ... */
      setTimeout(() => {
         try {
             if (folderPath && fs.existsSync(folderPath)) {
