@@ -1,58 +1,88 @@
 // /app/api/download/route.js
 
-// Copies binary to /tmp, chmods it, then executes.
+// Manually finds binary in node_modules, copies to /tmp, chmods it, then executes.
 export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-// Import the library and its path helper
+// Import only the main execution function from the library
 import youtubeDl from 'youtube-dl-exec';
-import { youtubeDlPath as originalYtDlpPath } from 'youtube-dl-exec'; // Get original path
+// DO NOT import { youtubeDlPath } - we will find it manually
 
-// --- Setup: Copy binary to /tmp and ensure permissions ---
+// --- Setup: Find binary manually, copy to /tmp, ensure permissions ---
 let confirmedExecutablePath = null; // Path to the executable copy in /tmp
-const tmpBinaryPath = path.join(os.tmpdir(), 'youtube-dl'); // Destination path in /tmp
+const tmpBinaryName = `youtube-dl_${Date.now()}`; // Unique name in tmp
+const tmpBinaryPath = path.join(os.tmpdir(), tmpBinaryName);
 
+console.log("--- Starting youtube-dl binary setup ---");
 try {
-    console.log(`Original youtube-dl binary path: ${originalYtDlpPath}`);
+    // Try finding the original path relative to node_modules
+    // This is often more reliable in bundled environments than require.resolve
+    // Adjust these paths based on the ACTUAL structure within node_modules/youtube-dl-exec
+    // Common locations are ./bin/youtube-dl or ./dist/yt-dlp or similar
+    const possiblePath1 = path.join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'youtube-dl');
+    const possiblePath2 = path.join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'youtube-dl.exe'); // Windows fallback
+    const possiblePath3 = path.join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'dist', 'yt-dlp'); // Sometimes it uses yt-dlp internally
+    const possiblePath4 = path.join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'dist', 'yt-dlp.exe'); // Windows fallback
 
-    // 1. Check if original binary exists
-    if (!originalYtDlpPath || !fs.existsSync(originalYtDlpPath)) {
-        throw new Error(`Original binary path from youtube-dl-exec is invalid or file does not exist: ${originalYtDlpPath}`);
+    let originalYtDlpPath = null;
+    const searchPaths = [possiblePath1, possiblePath2, possiblePath3, possiblePath4]; // Add more potential paths if needed
+    console.log("Searching for original binary manually in paths:", searchPaths);
+
+    for (const p of searchPaths) {
+        if (fs.existsSync(p)) {
+            originalYtDlpPath = p;
+            console.log(`Found original binary at: ${originalYtDlpPath}`);
+            break; // Stop searching once found
+        }
     }
-    console.log(`Original binary found at: ${originalYtDlpPath}`);
 
-    // 2. Copy binary to /tmp
-    console.log(`Copying binary to: ${tmpBinaryPath}`);
+    if (!originalYtDlpPath) {
+         // Log contents of node_modules/youtube-dl-exec if possible for debugging
+         try {
+             const pkgDir = path.join(process.cwd(), 'node_modules', 'youtube-dl-exec');
+             console.error(`Contents of ${pkgDir}:`, fs.readdirSync(pkgDir, { withFileTypes: true }));
+             const binDir = path.join(pkgDir, 'bin');
+             if (fs.existsSync(binDir)) { console.error(`Contents of ${binDir}:`, fs.readdirSync(binDir)); }
+              const distDir = path.join(pkgDir, 'dist');
+             if (fs.existsSync(distDir)) { console.error(`Contents of ${distDir}:`, fs.readdirSync(distDir)); }
+         } catch (e) { console.error("Could not list node_modules/youtube-dl-exec contents for debugging."); }
+        throw new Error(`Could not find original binary in expected node_modules paths.`);
+    }
+
+    // Copy binary to /tmp
+    console.log(`Copying binary from ${originalYtDlpPath} to: ${tmpBinaryPath}`);
     fs.copyFileSync(originalYtDlpPath, tmpBinaryPath);
     console.log(`Binary copied successfully.`);
 
-    // 3. Set execute permissions on the copy in /tmp
+    // Set execute permissions on the copy in /tmp
     console.log(`Attempting chmod +x on the copy: ${tmpBinaryPath}`);
-    fs.chmodSync(tmpBinaryPath, 0o755); // Set rwxr-xr-x permissions
+    fs.chmodSync(tmpBinaryPath, 0o755);
 
-    // 4. Verify execute permission on the copy in /tmp
+    // Verify execute permission on the copy in /tmp
     fs.accessSync(tmpBinaryPath, fs.constants.X_OK);
     console.log(`Execute permission confirmed for copy at: ${tmpBinaryPath}`);
 
-    // 5. Store the confirmed path in /tmp
+    // Store the confirmed path in /tmp
     confirmedExecutablePath = tmpBinaryPath;
+    console.log("--- youtube-dl binary setup successful ---");
 
 } catch (err) {
     console.error(`CRITICAL Error setting up youtube-dl binary in /tmp: ${err.message}`);
     // Path remains null if setup fails
+    console.log("--- youtube-dl binary setup FAILED ---");
 }
 // --- End setup ---
 
 
 export async function POST(request) {
-  console.log('--- SINGLE DOWNLOAD (youtube-dl-exec copy/chmod) API ROUTE HIT ---');
+  console.log('--- SINGLE DOWNLOAD (Manual Path + copy/chmod) API ROUTE HIT ---');
 
   // Check if binary setup succeeded
   if (!confirmedExecutablePath) {
-      console.error("youtube-dl binary could not be copied to /tmp or made executable.");
+      console.error("youtube-dl binary could not be prepared in /tmp.");
       return NextResponse.json({ error: "Server configuration error: youtube-dl setup failed." }, { status: 500 });
   }
 
@@ -75,9 +105,9 @@ export async function POST(request) {
 
     // Execute using the library, passing the confirmed binary path IN /tmp
     const stdout = await youtubeDl(url, {
-      extractAudio: true,         // -x
-      audioFormat: 'mp3',         // --audio-format mp3
-      output: outputTemplate,     // -o
+      extractAudio: true,
+      audioFormat: 'mp3',
+      output: outputTemplate,
     }, { // Pass execution options
         binaryPath: confirmedExecutablePath // Use the path in /tmp
     });
@@ -124,23 +154,19 @@ export async function POST(request) {
 }
 
 // Updated cleanup function to also remove the binary copy from /tmp
-function cleanupTempFiles(downloadFolderPath, binaryTmpPath) {
+function cleanupTempFiles(downloadFolderPath, binaryTmpPath) { /* ... same as before ... */
      setTimeout(() => {
-        // Clean up download folder
         try {
             if (downloadFolderPath && fs.existsSync(downloadFolderPath)) {
                 console.log(`CLEANUP: Removing download folder: ${downloadFolderPath}`);
                 fs.rmSync(downloadFolderPath, { recursive: true, force: true });
             }
         } catch (cleanupError) { console.error("CLEANUP (Download Folder) Error:", cleanupError); }
-
-        // Clean up binary copy in /tmp
         try {
              if (binaryTmpPath && fs.existsSync(binaryTmpPath)) {
                  console.log(`CLEANUP: Removing binary copy: ${binaryTmpPath}`);
                  fs.unlinkSync(binaryTmpPath);
              }
          } catch (cleanupError) { console.error("CLEANUP (Binary Copy) Error:", cleanupError); }
-
     }, 1000);
 }
