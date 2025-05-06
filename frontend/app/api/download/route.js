@@ -1,17 +1,45 @@
 // /app/api/download/route.js
 
-// Uses node-yt-dlp library.
+// Uses youtube-dl-exec, ensures binary path and permissions.
 export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-// Import the new library
-import YTDlp from 'node-yt-dlp';
+// Import the library and its path helper
+import youtubeDl from 'youtube-dl-exec';
+import { youtubeDlPath } from 'youtube-dl-exec'; // Import the path
+
+// --- Ensure yt-dl binary path and permissions ---
+let confirmedYtDlpPath = null;
+try {
+    console.log(`youtube-dl-exec provided path: ${youtubeDlPath}`);
+    if (!youtubeDlPath || !fs.existsSync(youtubeDlPath)) {
+        throw new Error(`Binary path from youtube-dl-exec is invalid or file does not exist: ${youtubeDlPath}`);
+    }
+    // Attempt to set execute permissions proactively
+    console.log(`Attempting chmod +x on: ${youtubeDlPath}`);
+    fs.chmodSync(youtubeDlPath, 0o755); // Set rwxr-xr-x permissions
+    // Verify execute permission after chmod
+    fs.accessSync(youtubeDlPath, fs.constants.X_OK);
+    console.log(`Execute permission confirmed for: ${youtubeDlPath}`);
+    confirmedYtDlpPath = youtubeDlPath; // Store the confirmed path
+} catch (err) {
+    console.error(`CRITICAL Error setting up youtube-dl binary: ${err.message}`);
+    // Path remains null if setup fails
+}
+// --- End setup ---
+
 
 export async function POST(request) {
-  console.log('--- SINGLE DOWNLOAD (node-yt-dlp) API ROUTE HIT ---');
+  console.log('--- SINGLE DOWNLOAD (youtube-dl-exec + chmod) API ROUTE HIT ---');
+
+  // Check if binary setup succeeded
+  if (!confirmedYtDlpPath) {
+      console.error("youtube-dl binary path could not be confirmed or made executable.");
+      return NextResponse.json({ error: "Server configuration error: youtube-dl setup failed." }, { status: 500 });
+  }
 
   const { url } = await request.json();
   if (!url) {
@@ -26,76 +54,56 @@ export async function POST(request) {
     fs.mkdirSync(tempDir, { recursive: true });
     console.log(`Temporary directory created: ${tempDir}`);
 
-    // --- 1. Download Single MP3 using node-yt-dlp ---
-    console.log(`Executing node-yt-dlp to download and convert`);
-
-    // Define output path template using video title
+    // --- 1. Download Single MP3 using youtube-dl-exec ---
+    console.log(`Executing youtube-dl with confirmed path: ${confirmedYtDlpPath}`);
     const outputTemplate = path.join(tempDir, '%(title)s.%(ext)s');
 
-    // Execute using the library's exec method
-    // It takes an array of arguments.
-    const args = [
-        url,
-        '-x', // Extract audio
-        '--audio-format', 'mp3', // Specify MP3 format
-        '-o', outputTemplate // Output template
-    ];
-    console.log('node-yt-dlp args:', args);
-
-    // The exec method returns a promise that resolves when done
-    // It might provide stdout/stderr streams via event emitters if needed
-    await YTDlp.exec(args);
-    console.log('node-yt-dlp download execution finished.');
+    // Execute using the library, passing the confirmed binary path
+    const stdout = await youtubeDl(url, {
+      extractAudio: true,         // -x
+      audioFormat: 'mp3',         // --audio-format mp3
+      output: outputTemplate,     // -o
+    }, { // Pass execution options
+        binaryPath: confirmedYtDlpPath // Use the path we confirmed/chmod-ed
+    });
+    console.log('youtube-dl-exec stdout:', stdout);
 
 
-    // Find the downloaded MP3 file (as filename is dynamic)
+    // --- 2. Find and Stream File ---
     console.log(`Searching for MP3 file in ${tempDir}`);
     const files = fs.readdirSync(tempDir);
     const mp3File = files.find(f => f.toLowerCase().endsWith('.mp3'));
-
-    if (mp3File) {
-        actualMp3Path = path.join(tempDir, mp3File);
-        console.log(`Found downloaded MP3: ${actualMp3Path}`);
-    } else {
-        // Check logs for errors during exec if possible
-        throw new Error(`node-yt-dlp finished, but no MP3 file was found in ${tempDir}. Files present: ${files.join(', ')}.`);
+    if (!mp3File) {
+        throw new Error(`youtube-dl finished, but no MP3 file was found in ${tempDir}. Files present: ${files.join(', ')}.`);
     }
+    actualMp3Path = path.join(tempDir, mp3File);
+    console.log(`Found downloaded MP3: ${actualMp3Path}`);
 
-    // --- 2. Prepare and Stream the MP3 File ---
     // (Streaming logic remains the same)
     const stats = fs.statSync(actualMp3Path);
     const dataStream = fs.createReadStream(actualMp3Path);
     const filenameForUser = path.basename(actualMp3Path);
-    console.log(`Streaming MP3 file: ${actualMp3Path}, Size: ${stats.size}, Filename for user: ${filenameForUser}`);
     const fallbackFilename = 'downloaded_audio.mp3';
     const encodedFilename = encodeURIComponent(filenameForUser);
     const contentDispositionValue = `attachment; filename="${fallbackFilename}"; filename*=UTF-8''${encodedFilename}`;
-    const responseStream = new ReadableStream({
-        start(controller) { /* ... stream handling ... */
+    const responseStream = new ReadableStream({ /* ... stream handling ... */
+        start(controller) {
             dataStream.on('data', (chunk) => controller.enqueue(chunk));
             dataStream.on('end', () => { controller.close(); cleanupTempFiles(tempDir); });
             dataStream.on('error', (err) => { controller.error(err); cleanupTempFiles(tempDir); });
         },
-        cancel() { /* ... cancel handling ... */
-             dataStream.destroy(); cleanupTempFiles(tempDir);
-        }
+        cancel() { dataStream.destroy(); cleanupTempFiles(tempDir); }
     });
-    return new NextResponse(responseStream, {
-      status: 200,
-      headers: { /* ... headers ... */
+    return new NextResponse(responseStream, { status: 200, headers: { /* ... headers ... */
         'Content-Type': 'audio/mpeg',
         'Content-Disposition': contentDispositionValue,
         'Content-Length': stats.size.toString(),
-       },
-    });
+     } });
 
   } catch (error) {
     console.error('API /api/download final catch error:', error);
-    // node-yt-dlp might throw specific errors or attach details
     let errorMessage = `Download failed: ${error.message}`;
-    if (error.stderr) { // Check standard error properties
-        errorMessage += `\nStderr: ${error.stderr.substring(0, 500)}`;
-    }
+    if (error.stderr) { errorMessage += `\nStderr: ${error.stderr.substring(0, 500)}`; }
     cleanupTempFiles(tempDir);
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
@@ -109,8 +117,6 @@ function cleanupTempFiles(folderPath) { /* ... same as before ... */
                 console.log(`CLEANUP: Removing folder: ${folderPath}`);
                 fs.rmSync(folderPath, { recursive: true, force: true });
             }
-        } catch (cleanupError) {
-            console.error("CLEANUP: Error:", cleanupError);
-        }
+        } catch (cleanupError) { console.error("CLEANUP: Error:", cleanupError); }
     }, 1000);
 }
