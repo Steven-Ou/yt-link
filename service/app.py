@@ -215,8 +215,7 @@ def process_combine_video():
         tmpdir = tempfile.mkdtemp()
         logging.info(f"Created temporary directory for combine video: {tmpdir}")
 
-        # --- 0. Get Playlist Title ---
-        # Corrected Python try-except block
+                # --- 0. Get Playlist Title ---
         try:
             logging.info(f"Fetching playlist title for combine video: {playlist_url}")
             title_args = [ YTDLP_PATH, '--flat-playlist', '--dump-single-json' ]
@@ -232,14 +231,20 @@ def process_combine_video():
             title_process = subprocess.run(title_args, check=True, timeout=60, capture_output=True, text=True, encoding='utf-8')
             if cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
 
-            playlist_info = json.loads(title_process.stdout) # Use imported json module
-            # Check if playlist_info is a dict and 'title' key exists
-            if isinstance(playlist_info, dict) and 'title' in playlist_info and playlist_info['title']:
-                playlist_title = playlist_info['title'] # Use the raw title
-                logging.info(f"Using playlist title for combined video: {playlist_title}")
+            playlist_info = json.loads(title_process.stdout)
+
+            # More robust title checking
+            if isinstance(playlist_info, dict):
+                if 'title' in playlist_info and playlist_info['title']:
+                    playlist_title = playlist_info['title']
+                elif 'playlist_title' in playlist_info and playlist_info['playlist_title']: # Common for actual playlists
+                    playlist_title = playlist_info['playlist_title']
+                else:
+                    logging.warning(f"Could not find 'title' or 'playlist_title' in JSON. JSON keys: {list(playlist_info.keys())}. Using default.")
+                logging.info(f"Using playlist title for combined video: {playlist_title}") # Log the raw title
             else:
-                 logging.warning(f"Could not get playlist title attribute from JSON or title is empty. JSON: {playlist_info}. Using default.")
-        except Exception as title_error: # Catch any exception during title fetch
+                 logging.warning(f"Playlist info is not a dictionary. JSON: {playlist_info}. Using default.")
+        except Exception as title_error:
             logging.warning(f"Could not get playlist title: {title_error}. Using default.")
             if 'cookie_file_path_title' in locals() and cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
 
