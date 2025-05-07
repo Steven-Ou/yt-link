@@ -4,7 +4,7 @@ import tempfile
 import shutil
 import logging
 import zipfile
-import json # <--- IMPORT JSON HERE
+import json # Make sure json is imported
 from flask import Flask, request, send_file, jsonify, Response, stream_with_context, after_this_request, send_from_directory
 from urllib.parse import quote
 
@@ -63,8 +63,7 @@ def process_single_mp3():
                 args.extend(['--cookies', cookie_file_path])
             except Exception as e:
                 logging.error(f"Failed to write cookie file: {e}")
-                # If writing fails, ensure --cookies flag isn't partially added
-                args = [arg for arg in args if not arg.startswith('--cookies')] # Correctly indented
+                args = [arg for arg in args if not arg.startswith('--cookies')]
         args.append('--') # Add separator
         args.append(url) # Add URL
 
@@ -119,6 +118,7 @@ def process_single_mp3():
 # --- Endpoint to process Playlist to Zip ---
 @app.route('/process-playlist-zip', methods=['POST'])
 def process_playlist_zip():
+    # (Code remains the same as )
     json_data = request.get_json()
     if not json_data: return jsonify({"error": "Invalid JSON request body"}), 400
     playlist_url = json_data.get('playlistUrl')
@@ -142,14 +142,12 @@ def process_playlist_zip():
                 args.extend(['--cookies', cookie_file_path])
             except Exception as e:
                 logging.error(f"Failed to write cookie file: {e}")
-                # *** FIX INDENTATION HERE ***
-                # Ensure this line is indented under the 'except' block
                 args = [arg for arg in args if not arg.startswith('--cookies')]
         args.append('--') # Add separator
         args.append(playlist_url) # Add playlist URL
 
         logging.info(f"Running yt-dlp for playlist: {playlist_url}")
-        logging.info(f"Command args: {' '.join(args)}")
+        logging.info(f"Command args: {' '.join(args)}") # Log the final command
         process = subprocess.run( args, check=True, timeout=900, capture_output=True, text=True, encoding='utf-8')
         logging.info(f"yt-dlp playlist stdout: {process.stdout}")
         if process.stderr: logging.warning(f"yt-dlp playlist stderr: {process.stderr}")
@@ -220,7 +218,7 @@ def process_combine_video():
         logging.info(f"Created temporary directory for combine video: {tmpdir}")
 
         # --- 0. Get Playlist Title ---
-        try:
+        try {
             logging.info(f"Fetching playlist title for combine video: {playlist_url}")
             title_args = [ YTDLP_PATH, '--flat-playlist', '--dump-single-json' ]
             cookie_file_path_title = None
@@ -235,13 +233,17 @@ def process_combine_video():
             title_process = subprocess.run(title_args, check=True, timeout=60, capture_output=True, text=True, encoding='utf-8')
             if cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
 
-            playlist_info = json.loads(title_process.stdout)
+            playlist_info = json.loads(title_process.stdout) # Use imported json module
             if playlist_info and playlist_info.title:
-                playlist_title = sanitize_filename_header(playlist_info.title) # Use helper for header encoding later
-                logging.info(f"Using playlist title for combined video: {playlist_title}") # Log encoded title
-        except Exception as title_error:
+                # Use the raw title here, sanitize later for filename/header
+                playlist_title = playlist_info.title
+                logging.info(f"Using playlist title for combined video: {playlist_title}")
+            else:
+                 logging.warning("Could not get playlist title attribute from JSON. Using default.")
+        } except Exception as title_error:
             logging.warning(f"Could not get playlist title: {title_error}. Using default.")
             if 'cookie_file_path_title' in locals() and cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
+
 
         # --- 1. Download Videos ---
         logging.info(f"Downloading videos for playlist: {playlist_url}")
@@ -256,11 +258,12 @@ def process_combine_video():
                  ytdlp_video_args.extend(['--cookies', cookie_file_path_dl])
              except Exception as e:
                  logging.error(f"Failed to write cookie file for download: {e}")
-                 # *** FIX INDENTATION HERE ***
-                 # Ensure this line is indented under the 'except' block
                  ytdlp_video_args = [arg for arg in ytdlp_video_args if not arg.startswith('--cookies')]
         ytdlp_video_args.extend(['--', playlist_url])
+
+        # *** ADDED LOGGING FOR FINAL DOWNLOAD ARGS ***
         logging.info(f"yt-dlp video download args: {' '.join(ytdlp_video_args)}")
+
         video_process = subprocess.run(ytdlp_video_args, check=True, timeout=1800, capture_output=True, text=True, encoding='utf-8')
         logging.info(f"yt-dlp video download stdout: {video_process.stdout}")
         if video_process.stderr: logging.warning(f"yt-dlp video download stderr: {video_process.stderr}")
@@ -282,15 +285,9 @@ def process_combine_video():
         logging.info(f"Generated FFmpeg file list: {ffmpeg_list_path}")
 
         # --- 3. Run FFmpeg ---
-        # Use the sanitized playlist title for the final filename
-        # We use sanitize_filename_header which does URL encoding, this might be too much
-        # for a filename, let's define a filesystem specific sanitizer
         def sanitize_fs_filename(name):
-             # Replace invalid FS chars, keep it simple
              name = name.replace('/', '_').replace('\\', '_').replace(':', '_').replace('*', '_').replace('?', '_').replace('"', '_').replace('<', '_').replace('>', '_').replace('|', '_')
              return name.strip() or 'untitled_video'
-
-        # Use the FS sanitized title + .mp4 extension
         final_video_filename = f"{sanitize_fs_filename(playlist_title)}.mp4"
         final_video_path = os.path.join(tmpdir, final_video_filename)
         ffmpeg_args = [ FFMPEG_PATH, '-f', 'concat', '-safe', '0', '-i', ffmpeg_list_path, '-c', 'copy', final_video_path ]
@@ -313,8 +310,7 @@ def process_combine_video():
         # --- 5. Send Combined Video File ---
         logging.info(f"Sending combined video file: {final_video_filename} from directory: {tmpdir}")
         fallback_filename = 'combined_video.mp4';
-        # Use the URL-encoded title for the header part
-        encoded_filename = sanitize_filename_header(final_video_filename)
+        encoded_filename = sanitize_filename_header(final_video_filename) # Use URL encoded for header
         headers = { 'Content-Disposition': f'attachment; filename="{fallback_filename}"; filename*=UTF-8\'\'{encoded_filename}' }
         mime_type = 'video/mp4'
         headers['Content-Type'] = mime_type
@@ -323,8 +319,7 @@ def process_combine_video():
     # --- Error Handling ---
     except subprocess.CalledProcessError as e:
         tool_name = "Tool"
-        # Check command array for path to determine tool
-        cmd_str = ' '.join(e.cmd) # Check string representation
+        cmd_str = ' '.join(e.cmd)
         if YTDLP_PATH in cmd_str: tool_name = "yt-dlp"
         elif FFMPEG_PATH in cmd_str: tool_name = "ffmpeg"
         if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
