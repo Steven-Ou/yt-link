@@ -227,7 +227,6 @@ export default function Home() {
                     </List>
                 </Box>
             </Drawer>
-
             {/* Main Content Area */}
             <Box component="main" sx={{ flexGrow: 1, bgcolor: 'background.default', p: 3 }}>
                 <Toolbar />
