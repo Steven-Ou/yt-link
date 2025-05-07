@@ -216,7 +216,7 @@ def process_combine_video():
         logging.info(f"Created temporary directory for combine video: {tmpdir}")
 
         # --- 0. Get Playlist Title ---
-        try: # Corrected try:
+        try:
             logging.info(f"Fetching playlist title for combine video: {playlist_url}")
             title_args = [ YTDLP_PATH, '--flat-playlist', '--dump-single-json' ]
             cookie_file_path_title = None
@@ -234,19 +234,19 @@ def process_combine_video():
             playlist_info = json.loads(title_process.stdout)
             # More robust title checking
             if isinstance(playlist_info, dict):
-                current_title = playlist_info.get('title') # Check 'title' first
-                if not current_title: # If 'title' is not found or empty, check 'playlist_title'
+                current_title = playlist_info.get('title')
+                if not current_title:
                     current_title = playlist_info.get('playlist_title')
 
                 if current_title:
-                    playlist_title = current_title # Use the found title
+                    playlist_title = current_title
                     logging.info(f"Using playlist title for combined video: {playlist_title}")
                 else:
                     logging.warning(f"Could not find 'title' or 'playlist_title' in JSON. JSON keys: {list(playlist_info.keys())}. Using default.")
             else:
                  logging.warning(f"Playlist info is not a dictionary. JSON: {playlist_info}. Using default.")
-        except Exception as title_error: # Corrected except:
-            logging.warning(f"Could not get playlist title: {title_error}. Using default.")
+        except Exception as title_error:
+            logging.warning(f"Could not get playlist title: {str(title_error)}. Using default.") # Log the error string
             if 'cookie_file_path_title' in locals() and cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
 
 
@@ -324,9 +324,9 @@ def process_combine_video():
     # --- Error Handling ---
     except subprocess.CalledProcessError as e:
         tool_name = "Tool"
-        cmd_str = ' '.join(e.cmd)
-        if YTDLP_PATH in cmd_str: tool_name = "yt-dlp"
-        elif FFMPEG_PATH in cmd_str: tool_name = "ffmpeg"
+        cmd_str = ' '.join(e.cmd) if isinstance(e.cmd, list) else str(e.cmd)
+        if YTDLP_PATH and YTDLP_PATH in cmd_str: tool_name = "yt-dlp"
+        elif FFMPEG_PATH and FFMPEG_PATH in cmd_str: tool_name = "ffmpeg"
         if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
         logging.error(f"{tool_name} (combine video) failed: {e.stderr}")
         error_detail = e.stderr[:500] if e.stderr else f"Unknown {tool_name} error"
