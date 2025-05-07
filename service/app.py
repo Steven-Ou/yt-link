@@ -40,7 +40,6 @@ def sort_files_by_playlist_index(a, b):
 # --- Endpoint to process a single URL to MP3 ---
 @app.route('/process-single-mp3', methods=['POST'])
 def process_single_mp3():
-    # (Code remains the same as )
     json_data = request.get_json()
     if not json_data: return jsonify({"error": "Invalid JSON request body"}), 400
     url = json_data.get('url')
@@ -118,7 +117,6 @@ def process_single_mp3():
 # --- Endpoint to process Playlist to Zip ---
 @app.route('/process-playlist-zip', methods=['POST'])
 def process_playlist_zip():
-    # (Code remains the same as )
     json_data = request.get_json()
     if not json_data: return jsonify({"error": "Invalid JSON request body"}), 400
     playlist_url = json_data.get('playlistUrl')
@@ -211,14 +209,15 @@ def process_combine_video():
 
     tmpdir = None
     final_video_path = None
-    playlist_title = "combined_video"
+    playlist_title = "combined_video" # Default
 
     try:
         tmpdir = tempfile.mkdtemp()
         logging.info(f"Created temporary directory for combine video: {tmpdir}")
 
         # --- 0. Get Playlist Title ---
-        try {
+        # Corrected Python try-except block
+        try:
             logging.info(f"Fetching playlist title for combine video: {playlist_url}")
             title_args = [ YTDLP_PATH, '--flat-playlist', '--dump-single-json' ]
             cookie_file_path_title = None
@@ -234,13 +233,13 @@ def process_combine_video():
             if cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
 
             playlist_info = json.loads(title_process.stdout) # Use imported json module
-            if playlist_info and playlist_info.title:
-                # Use the raw title here, sanitize later for filename/header
-                playlist_title = playlist_info.title
+            # Check if playlist_info is a dict and 'title' key exists
+            if isinstance(playlist_info, dict) and 'title' in playlist_info and playlist_info['title']:
+                playlist_title = playlist_info['title'] # Use the raw title
                 logging.info(f"Using playlist title for combined video: {playlist_title}")
             else:
-                 logging.warning("Could not get playlist title attribute from JSON. Using default.")
-        } except Exception as title_error:
+                 logging.warning(f"Could not get playlist title attribute from JSON or title is empty. JSON: {playlist_info}. Using default.")
+        except Exception as title_error: # Catch any exception during title fetch
             logging.warning(f"Could not get playlist title: {title_error}. Using default.")
             if 'cookie_file_path_title' in locals() and cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
 
@@ -261,7 +260,6 @@ def process_combine_video():
                  ytdlp_video_args = [arg for arg in ytdlp_video_args if not arg.startswith('--cookies')]
         ytdlp_video_args.extend(['--', playlist_url])
 
-        # *** ADDED LOGGING FOR FINAL DOWNLOAD ARGS ***
         logging.info(f"yt-dlp video download args: {' '.join(ytdlp_video_args)}")
 
         video_process = subprocess.run(ytdlp_video_args, check=True, timeout=1800, capture_output=True, text=True, encoding='utf-8')
@@ -288,6 +286,9 @@ def process_combine_video():
         def sanitize_fs_filename(name):
              name = name.replace('/', '_').replace('\\', '_').replace(':', '_').replace('*', '_').replace('?', '_').replace('"', '_').replace('<', '_').replace('>', '_').replace('|', '_')
              return name.strip() or 'untitled_video'
+        
+        # Use the raw playlist_title (which might be the default "combined_video")
+        # and sanitize it for the filesystem
         final_video_filename = f"{sanitize_fs_filename(playlist_title)}.mp4"
         final_video_path = os.path.join(tmpdir, final_video_filename)
         ffmpeg_args = [ FFMPEG_PATH, '-f', 'concat', '-safe', '0', '-i', ffmpeg_list_path, '-c', 'copy', final_video_path ]
@@ -310,7 +311,8 @@ def process_combine_video():
         # --- 5. Send Combined Video File ---
         logging.info(f"Sending combined video file: {final_video_filename} from directory: {tmpdir}")
         fallback_filename = 'combined_video.mp4';
-        encoded_filename = sanitize_filename_header(final_video_filename) # Use URL encoded for header
+        # Use the filesystem-sanitized filename for the header as well, then URL encode it
+        encoded_filename = sanitize_filename_header(final_video_filename)
         headers = { 'Content-Disposition': f'attachment; filename="{fallback_filename}"; filename*=UTF-8\'\'{encoded_filename}' }
         mime_type = 'video/mp4'
         headers['Content-Type'] = mime_type
@@ -342,4 +344,3 @@ def process_combine_video():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
-
