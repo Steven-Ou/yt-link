@@ -4,16 +4,13 @@ import {
     Box, Button, Container, Divider, Drawer, List, ListItem,
     ListItemButton, ListItemIcon, ListItemText, TextField, Toolbar,
     Typography, CssBaseline,
-    // Import Accordion components
-    Accordion, AccordionSummary, AccordionDetails,
-    // Import for custom theme
-    createTheme, ThemeProvider
+    Accordion, AccordionSummary, AccordionDetails
 } from '@mui/material';
 import {
     Home as HomeIcon, Download as DownloadIcon, QueueMusic as QueueMusicIcon,
     VideoLibrary as VideoLibraryIcon, Coffee as CoffeeIcon,
-    Cookie as CookieIcon, // Optional: Icon for cookie field
-    ExpandMore as ExpandMoreIcon // Icon for accordion expansion
+    Cookie as CookieIcon,
+    ExpandMore as ExpandMoreIcon
  } from '@mui/icons-material';
 
 // Helper function to parse Content-Disposition header (keep this)
@@ -40,133 +37,18 @@ function getFilenameFromHeaders(headers) {
 
 const drawerWidth = 240;
 
-// Define your custom theme
-const customTheme = createTheme({
-    palette: {
-        // Set mode to 'light' for primary content area (white)
-        // and override dark mode for overall background and drawer
-        mode: 'light',
-        primary: {
-            main: '#E53935', // Vibrant Red for primary actions (e.g., Download MP3 button)
-            contrastText: '#FFFFFF', // White text on red buttons
-        },
-        secondary: {
-            main: '#1A1A1A', // Dark Black for secondary actions (e.g., Playlist Zip button)
-            contrastText: '#FFFFFF', // White text on black buttons
-        },
-        warning: {
-            main: '#FFB300', // A strong yellow for 'Combine Video'
-            contrastText: '#1A1A1A', // Dark text on yellow button
-        },
-        background: {
-            // Overall background will be pure black from globals.css
-            default: '#000000',
-            // 'paper' is used for surfaces like the main content Box, Drawer, Accordion, etc.
-            paper: '#FFFFFF', // Pure White for the main content 'curvy box'
-        },
-        text: {
-            primary: '#1A1A1A', // Dark text on white backgrounds (e.g., inside the curvy box)
-            secondary: '#616161', // Lighter dark text for labels/helper text
-            disabled: '#BDBDBD',
-        },
-    },
-    components: {
-        MuiCssBaseline: {
-            styleOverrides: {
-                body: {
-                    backgroundColor: '#000000', // Ensure body background is black
-                },
-            },
-        },
-        MuiDrawer: {
-            styleOverrides: {
-                paper: {
-                    backgroundColor: '#1A1A1A', // Black for the sidebar drawer
-                    color: '#F5F5F5', // White/light text inside drawer
-                },
-            },
-        },
-        MuiListItemButton: {
-            styleOverrides: {
-                root: {
-                    '&.Mui-selected': {
-                        backgroundColor: 'rgba(229, 57, 53, 0.2)', // Red tint for selected item
-                        '&:hover': {
-                            backgroundColor: 'rgba(229, 57, 53, 0.3)',
-                        },
-                    },
-                    '&:hover': {
-                        backgroundColor: 'rgba(255, 255, 255, 0.08)', // Subtle white hover on dark drawer
-                    },
-                },
-            },
-        },
-        MuiTextField: {
-            styleOverrides: {
-                root: {
-                    // Styles for text fields within the white curvy box
-                    '& .MuiInputBase-input': {
-                        color: '#1A1A1A', // Dark text color for input
-                    },
-                    '& .MuiInputLabel-root': {
-                        color: '#616161', // Dark grey label color
-                    },
-                    '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#BDBDBD', // Light grey border
-                    },
-                    '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#E53935', // Red border on hover
-                    },
-                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#E53935', // Red border on focus
-                    },
-                },
-            },
-        },
-        MuiAccordion: {
-            styleOverrides: {
-                root: {
-                    backgroundColor: '#1A1A1A', // Black for the accordion header/body
-                    color: '#F5F5F5', // White text for accordion summary
-                    boxShadow: 'none', // Remove default shadow
-                    '&:before': { display: 'none' }, // Remove default border line
-                },
-            },
-        },
-        MuiAccordionSummary: {
-            styleOverrides: {
-                root: {
-                    '&:hover': {
-                        backgroundColor: 'rgba(255, 255, 255, 0.08)', // Subtle white hover effect
-                    },
-                },
-            }
-        },
-        MuiDivider: {
-            styleOverrides: {
-                root: {
-                    backgroundColor: 'rgba(255, 255, 255, 0.12)', // Subtle white divider on dark background
-                }
-            }
-        }
-    },
-});
-
-
 export default function Home() {
     const [currentView, setCurrentView] = useState('welcome');
     const [url, setUrl] = useState('');
-    const [playlistUrl, setPlaylistUrl] = useState(''); // Used for Zip download
-    const [combineVideoUrl, setCombineVideoUrl] = useState(''); // Used for Combine download
-    // *** Single state for cookie data, used by all sections ***
+    const [playlistUrl, setPlaylistUrl] = useState('');
+    const [combineVideoUrl, setCombineVideoUrl] = useState('');
     const [cookieData, setCookieData] = useState('');
 
     const [isLoadingMp3, setIsLoadingMp3] = useState(false);
     const [isLoadingZip, setIsLoadingZip] = useState(false);
     const [isLoadingVideo, setIsLoadingVideo] = useState(false);
 
-    // State for the expanded accordion
-    const [expandedDownloads, setExpandedDownloads] = useState(true); // Start expanded for visibility
+    const [expandedDownloads, setExpandedDownloads] = useState(true);
 
     // Single video download
     const downloadMP3 = async () => {
@@ -180,17 +62,17 @@ export default function Home() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                   url: url,
-                  cookieData: cookieData.trim() || null // Send cookie data
+                  cookieData: cookieData.trim() || null
                 }),
             });
-             if (!res.ok) { /* ... error handling ... */ throw new Error((await res.json().catch(()=>({error:res.statusText}))).error); }
+             if (!res.ok) { throw new Error((await res.json().catch(()=>({error:res.statusText}))).error); }
             const filename = getFilenameFromHeaders(res.headers);
             const blob = await res.blob();
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob); a.download = filename;
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
             URL.revokeObjectURL(a.href);
-        } catch (error) { /* ... error handling ... */ alert(`Error downloading MP3: ${error.message}`); }
+        } catch (error) { alert(`Error downloading MP3: ${error.message}`); }
         finally { setIsLoadingMp3(false); }
       };
 
@@ -204,20 +86,19 @@ export default function Home() {
             const res = await fetch('/api/download-playlist', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              // *** Include cookieData in the body ***
               body: JSON.stringify({
                   playlistUrl: playlistUrl,
-                  cookieData: cookieData.trim() || null // Send cookie data
+                  cookieData: cookieData.trim() || null
                 }),
             });
-             if (!res.ok) { /* ... error handling ... */ throw new Error((await res.json().catch(()=>({error:res.statusText}))).error); }
+             if (!res.ok) { throw new Error((await res.json().catch(()=>({error:res.statusText}))).error); }
             const filename = getFilenameFromHeaders(res.headers) || 'playlist.zip';
             const blob = await res.blob();
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob); a.download = filename;
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
             URL.revokeObjectURL(a.href);
-        } catch (error) { /* ... error handling ... */ alert(`Error downloading playlist zip: ${error.message}`); }
+        } catch (error) { alert(`Error downloading playlist zip: ${error.message}`); }
         finally { setIsLoadingZip(false); }
       };
 
@@ -229,16 +110,15 @@ export default function Home() {
         try {
             console.log("Sending Playlist URL (Combine):", combineVideoUrl);
             console.log("Sending Cookie Data Length (Combine):", cookieData?.length || 0);
-            const res = await fetch('/api/convert', { // Or your combine endpoint
+            const res = await fetch('/api/convert', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              // *** Include cookieData in the body ***
               body: JSON.stringify({
                   playlistUrl: combineVideoUrl,
-                  cookieData: cookieData.trim() || null // Send cookie data
+                  cookieData: cookieData.trim() || null
                 }),
             });
-             if (!res.ok) { /* ... error handling ... */ throw new Error((await res.json().catch(()=>({error:res.statusText}))).error); }
+             if (!res.ok) { throw new Error((await res.json().catch(()=>({error:res.statusText}))).error); }
             const filename = getFilenameFromHeaders(res.headers) || 'combined_video.mp4';
             const blob = await res.blob();
             console.log("Received blob type:", blob.type);
@@ -246,12 +126,12 @@ export default function Home() {
             a.href = URL.createObjectURL(blob); a.download = filename;
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
             URL.revokeObjectURL(a.href);
-        } catch (error) { /* ... error handling ... */ alert(`Error downloading combined video: ${error.message}`); }
+        } catch (error) { alert(`Error downloading combined video: ${error.message}`); }
         finally { setIsLoadingVideo(false); }
       };
 
     // --- Cookie Text Field Component ---
-    // Extracted for reusability
+    // Apply TextField specific class for styling from globals.css
     const CookieInputField = () => (
         <TextField
             label="Paste YouTube Cookies Here (Optional)"
@@ -262,13 +142,7 @@ export default function Home() {
             style={{marginBottom: 16}}
             placeholder="Starts with # Netscape HTTP Cookie File..."
             disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}
-            InputProps={{ // Optional: Add an icon
-                startAdornment: (
-                <ListItemIcon sx={{minWidth: '40px', color: 'action.active', mr: 1}}>
-                    <CookieIcon />
-                </ListItemIcon>
-                ),
-            }}
+            // Tailwind classes are handled by MuiInputBase-root, MuiInputLabel-root in globals.css
         />
     );
 
@@ -276,7 +150,7 @@ export default function Home() {
     const renderContent = () => {
         switch (currentView) {
             case 'welcome':
-                 return ( /* ... welcome message ... */
+                 return (
                     <Box sx={{ textAlign: 'center', mt: 8 }}>
                         <Typography variant="h2" component="h1" gutterBottom>YT Link V2</Typography>
                         <Typography variant="h5" color="text.secondary">Welcome!</Typography>
@@ -290,7 +164,7 @@ export default function Home() {
                     <Container maxWidth="sm" sx={{ mt: 4 }}>
                         <Typography variant='h6' gutterBottom>Convert Single Video to MP3</Typography>
                         <TextField label="YouTube Video URL" variant='outlined' fullWidth value={url} onChange={(e)=> setUrl(e.target.value)} style={{marginBottom: 16}} disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo} />
-                        <CookieInputField /> {/* Use reusable component */}
+                        <CookieInputField />
                         <Button variant='contained' color='primary' fullWidth onClick={downloadMP3} disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}>
                             {isLoadingMp3 ? 'Downloading MP3...' : 'Download MP3'}
                         </Button>
@@ -301,8 +175,8 @@ export default function Home() {
                     <Container maxWidth="sm" sx={{ mt: 4 }}>
                         <Typography variant='h6' gutterBottom>Download Playlist as Zip</Typography>
                         <TextField label="YouTube Playlist URL (for Zip)" variant='outlined' fullWidth value={playlistUrl} onChange={(e)=> setPlaylistUrl(e.target.value)} style={{marginBottom: 16}} disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo} />
-                        <CookieInputField /> {/* Use reusable component */}
-                        <Button variant='contained' color='secondary' onClick={downloadPlaylistZip} fullWidth style={{marginBottom: 16}} disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}>
+                        <CookieInputField />
+                        <Button variant='contained' color='secondary' fullWidth onClick={downloadPlaylistZip} disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}>
                              {isLoadingZip ? 'Downloading Zip...' : 'Download Playlist As Zip'}
                         </Button>
                     </Container>
@@ -312,8 +186,8 @@ export default function Home() {
                      <Container maxWidth="sm" sx={{ mt: 4 }}>
                         <Typography variant='h6' gutterBottom>Convert Playlist to Single Video</Typography>
                         <TextField label="YouTube Playlist URL (for Single Video)" variant='outlined' fullWidth value={combineVideoUrl} onChange={(e)=> setCombineVideoUrl(e.target.value)} style={{marginBottom: 16}} disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo} />
-                        <CookieInputField /> {/* Use reusable component */}
-                        <Button variant='contained' color='warning' onClick={downloadCombinedVideo} fullWidth style={{marginBottom: 16}} disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}>
+                        <CookieInputField />
+                        <Button variant='contained' color='warning' fullWidth onClick={downloadCombinedVideo} disabled={isLoadingMp3 || isLoadingZip || isLoadingVideo}>
                              {isLoadingVideo ? 'Combining Video...' : 'Download Playlist As Single Video'}
                         </Button>
                     </Container>
@@ -325,105 +199,102 @@ export default function Home() {
 
     // Main component structure
     return (
-        // Wrap your entire application with ThemeProvider
-        <ThemeProvider theme={customTheme}>
-            <Box sx={{ display: 'flex' }}>
-                <CssBaseline />
-                {/* Sidebar Drawer */}
-                <Drawer variant="permanent" sx={{
-                     width: drawerWidth, flexShrink: 0,
-                     [`& .MuiDrawer-paper`]: {
-                        width: drawerWidth,
-                        boxSizing: 'border-box',
-                        // Background color is set by theme.components.MuiDrawer
-                     },
-                 }}>
-                    <Toolbar />
-                    <Box sx={{ overflow: 'auto' }}>
-                        <List>
-                            {/* Always visible Welcome item */}
-                            <ListItem disablePadding>
-                                <ListItemButton selected={currentView === 'welcome'} onClick={() => setCurrentView('welcome')}>
-                                    <ListItemIcon><HomeIcon /></ListItemIcon>
-                                    <ListItemText primary="Welcome" />
-                                </ListItemButton>
-                            </ListItem>
+        <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+            <CssBaseline />
+            {/* Sidebar Drawer */}
+            <Drawer variant="permanent" sx={{
+                 width: drawerWidth, flexShrink: 0,
+                 [`& .MuiDrawer-paper`]: {
+                    width: drawerWidth,
+                    boxSizing: 'border-box',
+                    // Styling handled by .MuiDrawer-paper class in globals.css
+                 },
+             }}>
+                <Toolbar />
+                <Box sx={{ overflow: 'auto' }}>
+                    <List>
+                        {/* Welcome item */}
+                        <ListItem disablePadding>
+                            <ListItemButton selected={currentView === 'welcome'} onClick={() => setCurrentView('welcome')}>
+                                <ListItemIcon><HomeIcon /></ListItemIcon>
+                                <ListItemText primary="Welcome" />
+                            </ListItemButton>
+                        </ListItem>
 
-                            <Divider sx={{ my: 1 }} />
+                        <Divider sx={{ my: 1 }} />
 
-                            {/* Accordion for Download Options */}
-                            <Accordion
-                                expanded={expandedDownloads}
-                                onChange={(event, isExpanded) => setExpandedDownloads(isExpanded)}
-                                sx={{ boxShadow: 'none', '&:before': { display: 'none' } }}
+                        {/* Accordion for Download Options - Uses .MuiAccordion-root class */}
+                        <Accordion
+                            expanded={expandedDownloads}
+                            onChange={(event, isExpanded) => setExpandedDownloads(isExpanded)}
+                            // All styling for Accordion is handled by .MuiAccordion-root in globals.css
+                            // Remove boxShadow and &:before from sx as they are in the class
+                        >
+                            <AccordionSummary
+                                expandIcon={<ExpandMoreIcon />}
+                                aria-controls="panel1a-content"
+                                id="panel1a-header"
+                                // Styling for summary is handled by .MuiAccordionSummary-root in globals.css
+                                sx={{ minHeight: '48px', '& .MuiAccordionSummary-content': { my: '12px' } }}
                             >
-                                <AccordionSummary
-                                    expandIcon={<ExpandMoreIcon />}
-                                    aria-controls="panel1a-content"
-                                    id="panel1a-header"
-                                    sx={{ minHeight: '48px', '& .MuiAccordionSummary-content': { my: '12px' } }}
-                                >
-                                    <ListItemIcon sx={{ minWidth: '40px' }}><DownloadIcon /></ListItemIcon>
-                                    <ListItemText primary="Download Options" primaryTypographyProps={{ fontWeight: 'medium' }} />
-                                </AccordionSummary>
-                                <AccordionDetails sx={{ p: 0 }}>
-                                    <List component="div" disablePadding>
-                                        <ListItem disablePadding sx={{ pl: 4 }}>
-                                            <ListItemButton selected={currentView === 'single'} onClick={() => setCurrentView('single')}>
-                                                <ListItemIcon><DownloadIcon /></ListItemIcon>
-                                                <ListItemText primary="Single MP3" />
-                                            </ListItemButton>
-                                        </ListItem>
-                                        <ListItem disablePadding sx={{ pl: 4 }}>
-                                            <ListItemButton selected={currentView === 'zip'} onClick={() => setCurrentView('zip')}>
-                                                <ListItemIcon><QueueMusicIcon /></ListItemIcon>
-                                                <ListItemText primary="Playlist Zip" />
-                                            </ListItemButton>
-                                        </ListItem>
-                                        <ListItem disablePadding sx={{ pl: 4 }}>
-                                            <ListItemButton selected={currentView === 'combine'} onClick={() => setCurrentView('combine')}>
-                                                <ListItemIcon><VideoLibraryIcon /></ListItemIcon>
-                                                <ListItemText primary="Combine Video" />
-                                            </ListItemButton>
-                                        </ListItem>
-                                    </List>
-                                </AccordionDetails>
-                            </Accordion>
+                                <ListItemIcon sx={{ minWidth: '40px' }}><DownloadIcon /></ListItemIcon>
+                                <ListItemText primary="Download Options" primaryTypographyProps={{ fontWeight: 'medium' }} />
+                            </AccordionSummary>
+                            <AccordionDetails sx={{ p: 0 }}>
+                                <List component="div" disablePadding>
+                                    {/* List items use .MuiListItemButton-root for hover/selected */}
+                                    <ListItem disablePadding sx={{ pl: 4 }}>
+                                        <ListItemButton selected={currentView === 'single'} onClick={() => setCurrentView('single')}>
+                                            <ListItemIcon><DownloadIcon /></ListItemIcon>
+                                            <ListItemText primary="Single MP3" />
+                                        </ListItemButton>
+                                    </ListItem>
+                                    <ListItem disablePadding sx={{ pl: 4 }}>
+                                        <ListItemButton selected={currentView === 'zip'} onClick={() => setCurrentView('zip')}>
+                                            <ListItemIcon><QueueMusicIcon /></ListItemIcon>
+                                            <ListItemText primary="Playlist Zip" />
+                                        </ListItemButton>
+                                    </ListItem>
+                                    <ListItem disablePadding sx={{ pl: 4 }}>
+                                        <ListItemButton selected={currentView === 'combine'} onClick={() => setCurrentView('combine')}>
+                                            <ListItemIcon><VideoLibraryIcon /></ListItemIcon>
+                                            <ListItemText primary="Combine Video" />
+                                        </ListItemButton>
+                                    </ListItem>
+                                </List>
+                            </AccordionDetails>
+                        </Accordion>
 
-                            <Divider sx={{ my: 1 }} />
+                        <Divider sx={{ my: 1 }} />
 
-                            {/* Always visible Buy Me A Coffee item */}
-                            <ListItem disablePadding sx={{ mt: 2 }}>
-                                <ListItemButton component="a" href="https://www.buymeacoffee.com/osteve425e" target="_blank" rel="noopener noreferrer">
-                                    <ListItemIcon><CoffeeIcon /></ListItemIcon>
-                                    <ListItemText primary="Buy Me A Coffee" />
-                                </ListItemButton>
-                            </ListItem>
-                        </List>
-                    </Box>
-                </Drawer>
-                {/* Main Content Area - The "curvy box" */}
-                <Box
-                    component="main"
-                    sx={{
-                        flexGrow: 1,
-                        p: 3,
-                        // Add margins to create space around the curvy box
-                        mt: 4,
-                        mb: 4,
-                        mr: 4,
-                        // marginLeft accounts for the drawer width + desired spacing
-                        ml: `${drawerWidth + 32}px`,
-                        bgcolor: 'background.paper', // This will be white as defined in the theme
-                        borderRadius: 4, // Apply border radius for the curvy effect
-                        boxShadow: 3, // Optional: Add a subtle shadow to make it pop
-                        overflow: 'hidden' // Ensures content respects the border-radius
-                    }}
-                >
-                    <Toolbar /> {/* Provides consistent top padding for content */}
-                    {renderContent()}
+                        {/* Buy Me A Coffee item */}
+                        <ListItem disablePadding sx={{ mt: 2 }}>
+                            <ListItemButton component="a" href="https://www.buymeacoffee.com/yourlink" target="_blank" rel="noopener noreferrer">
+                                <ListItemIcon><CoffeeIcon /></ListItemIcon>
+                                <ListItemText primary="Buy Me A Coffee" />
+                            </ListItemButton>
+                        </ListItem>
+                    </List>
                 </Box>
+            </Drawer>
+            {/* Main Content Area - The "curvy box" */}
+            <Box
+                component="main"
+                className="main-content-box" // Apply the custom class defined in globals.css
+                sx={{
+                    flexGrow: 1,
+                    // Remove p-6 from sx, it's in main-content-box class
+                    // Keep margins for positioning relative to drawer
+                    mt: 4,
+                    mb: 4,
+                    mr: 4,
+                    ml: `${drawerWidth + 32}px`,
+                    overflow: 'auto',
+                }}
+            >
+                <Toolbar />
+                {renderContent()}
             </Box>
-        </ThemeProvider>
+        </Box>
     );
 };
