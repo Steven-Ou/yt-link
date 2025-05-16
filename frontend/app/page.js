@@ -217,7 +217,7 @@ export default function Home() {
                  width: drawerWidth, flexShrink: 0,
                  [`& .MuiDrawer-paper`]: { width: drawerWidth, boxSizing: 'border-box' },
              }}>
-                <Toolbar /> {/* Keeps content below app bar if one existed */}
+                <Toolbar />
                 <Box sx={{ overflow: 'auto' }}>
                     <List>
                         {/* Always visible Welcome item */}
@@ -228,24 +228,27 @@ export default function Home() {
                             </ListItemButton>
                         </ListItem>
 
-                        <Divider sx={{ my: 1 }} /> {/* Add some margin to the divider */}
+                        <Divider sx={{ my: 1 }} />
 
                         {/* Accordion for Download Options */}
-                        <Accordion expanded={expandedDownloads} onChange={() => setExpandedDownloads(!expandedDownloads)}
-                           sx={{ boxShadow: 'none', '&:before': { display: 'none' } }}> {/* Remove default shadow/border */}
+                        <Accordion
+                            expanded={expandedDownloads}
+                            // FIX: Correctly handle the onChange event signature
+                            onChange={(event, isExpanded) => setExpandedDownloads(isExpanded)}
+                            sx={{ boxShadow: 'none', '&:before': { display: 'none' } }}
+                        >
                             <AccordionSummary
                                 expandIcon={<ExpandMoreIcon />}
                                 aria-controls="panel1a-content"
                                 id="panel1a-header"
-                                sx={{ minHeight: '48px', '& .MuiAccordionSummary-content': { my: '12px' } }} // Adjust padding
+                                sx={{ minHeight: '48px', '& .MuiAccordionSummary-content': { my: '12px' } }}
                             >
-                                <ListItemIcon sx={{ minWidth: '40px' }}><DownloadIcon /></ListItemIcon> {/* Use a relevant icon for the group header */}
+                                <ListItemIcon sx={{ minWidth: '40px' }}><DownloadIcon /></ListItemIcon>
                                 <ListItemText primary="Download Options" primaryTypographyProps={{ fontWeight: 'medium' }} />
                             </AccordionSummary>
-                            <AccordionDetails sx={{ p: 0 }}> {/* Remove default padding */}
+                            <AccordionDetails sx={{ p: 0 }}>
                                 <List component="div" disablePadding>
-                                    {/* Download Menu Items */}
-                                    <ListItem disablePadding sx={{ pl: 4 }}> {/* Indent sub-items */}
+                                    <ListItem disablePadding sx={{ pl: 4 }}>
                                         <ListItemButton selected={currentView === 'single'} onClick={() => setCurrentView('single')}>
                                             <ListItemIcon><DownloadIcon /></ListItemIcon>
                                             <ListItemText primary="Single MP3" />
