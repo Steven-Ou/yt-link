@@ -394,7 +394,7 @@ export default function Home() {
 
                             {/* Always visible Buy Me A Coffee item */}
                             <ListItem disablePadding sx={{ mt: 2 }}>
-                                <ListItemButton component="a" href="https://www.buymeacoffee.com/yourlink" target="_blank" rel="noopener noreferrer">
+                                <ListItemButton component="a" href="https://www.buymeacoffee.com/osteve425e" target="_blank" rel="noopener noreferrer">
                                     <ListItemIcon><CoffeeIcon /></ListItemIcon>
                                     <ListItemText primary="Buy Me A Coffee" />
                                 </ListItemButton>
