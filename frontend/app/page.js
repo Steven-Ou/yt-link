@@ -5,7 +5,9 @@ import {
     ListItemButton, ListItemIcon, ListItemText, TextField, Toolbar,
     Typography, CssBaseline,
     // Import Accordion components
-    Accordion, AccordionSummary, AccordionDetails
+    Accordion, AccordionSummary, AccordionDetails,
+    // Import for custom theme
+    createTheme, ThemeProvider
 } from '@mui/material';
 import {
     Home as HomeIcon, Download as DownloadIcon, QueueMusic as QueueMusicIcon,
@@ -37,6 +39,119 @@ function getFilenameFromHeaders(headers) {
 }
 
 const drawerWidth = 240;
+
+// Define your custom theme
+const customTheme = createTheme({
+    palette: {
+        // Set mode to 'light' for primary content area (white)
+        // and override dark mode for overall background and drawer
+        mode: 'light',
+        primary: {
+            main: '#E53935', // Vibrant Red for primary actions (e.g., Download MP3 button)
+            contrastText: '#FFFFFF', // White text on red buttons
+        },
+        secondary: {
+            main: '#1A1A1A', // Dark Black for secondary actions (e.g., Playlist Zip button)
+            contrastText: '#FFFFFF', // White text on black buttons
+        },
+        warning: {
+            main: '#FFB300', // A strong yellow for 'Combine Video'
+            contrastText: '#1A1A1A', // Dark text on yellow button
+        },
+        background: {
+            // Overall background will be pure black from globals.css
+            default: '#000000',
+            // 'paper' is used for surfaces like the main content Box, Drawer, Accordion, etc.
+            paper: '#FFFFFF', // Pure White for the main content 'curvy box'
+        },
+        text: {
+            primary: '#1A1A1A', // Dark text on white backgrounds (e.g., inside the curvy box)
+            secondary: '#616161', // Lighter dark text for labels/helper text
+            disabled: '#BDBDBD',
+        },
+    },
+    components: {
+        MuiCssBaseline: {
+            styleOverrides: {
+                body: {
+                    backgroundColor: '#000000', // Ensure body background is black
+                },
+            },
+        },
+        MuiDrawer: {
+            styleOverrides: {
+                paper: {
+                    backgroundColor: '#1A1A1A', // Black for the sidebar drawer
+                    color: '#F5F5F5', // White/light text inside drawer
+                },
+            },
+        },
+        MuiListItemButton: {
+            styleOverrides: {
+                root: {
+                    '&.Mui-selected': {
+                        backgroundColor: 'rgba(229, 57, 53, 0.2)', // Red tint for selected item
+                        '&:hover': {
+                            backgroundColor: 'rgba(229, 57, 53, 0.3)',
+                        },
+                    },
+                    '&:hover': {
+                        backgroundColor: 'rgba(255, 255, 255, 0.08)', // Subtle white hover on dark drawer
+                    },
+                },
+            },
+        },
+        MuiTextField: {
+            styleOverrides: {
+                root: {
+                    // Styles for text fields within the white curvy box
+                    '& .MuiInputBase-input': {
+                        color: '#1A1A1A', // Dark text color for input
+                    },
+                    '& .MuiInputLabel-root': {
+                        color: '#616161', // Dark grey label color
+                    },
+                    '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: '#BDBDBD', // Light grey border
+                    },
+                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: '#E53935', // Red border on hover
+                    },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: '#E53935', // Red border on focus
+                    },
+                },
+            },
+        },
+        MuiAccordion: {
+            styleOverrides: {
+                root: {
+                    backgroundColor: '#1A1A1A', // Black for the accordion header/body
+                    color: '#F5F5F5', // White text for accordion summary
+                    boxShadow: 'none', // Remove default shadow
+                    '&:before': { display: 'none' }, // Remove default border line
+                },
+            },
+        },
+        MuiAccordionSummary: {
+            styleOverrides: {
+                root: {
+                    '&:hover': {
+                        backgroundColor: 'rgba(255, 255, 255, 0.08)', // Subtle white hover effect
+                    },
+                },
+            }
+        },
+        MuiDivider: {
+            styleOverrides: {
+                root: {
+                    backgroundColor: 'rgba(255, 255, 255, 0.12)', // Subtle white divider on dark background
+                }
+            }
+        }
+    },
+});
+
 
 export default function Home() {
     const [currentView, setCurrentView] = useState('welcome');
@@ -210,83 +325,105 @@ export default function Home() {
 
     // Main component structure
     return (
-        <Box sx={{ display: 'flex' }}>
-            <CssBaseline />
-            {/* Sidebar Drawer */}
-            <Drawer variant="permanent" sx={{
-                 width: drawerWidth, flexShrink: 0,
-                 [`& .MuiDrawer-paper`]: { width: drawerWidth, boxSizing: 'border-box' },
-             }}>
-                <Toolbar />
-                <Box sx={{ overflow: 'auto' }}>
-                    <List>
-                        {/* Always visible Welcome item */}
-                        <ListItem disablePadding>
-                            <ListItemButton selected={currentView === 'welcome'} onClick={() => setCurrentView('welcome')}>
-                                <ListItemIcon><HomeIcon /></ListItemIcon>
-                                <ListItemText primary="Welcome" />
-                            </ListItemButton>
-                        </ListItem>
+        // Wrap your entire application with ThemeProvider
+        <ThemeProvider theme={customTheme}>
+            <Box sx={{ display: 'flex' }}>
+                <CssBaseline />
+                {/* Sidebar Drawer */}
+                <Drawer variant="permanent" sx={{
+                     width: drawerWidth, flexShrink: 0,
+                     [`& .MuiDrawer-paper`]: {
+                        width: drawerWidth,
+                        boxSizing: 'border-box',
+                        // Background color is set by theme.components.MuiDrawer
+                     },
+                 }}>
+                    <Toolbar />
+                    <Box sx={{ overflow: 'auto' }}>
+                        <List>
+                            {/* Always visible Welcome item */}
+                            <ListItem disablePadding>
+                                <ListItemButton selected={currentView === 'welcome'} onClick={() => setCurrentView('welcome')}>
+                                    <ListItemIcon><HomeIcon /></ListItemIcon>
+                                    <ListItemText primary="Welcome" />
+                                </ListItemButton>
+                            </ListItem>
 
-                        <Divider sx={{ my: 1 }} />
+                            <Divider sx={{ my: 1 }} />
 
-                        {/* Accordion for Download Options */}
-                        <Accordion
-                            expanded={expandedDownloads}
-                            // FIX: Correctly handle the onChange event signature
-                            onChange={(event, isExpanded) => setExpandedDownloads(isExpanded)}
-                            sx={{ boxShadow: 'none', '&:before': { display: 'none' } }}
-                        >
-                            <AccordionSummary
-                                expandIcon={<ExpandMoreIcon />}
-                                aria-controls="panel1a-content"
-                                id="panel1a-header"
-                                sx={{ minHeight: '48px', '& .MuiAccordionSummary-content': { my: '12px' } }}
+                            {/* Accordion for Download Options */}
+                            <Accordion
+                                expanded={expandedDownloads}
+                                onChange={(event, isExpanded) => setExpandedDownloads(isExpanded)}
+                                sx={{ boxShadow: 'none', '&:before': { display: 'none' } }}
                             >
-                                <ListItemIcon sx={{ minWidth: '40px' }}><DownloadIcon /></ListItemIcon>
-                                <ListItemText primary="Download Options" primaryTypographyProps={{ fontWeight: 'medium' }} />
-                            </AccordionSummary>
-                            <AccordionDetails sx={{ p: 0 }}>
-                                <List component="div" disablePadding>
-                                    <ListItem disablePadding sx={{ pl: 4 }}>
-                                        <ListItemButton selected={currentView === 'single'} onClick={() => setCurrentView('single')}>
-                                            <ListItemIcon><DownloadIcon /></ListItemIcon>
-                                            <ListItemText primary="Single MP3" />
-                                        </ListItemButton>
-                                    </ListItem>
-                                    <ListItem disablePadding sx={{ pl: 4 }}>
-                                        <ListItemButton selected={currentView === 'zip'} onClick={() => setCurrentView('zip')}>
-                                            <ListItemIcon><QueueMusicIcon /></ListItemIcon>
-                                            <ListItemText primary="Playlist Zip" />
-                                        </ListItemButton>
-                                    </ListItem>
-                                    <ListItem disablePadding sx={{ pl: 4 }}>
-                                        <ListItemButton selected={currentView === 'combine'} onClick={() => setCurrentView('combine')}>
-                                            <ListItemIcon><VideoLibraryIcon /></ListItemIcon>
-                                            <ListItemText primary="Combine Video" />
-                                        </ListItemButton>
-                                    </ListItem>
-                                </List>
-                            </AccordionDetails>
-                        </Accordion>
+                                <AccordionSummary
+                                    expandIcon={<ExpandMoreIcon />}
+                                    aria-controls="panel1a-content"
+                                    id="panel1a-header"
+                                    sx={{ minHeight: '48px', '& .MuiAccordionSummary-content': { my: '12px' } }}
+                                >
+                                    <ListItemIcon sx={{ minWidth: '40px' }}><DownloadIcon /></ListItemIcon>
+                                    <ListItemText primary="Download Options" primaryTypographyProps={{ fontWeight: 'medium' }} />
+                                </AccordionSummary>
+                                <AccordionDetails sx={{ p: 0 }}>
+                                    <List component="div" disablePadding>
+                                        <ListItem disablePadding sx={{ pl: 4 }}>
+                                            <ListItemButton selected={currentView === 'single'} onClick={() => setCurrentView('single')}>
+                                                <ListItemIcon><DownloadIcon /></ListItemIcon>
+                                                <ListItemText primary="Single MP3" />
+                                            </ListItemButton>
+                                        </ListItem>
+                                        <ListItem disablePadding sx={{ pl: 4 }}>
+                                            <ListItemButton selected={currentView === 'zip'} onClick={() => setCurrentView('zip')}>
+                                                <ListItemIcon><QueueMusicIcon /></ListItemIcon>
+                                                <ListItemText primary="Playlist Zip" />
+                                            </ListItemButton>
+                                        </ListItem>
+                                        <ListItem disablePadding sx={{ pl: 4 }}>
+                                            <ListItemButton selected={currentView === 'combine'} onClick={() => setCurrentView('combine')}>
+                                                <ListItemIcon><VideoLibraryIcon /></ListItemIcon>
+                                                <ListItemText primary="Combine Video" />
+                                            </ListItemButton>
+                                        </ListItem>
+                                    </List>
+                                </AccordionDetails>
+                            </Accordion>
 
-                        <Divider sx={{ my: 1 }} />
+                            <Divider sx={{ my: 1 }} />
 
-                        {/* Always visible Buy Me A Coffee item */}
-                        <ListItem disablePadding sx={{ mt: 2 }}>
-                            <ListItemButton component="a" href="https://www.buymeacoffee.com/yourlink" target="_blank" rel="noopener noreferrer">
-                                <ListItemIcon><CoffeeIcon /></ListItemIcon>
-                                <ListItemText primary="Buy Me A Coffee" />
-                            </ListItemButton>
-                        </ListItem>
-                    </List>
+                            {/* Always visible Buy Me A Coffee item */}
+                            <ListItem disablePadding sx={{ mt: 2 }}>
+                                <ListItemButton component="a" href="https://www.buymeacoffee.com/yourlink" target="_blank" rel="noopener noreferrer">
+                                    <ListItemIcon><CoffeeIcon /></ListItemIcon>
+                                    <ListItemText primary="Buy Me A Coffee" />
+                                </ListItemButton>
+                            </ListItem>
+                        </List>
+                    </Box>
+                </Drawer>
+                {/* Main Content Area - The "curvy box" */}
+                <Box
+                    component="main"
+                    sx={{
+                        flexGrow: 1,
+                        p: 3,
+                        // Add margins to create space around the curvy box
+                        mt: 4,
+                        mb: 4,
+                        mr: 4,
+                        // marginLeft accounts for the drawer width + desired spacing
+                        ml: `${drawerWidth + 32}px`,
+                        bgcolor: 'background.paper', // This will be white as defined in the theme
+                        borderRadius: 4, // Apply border radius for the curvy effect
+                        boxShadow: 3, // Optional: Add a subtle shadow to make it pop
+                        overflow: 'hidden' // Ensures content respects the border-radius
+                    }}
+                >
+                    <Toolbar /> {/* Provides consistent top padding for content */}
+                    {renderContent()}
                 </Box>
-            </Drawer>
-            {/* Main Content Area */}
-            <Box component="main" sx={{ flexGrow: 1, bgcolor: 'background.default', p: 3 }}>
-                <Toolbar />
-                {renderContent()}
             </Box>
-        </Box>
+        </ThemeProvider>
     );
 };
