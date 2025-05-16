@@ -1,11 +1,91 @@
 /* globals.css */
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
+/* Define custom colors in Tailwind config (if you haven't already) to use them directly */
+/* Example:
+  extend: {
+    colors: {
+      'yt-red': '#E53935',
+      'yt-black': '#1A1A1A',
+      'yt-white': '#FFFFFF',
+      'yt-light-grey': '#F5F5F5',
+      'yt-dark-grey': '#616161',
+    }
+  }
+*/
+
+/* Overall body background: Red */
 body {
-  /* Overall pure black background */
-  background-color: #000000;
-  /* Default text color will be handled by Material-UI theme */
+  @apply bg-red-500 text-white; /* Using Tailwind's default red */
   font-family: Arial, Helvetica, sans-serif;
-  margin: 0; /* Remove default body margin */
-  padding: 0; /* Remove default body padding */
+  margin: 0;
+  padding: 0;
+  min-height: 100vh; /* Ensure body takes full viewport height */
+  overflow: hidden; /* Hide scrollbars if content slightly exceeds viewport */
+}
+
+/* Custom class for the Material-UI Drawer's paper element */
+/* Applying !important to override MUI's default inline styles */
+.MuiDrawer-paper {
+  @apply !bg-black !text-white;
+}
+
+/* Custom class for the main content "curvy box" */
+.main-content-box {
+  @apply bg-white text-gray-900 rounded-3xl shadow-xl p-6; /* White background, dark text, curvy, shadow, padding */
+}
+
+/* Custom styling for Material-UI buttons */
+.MuiButton-containedPrimary {
+  @apply !bg-red-500 !text-white hover:!bg-red-700;
+}
+.MuiButton-containedSecondary {
+  @apply !bg-black !text-white hover:!bg-gray-800;
+}
+.MuiButton-containedWarning {
+  @apply !bg-yellow-500 !text-black hover:!bg-yellow-600;
+}
+
+/* Custom styling for Material-UI TextField */
+.MuiInputBase-input {
+  @apply text-gray-900; /* Input text color */
+}
+.MuiInputLabel-root {
+  @apply text-gray-600; /* Label color */
+}
+.MuiInputLabel-root.Mui-focused {
+  @apply text-red-500; /* Label color on focus */
+}
+.MuiOutlinedInput-notchedOutline {
+  @apply border-gray-400; /* Default border */
+}
+.MuiInputBase-root:hover .MuiOutlinedInput-notchedOutline {
+  @apply border-red-500; /* Border on hover */
+}
+.MuiInputBase-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+  @apply border-red-500; /* Border on focus */
+}
+
+
+/* Custom styling for ListItemButton (selected state) */
+.MuiListItemButton-root.Mui-selected {
+  @apply !bg-red-500/20; /* Light red background for selected item */
+}
+.MuiListItemButton-root:hover {
+  @apply bg-white/10; /* Subtle white hover on dark drawer */
+}
+
+/* Custom styling for Accordion components */
+.MuiAccordion-root {
+  @apply !bg-black !text-white !shadow-none; /* Black background, white text, no shadow */
+}
+.MuiAccordionSummary-root:hover {
+  @apply bg-white/10; /* Subtle white hover for accordion summary */
+}
+
+/* Custom styling for Dividers */
+.MuiDivider-root {
+  @apply bg-white/20; /* Lighter divider on dark background */
 }
