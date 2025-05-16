@@ -3,12 +3,15 @@ import { useState } from 'react';
 import {
     Box, Button, Container, Divider, Drawer, List, ListItem,
     ListItemButton, ListItemIcon, ListItemText, TextField, Toolbar,
-    Typography, CssBaseline
+    Typography, CssBaseline,
+    // Import Accordion components
+    Accordion, AccordionSummary, AccordionDetails
 } from '@mui/material';
 import {
     Home as HomeIcon, Download as DownloadIcon, QueueMusic as QueueMusicIcon,
     VideoLibrary as VideoLibraryIcon, Coffee as CoffeeIcon,
-    Cookie as CookieIcon // Optional: Icon for cookie field
+    Cookie as CookieIcon, // Optional: Icon for cookie field
+    ExpandMore as ExpandMoreIcon // Icon for accordion expansion
  } from '@mui/icons-material';
 
 // Helper function to parse Content-Disposition header (keep this)
@@ -46,6 +49,9 @@ export default function Home() {
     const [isLoadingMp3, setIsLoadingMp3] = useState(false);
     const [isLoadingZip, setIsLoadingZip] = useState(false);
     const [isLoadingVideo, setIsLoadingVideo] = useState(false);
+
+    // State for the expanded accordion
+    const [expandedDownloads, setExpandedDownloads] = useState(true); // Start expanded for visibility
 
     // Single video download
     const downloadMP3 = async () => {
@@ -207,23 +213,69 @@ export default function Home() {
         <Box sx={{ display: 'flex' }}>
             <CssBaseline />
             {/* Sidebar Drawer */}
-            <Drawer variant="permanent" sx={{ /* ... drawer styles ... */
+            <Drawer variant="permanent" sx={{
                  width: drawerWidth, flexShrink: 0,
                  [`& .MuiDrawer-paper`]: { width: drawerWidth, boxSizing: 'border-box' },
              }}>
-                <Toolbar />
+                <Toolbar /> {/* Keeps content below app bar if one existed */}
                 <Box sx={{ overflow: 'auto' }}>
                     <List>
-                        {/* Menu Items */}
-                        {/* ... (ListItems remain the same) ... */}
-                         <ListItem disablePadding><ListItemButton selected={currentView === 'welcome'} onClick={() => setCurrentView('welcome')}><ListItemIcon><HomeIcon /></ListItemIcon><ListItemText primary="Welcome" /></ListItemButton></ListItem>
-                        <Divider />
-                         <ListItem disablePadding><ListItemButton selected={currentView === 'single'} onClick={() => setCurrentView('single')}><ListItemIcon><DownloadIcon /></ListItemIcon><ListItemText primary="Single MP3" /></ListItemButton></ListItem>
-                        <ListItem disablePadding><ListItemButton selected={currentView === 'zip'} onClick={() => setCurrentView('zip')}><ListItemIcon><QueueMusicIcon /></ListItemIcon><ListItemText primary="Playlist Zip" /></ListItemButton></ListItem>
-                        <ListItem disablePadding><ListItemButton selected={currentView === 'combine'} onClick={() => setCurrentView('combine')}><ListItemIcon><VideoLibraryIcon /></ListItemIcon><ListItemText primary="Combine Video" /></ListItemButton></ListItem>
-                        <Divider />
-                        <ListItem disablePadding sx={{ mt: 2 }}><ListItemButton component="a" href="https://www.buymeacoffee.com/yourlink" target="_blank" rel="noopener noreferrer"><ListItemIcon><CoffeeIcon /></ListItemIcon><ListItemText primary="Buy Me A Coffee" /></ListItemButton></ListItem>
+                        {/* Always visible Welcome item */}
+                        <ListItem disablePadding>
+                            <ListItemButton selected={currentView === 'welcome'} onClick={() => setCurrentView('welcome')}>
+                                <ListItemIcon><HomeIcon /></ListItemIcon>
+                                <ListItemText primary="Welcome" />
+                            </ListItemButton>
+                        </ListItem>
 
+                        <Divider sx={{ my: 1 }} /> {/* Add some margin to the divider */}
+
+                        {/* Accordion for Download Options */}
+                        <Accordion expanded={expandedDownloads} onChange={() => setExpandedDownloads(!expandedDownloads)}
+                           sx={{ boxShadow: 'none', '&:before': { display: 'none' } }}> {/* Remove default shadow/border */}
+                            <AccordionSummary
+                                expandIcon={<ExpandMoreIcon />}
+                                aria-controls="panel1a-content"
+                                id="panel1a-header"
+                                sx={{ minHeight: '48px', '& .MuiAccordionSummary-content': { my: '12px' } }} // Adjust padding
+                            >
+                                <ListItemIcon sx={{ minWidth: '40px' }}><DownloadIcon /></ListItemIcon> {/* Use a relevant icon for the group header */}
+                                <ListItemText primary="Download Options" primaryTypographyProps={{ fontWeight: 'medium' }} />
+                            </AccordionSummary>
+                            <AccordionDetails sx={{ p: 0 }}> {/* Remove default padding */}
+                                <List component="div" disablePadding>
+                                    {/* Download Menu Items */}
+                                    <ListItem disablePadding sx={{ pl: 4 }}> {/* Indent sub-items */}
+                                        <ListItemButton selected={currentView === 'single'} onClick={() => setCurrentView('single')}>
+                                            <ListItemIcon><DownloadIcon /></ListItemIcon>
+                                            <ListItemText primary="Single MP3" />
+                                        </ListItemButton>
+                                    </ListItem>
+                                    <ListItem disablePadding sx={{ pl: 4 }}>
+                                        <ListItemButton selected={currentView === 'zip'} onClick={() => setCurrentView('zip')}>
+                                            <ListItemIcon><QueueMusicIcon /></ListItemIcon>
+                                            <ListItemText primary="Playlist Zip" />
+                                        </ListItemButton>
+                                    </ListItem>
+                                    <ListItem disablePadding sx={{ pl: 4 }}>
+                                        <ListItemButton selected={currentView === 'combine'} onClick={() => setCurrentView('combine')}>
+                                            <ListItemIcon><VideoLibraryIcon /></ListItemIcon>
+                                            <ListItemText primary="Combine Video" />
+                                        </ListItemButton>
+                                    </ListItem>
+                                </List>
+                            </AccordionDetails>
+                        </Accordion>
+
+                        <Divider sx={{ my: 1 }} />
+
+                        {/* Always visible Buy Me A Coffee item */}
+                        <ListItem disablePadding sx={{ mt: 2 }}>
+                            <ListItemButton component="a" href="https://www.buymeacoffee.com/yourlink" target="_blank" rel="noopener noreferrer">
+                                <ListItemIcon><CoffeeIcon /></ListItemIcon>
+                                <ListItemText primary="Buy Me A Coffee" />
+                            </ListItemButton>
+                        </ListItem>
                     </List>
                 </Box>
             </Drawer>
