@@ -4,12 +4,14 @@ import tempfile
 import shutil
 import logging
 import zipfile
-import json # Ensure json is imported
+import json
+import uuid
+import threading
 from flask import Flask, request, send_file, jsonify, Response, stream_with_context, after_this_request, send_from_directory
 from urllib.parse import quote
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Check if yt-dlp exists ---
 YTDLP_PATH = shutil.which("yt-dlp")
@@ -23,11 +25,12 @@ if not FFMPEG_PATH:
 
 app = Flask(__name__)
 
-# Helper to encode filename for Content-Disposition
+jobs = {}
+jobs_lock = threading.Lock()
+
 def sanitize_filename_header(filename):
     return quote(filename)
 
-# Helper function to sort files based on playlist index prefix
 def sort_files_by_playlist_index(a, b):
     regex = r'^(\d+)\.'
     import re
@@ -37,16 +40,200 @@ def sort_files_by_playlist_index(a, b):
     index_b = int(match_b.group(1)) if match_b else float('inf')
     return index_a - index_b
 
-# Helper to sanitize filenames for the filesystem
 def sanitize_fs_filename(name):
     name = name.replace('/', '_').replace('\\', '_').replace(':', '_').replace('*', '_').replace('?', '_').replace('"', '_').replace('<', '_').replace('>', '_').replace('|', '_')
     return name.strip() or 'untitled_file'
 
+# --- Background Task for Single MP3 Download ---
+def _process_single_mp3_task(job_id, url, cookie_data):
+    logging.info(f"[{job_id}] Background task started for single MP3: {url}")
+    job_tmp_dir = None
+    try:
+        job_tmp_dir = tempfile.mkdtemp(prefix=f"{job_id}_")
+        logging.info(f"[{job_id}] Created job temporary directory: {job_tmp_dir}")
+        with jobs_lock:
+            jobs[job_id].update({"status": "processing_download", "job_tmp_dir": job_tmp_dir})
 
-# --- Endpoint to process a single URL to MP3 ---
-@app.route('/process-single-mp3', methods=['POST'])
-def process_single_mp3():
-    # ... (This function remains the same as in python_microservice_full_corrected) ...
+        output_template = os.path.join(job_tmp_dir, '%(title)s.%(ext)s')
+        args = [ YTDLP_PATH, '-x', '--audio-format', 'mp3', '-o', output_template, '--no-playlist' ]
+        if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
+            cookie_file_path = os.path.join(job_tmp_dir, 'cookies.txt')
+            try:
+                with open(cookie_file_path, 'w', encoding='utf-8') as f: f.write(cookie_data)
+                logging.info(f"[{job_id}] Saved cookie data to: {cookie_file_path}")
+                args.extend(['--cookies', cookie_file_path])
+            except Exception as e:
+                logging.error(f"[{job_id}] Failed to write cookie file: {e}")
+                args = [arg for arg in args if not arg.startswith('--cookies')]
+        args.extend(['--', url])
+
+        logging.info(f"[{job_id}] Running yt-dlp. Command: {' '.join(args)}")
+        process = subprocess.run( args, check=True, timeout=600, capture_output=True, text=True, encoding='utf-8')
+        logging.info(f"[{job_id}] yt-dlp stdout: {process.stdout}")
+        if process.stderr: logging.warning(f"[{job_id}] yt-dlp stderr: {process.stderr}")
+
+        files_in_job_dir = os.listdir(job_tmp_dir)
+        mp3_file_name = next((f for f in files_in_job_dir if f.lower().endswith('.mp3') and not f == 'cookies.txt'), None)
+
+        if mp3_file_name:
+            full_mp3_path = os.path.join(job_tmp_dir, mp3_file_name)
+            logging.info(f"[{job_id}] MP3 file created: {full_mp3_path}")
+            with jobs_lock:
+                jobs[job_id].update({"status": "completed", "filename": mp3_file_name, "filepath": full_mp3_path})
+        else:
+            stderr_snippet = process.stderr[:500] if process.stderr else "No stderr output."
+            raise Exception(f"yt-dlp did not produce an MP3 file. Stderr: {stderr_snippet}")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"[{job_id}] yt-dlp failed. stderr: {e.stderr}")
+        error_detail = e.stderr[:500] if e.stderr else "Unknown yt-dlp error"
+        with jobs_lock: jobs[job_id].update({"status": "failed", "error": f"yt-dlp execution failed: {error_detail}"})
+    except subprocess.TimeoutExpired:
+        logging.error(f"[{job_id}] yt-dlp timed out for URL: {url}")
+        with jobs_lock: jobs[job_id].update({"status": "failed", "error": "Processing timed out during download."})
+    except Exception as e:
+        logging.error(f"[{job_id}] An unexpected error occurred in background task: {e}", exc_info=True)
+        with jobs_lock: jobs[job_id].update({"status": "failed", "error": f"An internal server error occurred: {str(e)}"})
+
+# --- Background Task for Playlist Zip ---
+def _process_playlist_zip_task(job_id, playlist_url, cookie_data):
+    logging.info(f"[{job_id}] Background task started for playlist zip: {playlist_url}")
+    job_tmp_dir = None
+    try:
+        job_tmp_dir = tempfile.mkdtemp(prefix=f"{job_id}_zip_")
+        logging.info(f"[{job_id}] Created job temporary directory for zip: {job_tmp_dir}")
+        with jobs_lock:
+            jobs[job_id].update({"status": "processing_download_playlist", "job_tmp_dir": job_tmp_dir})
+
+        output_template = os.path.join(job_tmp_dir, '%(playlist_index)s.%(title)s.%(ext)s')
+        # *** ADD --ignore-errors or -i ***
+        args = [ YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template ]
+        if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
+            cookie_file_path = os.path.join(job_tmp_dir, 'cookies.txt')
+            try:
+                with open(cookie_file_path, 'w', encoding='utf-8') as f: f.write(cookie_data)
+                logging.info(f"[{job_id}] Saved cookie data for playlist zip to: {cookie_file_path}")
+                args.extend(['--cookies', cookie_file_path])
+            except Exception as e:
+                logging.error(f"[{job_id}] Failed to write cookie file for playlist zip: {e}")
+                args = [arg for arg in args if not arg.startswith('--cookies')]
+        args.extend(['--', playlist_url])
+
+        logging.info(f"[{job_id}] Running yt-dlp for playlist zip. Command: {' '.join(args)}")
+        process = subprocess.run(args, check=False, timeout=1800, capture_output=True, text=True, encoding='utf-8') # check=False, longer timeout
+        logging.info(f"[{job_id}] yt-dlp playlist zip stdout: {process.stdout}")
+        if process.stderr: logging.warning(f"[{job_id}] yt-dlp playlist zip stderr: {process.stderr}")
+        # Even with -i, a severe error might cause a non-zero exit, but we check for files
+
+        files_in_job_dir = os.listdir(job_tmp_dir)
+        mp3_files_for_zip = [f for f in files_in_job_dir if f.lower().endswith('.mp3') and not f == 'cookies.txt']
+
+        if not mp3_files_for_zip:
+            stderr_snippet = process.stderr[:500] if process.stderr else "No MP3 files produced."
+            raise Exception(f"yt-dlp did not produce any MP3 files for zipping. Stderr: {stderr_snippet}")
+
+        with jobs_lock: jobs[job_id]["status"] = "processing_zip"
+        zip_filename_base = sanitize_fs_filename(jobs[job_id].get("playlist_title", f"playlist_{job_id}"))
+        zip_filename = f"{zip_filename_base}.zip"
+        zip_file_full_path = os.path.join(job_tmp_dir, zip_filename) # Create zip inside job's tmp dir
+
+        logging.info(f"[{job_id}] Zipping {len(mp3_files_for_zip)} MP3 files into {zip_file_full_path}")
+        with zipfile.ZipFile(zip_file_full_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for mp3_file in mp3_files_for_zip:
+                zipf.write(os.path.join(job_tmp_dir, mp3_file), arcname=mp3_file)
+
+        logging.info(f"[{job_id}] Zip file created: {zip_file_full_path}")
+        with jobs_lock:
+            jobs[job_id].update({"status": "completed", "filename": zip_filename, "filepath": zip_file_full_path})
+
+    except subprocess.CalledProcessError as e: # Should be less common with check=False and -i
+        logging.error(f"[{job_id}] yt-dlp (playlist zip) failed. stderr: {e.stderr}")
+        error_detail = e.stderr[:500] if e.stderr else "Unknown yt-dlp error"
+        with jobs_lock: jobs[job_id].update({"status": "failed", "error": f"yt-dlp execution failed (playlist zip): {error_detail}"})
+    except subprocess.TimeoutExpired:
+        logging.error(f"[{job_id}] yt-dlp (playlist zip) timed out for URL: {playlist_url}")
+        with jobs_lock: jobs[job_id].update({"status": "failed", "error": "Processing timed out during playlist download."})
+    except Exception as e:
+        logging.error(f"[{job_id}] An unexpected error occurred in playlist zip task: {e}", exc_info=True)
+        with jobs_lock: jobs[job_id].update({"status": "failed", "error": f"An internal server error occurred: {str(e)}"})
+
+
+# --- Background Task for Combine Playlist to Single MP3 ---
+def _process_combine_playlist_mp3_task(job_id, playlist_url, cookie_data):
+    logging.info(f"[{job_id}] Background task started for combine playlist MP3: {playlist_url}")
+    job_tmp_dir = None
+    playlist_title_for_file = jobs[job_id].get("playlist_title", "combined_audio")
+
+    try:
+        job_tmp_dir = tempfile.mkdtemp(prefix=f"{job_id}_combine_mp3_")
+        logging.info(f"[{job_id}] Created job temporary directory for combine MP3: {job_tmp_dir}")
+        with jobs_lock:
+            jobs[job_id].update({"status": "processing_download_playlist_audio", "job_tmp_dir": job_tmp_dir})
+
+        output_template = os.path.join(job_tmp_dir, '%(playlist_index)s.%(title)s.%(ext)s')
+        # *** ADD --ignore-errors or -i ***
+        ytdlp_audio_args = [ YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template ]
+        if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
+            cookie_file_path_dl = os.path.join(job_tmp_dir, 'cookies_dl.txt')
+            try:
+                with open(cookie_file_path_dl, 'w', encoding='utf-8') as f: f.write(cookie_data)
+                ytdlp_audio_args.extend(['--cookies', cookie_file_path_dl])
+            except Exception as e:
+                logging.error(f"[{job_id}] Failed to write cookie file for audio download: {e}")
+                ytdlp_audio_args = [arg for arg in ytdlp_audio_args if not arg.startswith('--cookies')]
+        ytdlp_audio_args.extend(['--', playlist_url])
+
+        logging.info(f"[{job_id}] yt-dlp audio download args: {' '.join(ytdlp_audio_args)}")
+        audio_process = subprocess.run(ytdlp_audio_args, check=False, timeout=1800, capture_output=True, text=True, encoding='utf-8')
+        logging.info(f"[{job_id}] yt-dlp audio download stdout: {audio_process.stdout}")
+        if audio_process.stderr: logging.warning(f"[{job_id}] yt-dlp audio download stderr: {audio_process.stderr}")
+
+        files_in_job_dir = os.listdir(job_tmp_dir)
+        mp3_files_to_combine = [f for f in files_in_job_dir if f.lower().endswith('.mp3') and not f.startswith('cookies_')]
+        if not mp3_files_to_combine:
+            stderr_snippet = audio_process.stderr[:500] if audio_process.stderr else "No MP3 files produced."
+            raise Exception(f"yt-dlp did not produce any MP3 files for combining. Stderr: {stderr_snippet}")
+
+        mp3_files_to_combine.sort(key=lambda f: sort_files_by_playlist_index(f, ''))
+        logging.info(f"[{job_id}] Found and sorted MP3 files for combining: {mp3_files_to_combine}")
+
+        with jobs_lock: jobs[job_id]["status"] = "processing_ffmpeg_concat_mp3"
+        ffmpeg_list_path = os.path.join(job_tmp_dir, 'mp3_mylist.txt')
+        with open(ffmpeg_list_path, 'w', encoding='utf-8') as f:
+            for mp3_f in mp3_files_to_combine:
+                f.write(f"file '{os.path.join(job_tmp_dir, mp3_f).replace("'", "'\\''")}'\n")
+        logging.info(f"[{job_id}] Generated FFmpeg list for MP3s: {ffmpeg_list_path}")
+
+        final_mp3_filename = f"{sanitize_fs_filename(playlist_title_for_file)}.mp3"
+        final_mp3_full_path = os.path.join(job_tmp_dir, final_mp3_filename)
+        ffmpeg_args = [ FFMPEG_PATH, '-f', 'concat', '-safe', '0', '-i', ffmpeg_list_path, '-c', 'copy', final_mp3_full_path ]
+        logging.info(f"[{job_id}] Running ffmpeg command for MP3 concat: {' '.join(ffmpeg_args)}")
+        ffmpeg_process = subprocess.run(ffmpeg_args, check=True, timeout=900, capture_output=True, text=True, encoding='utf-8')
+        logging.info(f"[{job_id}] ffmpeg MP3 concat stdout: {ffmpeg_process.stdout}")
+        if ffmpeg_process.stderr: logging.warning(f"[{job_id}] ffmpeg MP3 concat stderr: {ffmpeg_process.stderr}")
+
+        logging.info(f"[{job_id}] FFmpeg finished. Combined MP3 at: {final_mp3_full_path}")
+        with jobs_lock:
+            jobs[job_id].update({"status": "completed", "filename": final_mp3_filename, "filepath": final_mp3_full_path})
+
+    except subprocess.CalledProcessError as e:
+        tool_name = "Tool"
+        cmd_str = ' '.join(e.cmd) if isinstance(e.cmd, list) else str(e.cmd)
+        if YTDLP_PATH and YTDLP_PATH in cmd_str: tool_name = "yt-dlp"
+        elif FFMPEG_PATH and FFMPEG_PATH in cmd_str: tool_name = "ffmpeg"
+        logging.error(f"[{job_id}] {tool_name} (combine playlist MP3) failed. stderr: {e.stderr}")
+        error_detail = e.stderr[:500] if e.stderr else f"Unknown {tool_name} error"
+        with jobs_lock: jobs[job_id].update({"status": "failed", "error": f"{tool_name} execution failed (combine playlist MP3): {error_detail}"})
+    except subprocess.TimeoutExpired:
+        logging.error(f"[{job_id}] Processing (combine playlist MP3) timed out.")
+        with jobs_lock: jobs[job_id].update({"status": "failed", "error": "Processing timed out."})
+    except Exception as e:
+        logging.error(f"[{job_id}] An unexpected error occurred in combine playlist MP3 task: {e}", exc_info=True)
+        with jobs_lock: jobs[job_id].update({"status": "failed", "error": f"An internal server error occurred: {str(e)}"})
+
+
+# --- "Start Job" Endpoints ---
+@app.route('/start-single-mp3-job', methods=['POST'])
+def start_single_mp3_job():
     json_data = request.get_json()
     if not json_data: return jsonify({"error": "Invalid JSON request body"}), 400
     url = json_data.get('url')
@@ -54,77 +241,16 @@ def process_single_mp3():
     if not url: return jsonify({"error": "No URL provided"}), 400
     if not YTDLP_PATH: return jsonify({"error": "Server configuration error: yt-dlp not found."}), 500
 
-    tmpdir = None
-    try:
-        tmpdir = tempfile.mkdtemp()
-        logging.info(f"Created temporary directory: {tmpdir}")
-        output_template = os.path.join(tmpdir, '%(title)s.%(ext)s')
-        args = [ YTDLP_PATH, '-x', '--audio-format', 'mp3', '-o', output_template, '--no-playlist' ]
-        cookie_file_path = None
-        if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
-            try:
-                cookie_file_path = os.path.join(tmpdir, 'cookies.txt')
-                with open(cookie_file_path, 'w', encoding='utf-8') as f: f.write(cookie_data)
-                logging.info(f"Saved cookie data to: {cookie_file_path}")
-                args.extend(['--cookies', cookie_file_path])
-            except Exception as e:
-                logging.error(f"Failed to write cookie file: {e}")
-                args = [arg for arg in args if not arg.startswith('--cookies')]
-        args.append('--')
-        args.append(url)
+    job_id = str(uuid.uuid4())
+    with jobs_lock:
+        jobs[job_id] = {"status": "queued", "url": url, "type": "single_mp3"}
+    thread = threading.Thread(target=_process_single_mp3_task, args=(job_id, url, cookie_data))
+    thread.start()
+    logging.info(f"Queued job {job_id} for single MP3: {url}")
+    return jsonify({"message": "Job queued successfully.", "jobId": job_id}), 202
 
-        logging.info(f"Running yt-dlp for URL: {url}")
-        logging.info(f"Command args: {' '.join(args)}")
-        process = subprocess.run( args, check=True, timeout=300, capture_output=True, text=True, encoding='utf-8')
-        logging.info(f"yt-dlp stdout: {process.stdout}")
-        if process.stderr: logging.warning(f"yt-dlp stderr: {process.stderr}")
-
-        files = os.listdir(tmpdir)
-        mp3_file = next((f for f in files if f.lower().endswith('.mp3') and not f == 'cookies.txt'), None)
-
-        if mp3_file:
-            file_path_full = os.path.join(tmpdir, mp3_file)
-            logging.info(f"Found MP3: {file_path_full}")
-            @after_this_request
-            def cleanup(response):
-                try:
-                    if tmpdir and os.path.exists(tmpdir):
-                        logging.info(f"Cleaning up temporary directory: {tmpdir}")
-                        shutil.rmtree(tmpdir)
-                except Exception as e: logging.error(f"Error during cleanup: {e}")
-                return response
-            logging.info(f"Sending file: {mp3_file} from directory: {tmpdir}")
-            fallback_filename = 'downloaded_audio.mp3';
-            encoded_filename = sanitize_filename_header(mp3_file)
-            headers = { 'Content-Disposition': f'attachment; filename="{fallback_filename}"; filename*=UTF-8\'\'{encoded_filename}' }
-            return send_from_directory( tmpdir, mp3_file, as_attachment=True, download_name=mp3_file ), 200, headers
-        else:
-            if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
-            logging.error(f"yt-dlp ran but no MP3 file found in {tmpdir}. Files: {files}")
-            stderr_snippet = process.stderr[:500] if process.stderr else "No stderr output."
-            return jsonify({"error": f"yt-dlp did not produce an MP3 file. Stderr: {stderr_snippet}"}), 500
-    except subprocess.CalledProcessError as e:
-        if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
-        logging.error(f"yt-dlp failed with exit code {e.returncode}. stderr: {e.stderr}")
-        error_detail = e.stderr[:500] if e.stderr else "Unknown yt-dlp error"
-        if "confirm you’re not a bot" in error_detail or "Use --cookies" in error_detail:
-             return jsonify({"error": f"Authentication required. Please provide cookies. ({error_detail})"}), 403
-        else:
-             return jsonify({"error": f"yt-dlp failed: {error_detail}"}), 500
-    except subprocess.TimeoutExpired:
-        if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
-        logging.error(f"yt-dlp timed out for URL: {url}")
-        return jsonify({"error": "Processing timed out"}), 504
-    except Exception as e:
-        if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
-        logging.error(f"An unexpected error occurred: {e}", exc_info=True)
-        return jsonify({"error": f"An internal server error occurred"}), 500
-
-
-# --- Endpoint to process Playlist to Zip ---
-@app.route('/process-playlist-zip', methods=['POST'])
-def process_playlist_zip():
-    # ... (This function remains the same as in python_microservice_full_corrected) ...
+@app.route('/start-playlist-zip-job', methods=['POST'])
+def start_playlist_zip_job():
     json_data = request.get_json()
     if not json_data: return jsonify({"error": "Invalid JSON request body"}), 400
     playlist_url = json_data.get('playlistUrl')
@@ -132,372 +258,157 @@ def process_playlist_zip():
     if not playlist_url: return jsonify({"error": "No playlist URL provided"}), 400
     if not YTDLP_PATH: return jsonify({"error": "Server configuration error: yt-dlp not found."}), 500
 
-    tmpdir = None
-    zip_file_path = None
+    job_id = str(uuid.uuid4())
+    # Attempt to get playlist title for better zip filename (optional, quick timeout)
+    playlist_title_for_file = f"playlist_{job_id}" # Default
     try:
-        tmpdir = tempfile.mkdtemp()
-        logging.info(f"Created temporary directory for playlist zip: {tmpdir}")
-        output_template = os.path.join(tmpdir, '%(playlist_index)s.%(title)s.%(ext)s')
-        args = [ YTDLP_PATH, '-x', '--audio-format', 'mp3', '-o', output_template ]
-        cookie_file_path = None
-        if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
-            try:
-                cookie_file_path = os.path.join(tmpdir, 'cookies.txt')
-                with open(cookie_file_path, 'w', encoding='utf-8') as f: f.write(cookie_data)
-                logging.info(f"Saved cookie data to: {cookie_file_path}")
-                args.extend(['--cookies', cookie_file_path])
-            except Exception as e:
-                logging.error(f"Failed to write cookie file: {e}")
-                args = [arg for arg in args if not arg.startswith('--cookies')]
-        args.append('--')
-        args.append(playlist_url)
-
-        logging.info(f"Running yt-dlp for playlist: {playlist_url}")
-        logging.info(f"Command args: {' '.join(args)}")
-        process = subprocess.run( args, check=True, timeout=900, capture_output=True, text=True, encoding='utf-8')
-        logging.info(f"yt-dlp playlist stdout: {process.stdout}")
-        if process.stderr: logging.warning(f"yt-dlp playlist stderr: {process.stderr}")
-
-        files = os.listdir(tmpdir)
-        mp3_files = [f for f in files if f.lower().endswith('.mp3') and not f == 'cookies.txt']
-        if not mp3_files:
-            if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
-            stderr_snippet = process.stderr[:500] if process.stderr else "No stderr output."
-            return jsonify({"error": f"yt-dlp did not produce any MP3 files. Stderr: {stderr_snippet}"}), 500
-
-        logging.info(f"Found {len(mp3_files)} MP3 files. Zipping...")
-        zip_filename = f"playlist_{os.path.basename(tmpdir)}.zip"
-        zip_file_path = os.path.join(tmpdir, zip_filename)
-        with zipfile.ZipFile(zip_file_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for mp3_file in mp3_files:
-                mp3_file_full_path = os.path.join(tmpdir, mp3_file)
-                zipf.write(mp3_file_full_path, arcname=mp3_file)
-        logging.info(f"Created zip file: {zip_file_path}")
-
-        @after_this_request
-        def cleanup(response):
-            try:
-                if tmpdir and os.path.exists(tmpdir):
-                    logging.info(f"Cleaning up playlist zip temporary directory: {tmpdir}")
-                    shutil.rmtree(tmpdir)
-            except Exception as e: logging.error(f"Error during playlist zip cleanup: {e}")
-            return response
-
-        logging.info(f"Sending zip file: {zip_filename} from directory: {tmpdir}")
-        headers = { 'Content-Disposition': f'attachment; filename="{zip_filename}"' }
-        return send_from_directory(tmpdir, zip_filename, as_attachment=True), 200, headers
-    except subprocess.CalledProcessError as e:
-        if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
-        logging.error(f"yt-dlp (playlist zip) failed: {e.stderr}")
-        error_detail = e.stderr[:500] if e.stderr else "Unknown yt-dlp error"
-        if "confirm you’re not a bot" in error_detail or "Use --cookies" in error_detail:
-             return jsonify({"error": f"Authentication required for one or more items. Please provide cookies. ({error_detail})"}), 403
-        else:
-            return jsonify({"error": f"yt-dlp failed: {error_detail}"}), 500
-    except subprocess.TimeoutExpired:
-        if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
-        logging.error(f"yt-dlp (playlist zip) timed out for URL: {playlist_url}")
-        return jsonify({"error": "Processing timed out"}), 504
-    except Exception as e:
-        if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
-        logging.error(f"An unexpected error occurred (playlist zip): {e}", exc_info=True)
-        return jsonify({"error": f"An internal server error occurred"}), 500
-
-
-# --- NEW Endpoint to Combine Playlist to Single MP3 ---
-@app.route('/process-combine-playlist-mp3', methods=['POST'])
-def process_combine_playlist_mp3():
-    json_data = request.get_json()
-    if not json_data: return jsonify({"error": "Invalid JSON request body"}), 400
-    playlist_url = json_data.get('playlistUrl')
-    cookie_data = json_data.get('cookieData')
-    if not playlist_url: return jsonify({"error": "No playlist URL provided"}), 400
-    if not YTDLP_PATH: return jsonify({"error": "Server configuration error: yt-dlp not found."}), 500
-    if not FFMPEG_PATH: return jsonify({"error": "Server configuration error: ffmpeg not found."}), 500
-
-    tmpdir = None
-    final_mp3_path = None # Path for the final combined MP3
-    playlist_title = "combined_playlist_audio" # Default
-
-    try:
-        tmpdir = tempfile.mkdtemp()
-        logging.info(f"Created temporary directory for combine playlist MP3: {tmpdir}")
-
-        # --- 0. Get Playlist Title ---
-        try:
-            logging.info(f"Fetching playlist title for combine MP3: {playlist_url}")
-            title_args = [ YTDLP_PATH, '--flat-playlist', '--dump-single-json' ]
-            cookie_file_path_title = None
-            if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
-                 try:
-                     cookie_file_path_title = os.path.join(tmpdir, 'cookies_title.txt')
-                     with open(cookie_file_path_title, 'w', encoding='utf-8') as f: f.write(cookie_data)
-                     title_args.extend(['--cookies', cookie_file_path_title])
-                 except Exception as e: logging.error(f"Failed to write cookie file for title: {e}")
-            title_args.extend(['--', playlist_url])
-
-            title_process = subprocess.run(title_args, check=True, timeout=60, capture_output=True, text=True, encoding='utf-8')
-            if cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
-
+        title_args = [ YTDLP_PATH, '--flat-playlist', '--dump-single-json' ]
+        # Cookies for title fetch only if really necessary and quick
+        # For simplicity, not adding cookie handling to this quick title fetch for now
+        title_args.extend(['--', playlist_url])
+        title_process = subprocess.run(title_args, timeout=15, capture_output=True, text=True, encoding='utf-8')
+        if title_process.returncode == 0 and title_process.stdout:
             playlist_info = json.loads(title_process.stdout)
             if isinstance(playlist_info, dict):
-                current_title = playlist_info.get('title')
-                if not current_title: current_title = playlist_info.get('playlist_title')
-                if current_title:
-                    playlist_title = current_title
-                    logging.info(f"Using playlist title for combined MP3: {playlist_title}")
-                else: logging.warning(f"Could not find 'title' or 'playlist_title' in JSON. Using default.")
-            else: logging.warning(f"Playlist info is not a dictionary. Using default.")
-        except Exception as title_error:
-            logging.warning(f"Could not get playlist title: {str(title_error)}. Using default.")
-            if 'cookie_file_path_title' in locals() and cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
+                title = playlist_info.get('title') or playlist_info.get('playlist_title')
+                if title: playlist_title_for_file = title
+    except Exception as e:
+        logging.warning(f"[{job_id}] Quick title fetch for zip failed: {e}")
 
-        # --- 1. Download Individual Audios as MP3s ---
-        logging.info(f"Downloading audios for playlist: {playlist_url}")
-        output_template = os.path.join(tmpdir, '%(playlist_index)s.%(title)s.%(ext)s') # ext will be mp3
-        ytdlp_audio_args = [
-            YTDLP_PATH,
-            '-x', # Extract audio
-            '--audio-format', 'mp3', # Convert to MP3
-            '-o', output_template
-        ]
-        cookie_file_path_dl = None
-        if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
-             try:
-                 cookie_file_path_dl = os.path.join(tmpdir, 'cookies_dl.txt')
-                 with open(cookie_file_path_dl, 'w', encoding='utf-8') as f: f.write(cookie_data)
-                 ytdlp_audio_args.extend(['--cookies', cookie_file_path_dl])
-             except Exception as e:
-                 logging.error(f"Failed to write cookie file for audio download: {e}")
-                 ytdlp_audio_args = [arg for arg in ytdlp_audio_args if not arg.startswith('--cookies')]
-        ytdlp_audio_args.extend(['--', playlist_url])
-        logging.info(f"yt-dlp audio download args: {' '.join(ytdlp_audio_args)}")
-        audio_process = subprocess.run(ytdlp_audio_args, check=True, timeout=1800, capture_output=True, text=True, encoding='utf-8')
-        logging.info(f"yt-dlp audio download stdout: {audio_process.stdout}")
-        if audio_process.stderr: logging.warning(f"yt-dlp audio download stderr: {audio_process.stderr}")
-
-        # --- 2. List, Sort, and Create FFmpeg List File for MP3s ---
-        files = os.listdir(tmpdir)
-        mp3_files = [f for f in files if f.lower().endswith('.mp3') and not f.startswith('cookies_')]
-        if not mp3_files:
-             if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
-             stderr_snippet = audio_process.stderr[:500] if audio_process.stderr else "No stderr output."
-             return jsonify({"error": f"yt-dlp did not produce any MP3 files. Stderr: {stderr_snippet}"}), 500
-
-        mp3_files.sort(key=lambda f: sort_files_by_playlist_index(f, '')) # Sort MP3 files
-        logging.info(f"Found and sorted MP3 files: {mp3_files}")
-
-        ffmpeg_list_path = os.path.join(tmpdir, 'mp3_mylist.txt')
-        with open(ffmpeg_list_path, 'w', encoding='utf-8') as f:
-            for mp3_f in mp3_files:
-                escaped_path = os.path.join(tmpdir, mp3_f).replace("'", "'\\''")
-                f.write(f"file '{escaped_path}'\n")
-        logging.info(f"Generated FFmpeg list for MP3s: {ffmpeg_list_path}")
-
-        # --- 3. Run FFmpeg to Concatenate MP3s ---
-        final_mp3_filename = f"{sanitize_fs_filename(playlist_title)}.mp3"
-        final_mp3_path = os.path.join(tmpdir, final_mp3_filename)
-        ffmpeg_args = [
-            FFMPEG_PATH,
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', ffmpeg_list_path,
-            '-c', 'copy', # Stream copy should work for MP3s
-            final_mp3_path
-        ]
-        logging.info(f"Running ffmpeg command for MP3 concat: {' '.join(ffmpeg_args)}")
-        ffmpeg_process = subprocess.run(ffmpeg_args, check=True, timeout=900, capture_output=True, text=True, encoding='utf-8') # 15 min timeout for audio concat
-        logging.info(f"ffmpeg MP3 concat stdout: {ffmpeg_process.stdout}")
-        if ffmpeg_process.stderr: logging.warning(f"ffmpeg MP3 concat stderr: {ffmpeg_process.stderr}")
-        logging.info(f"FFmpeg finished. Combined MP3 at: {final_mp3_path}")
-
-        # --- 4. Schedule Cleanup ---
-        @after_this_request
-        def cleanup(response):
-            try:
-                if tmpdir and os.path.exists(tmpdir):
-                    logging.info(f"Cleaning up combine playlist MP3 temporary directory: {tmpdir}")
-                    shutil.rmtree(tmpdir)
-            except Exception as e: logging.error(f"Error during combine playlist MP3 cleanup: {e}")
-            return response
-
-        # --- 5. Send Combined MP3 File ---
-        logging.info(f"Sending combined MP3 file: {final_mp3_filename} from directory: {tmpdir}")
-        fallback_filename = 'combined_playlist_audio.mp3';
-        encoded_filename = sanitize_filename_header(final_mp3_filename)
-        headers = {
-            'Content-Disposition': f'attachment; filename="{fallback_filename}"; filename*=UTF-8\'\'{encoded_filename}',
-            'Content-Type': 'audio/mpeg' # Correct MIME type for MP3
+    with jobs_lock:
+        jobs[job_id] = {
+            "status": "queued",
+            "playlist_url": playlist_url,
+            "type": "playlist_zip",
+            "playlist_title": playlist_title_for_file # Store for zip filename
         }
-        return send_from_directory(tmpdir, final_mp3_filename, as_attachment=True), 200, headers
+    thread = threading.Thread(target=_process_playlist_zip_task, args=(job_id, playlist_url, cookie_data))
+    thread.start()
+    logging.info(f"Queued job {job_id} for playlist zip: {playlist_url}")
+    return jsonify({"message": "Job queued successfully.", "jobId": job_id}), 202
 
-    # --- Error Handling ---
-    except subprocess.CalledProcessError as e:
-        tool_name = "Tool"
-        cmd_str = ' '.join(e.cmd) if isinstance(e.cmd, list) else str(e.cmd)
-        if YTDLP_PATH and YTDLP_PATH in cmd_str: tool_name = "yt-dlp"
-        elif FFMPEG_PATH and FFMPEG_PATH in cmd_str: tool_name = "ffmpeg"
-        if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
-        logging.error(f"{tool_name} (combine playlist MP3) failed: {e.stderr}")
-        error_detail = e.stderr[:500] if e.stderr else f"Unknown {tool_name} error"
-        if "confirm you’re not a bot" in error_detail or "Use --cookies" in error_detail:
-             return jsonify({"error": f"Authentication required for one or more items. Please provide cookies. ({error_detail})"}), 403
-        else:
-            return jsonify({"error": f"{tool_name} failed: {error_detail}"}), 500
-    except subprocess.TimeoutExpired:
-        if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
-        logging.error(f"Processing (combine playlist MP3) timed out for URL: {playlist_url}")
-        return jsonify({"error": "Processing timed out"}), 504
-    except Exception as e:
-        if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
-        logging.error(f"An unexpected error occurred (combine playlist MP3): {e}", exc_info=True)
-        return jsonify({"error": f"An internal server error occurred"}), 500
-
-# --- Endpoint to Combine Playlist to Single Video (Original - kept for reference or if you want both) ---
-@app.route('/process-combine-video', methods=['POST'])
-def process_combine_video():
-    # ... (This function remains the same as in python_microservice_full_corrected) ...
-    # ... It downloads videos and combines them into a single MP4 ...
+@app.route('/start-combine-playlist-mp3-job', methods=['POST'])
+def start_combine_playlist_mp3_job():
     json_data = request.get_json()
     if not json_data: return jsonify({"error": "Invalid JSON request body"}), 400
     playlist_url = json_data.get('playlistUrl')
     cookie_data = json_data.get('cookieData')
     if not playlist_url: return jsonify({"error": "No playlist URL provided"}), 400
     if not YTDLP_PATH: return jsonify({"error": "Server configuration error: yt-dlp not found."}), 500
-    if not FFMPEG_PATH: return jsonify({"error": "Server configuration error: ffmpeg not found."}), 500
+    if not FFMPEG_PATH: return jsonify({"error": "Server configuration error: ffmpeg not found."}), 500 # Needed for concat
 
-    tmpdir = None
-    final_video_path = None
-    playlist_title = "combined_video" # Default
-
+    job_id = str(uuid.uuid4())
+    # Get playlist title for filename
+    playlist_title_for_file = f"combined_audio_{job_id}" # Default
     try:
-        tmpdir = tempfile.mkdtemp()
-        logging.info(f"Created temporary directory for combine video: {tmpdir}")
+        title_args = [ YTDLP_PATH, '--flat-playlist', '--dump-single-json' ]
+        cookie_file_path_title = None
+        if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
+            # Create a very short-lived temp dir just for this cookie file
+            title_tmpdir = tempfile.mkdtemp(prefix=f"{job_id}_titlecookie_")
+            try:
+                cookie_file_path_title = os.path.join(title_tmpdir, 'cookies_title.txt')
+                with open(cookie_file_path_title, 'w', encoding='utf-8') as f: f.write(cookie_data)
+                title_args.extend(['--cookies', cookie_file_path_title])
+            except Exception as e: logging.error(f"[{job_id}] Failed to write cookie file for title: {e}")
+            finally:
+                 # Clean up title_tmpdir immediately after subprocess.run if it was created
+                 if title_tmpdir and os.path.exists(title_tmpdir): shutil.rmtree(title_tmpdir)
+        title_args.extend(['--', playlist_url])
 
-        # --- 0. Get Playlist Title ---
-        try:
-            logging.info(f"Fetching playlist title for combine video: {playlist_url}")
-            title_args = [ YTDLP_PATH, '--flat-playlist', '--dump-single-json' ]
-            cookie_file_path_title = None
-            if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
-                 try:
-                     cookie_file_path_title = os.path.join(tmpdir, 'cookies_title.txt')
-                     with open(cookie_file_path_title, 'w', encoding='utf-8') as f: f.write(cookie_data)
-                     title_args.extend(['--cookies', cookie_file_path_title])
-                 except Exception as e: logging.error(f"Failed to write cookie file for title: {e}")
-            title_args.extend(['--', playlist_url])
-
-            title_process = subprocess.run(title_args, check=True, timeout=60, capture_output=True, text=True, encoding='utf-8')
-            if cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
-
+        title_process = subprocess.run(title_args, timeout=60, capture_output=True, text=True, encoding='utf-8')
+        # No need to remove cookie_file_path_title here, as its parent dir is removed
+        if title_process.returncode == 0 and title_process.stdout:
             playlist_info = json.loads(title_process.stdout)
             if isinstance(playlist_info, dict):
-                current_title = playlist_info.get('title')
-                if not current_title:
-                    current_title = playlist_info.get('playlist_title')
-                if current_title:
-                    playlist_title = current_title
-                    logging.info(f"Using playlist title for combined video: {playlist_title}")
-                else:
-                    logging.warning(f"Could not find 'title' or 'playlist_title' in JSON. JSON keys: {list(playlist_info.keys())}. Using default.")
-            else:
-                 logging.warning(f"Playlist info is not a dictionary. JSON: {playlist_info}. Using default.")
-        except Exception as title_error:
-            logging.warning(f"Could not get playlist title: {str(title_error)}. Using default.")
-            if 'cookie_file_path_title' in locals() and cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
-
-        # --- 1. Download Videos ---
-        logging.info(f"Downloading videos for playlist: {playlist_url}")
-        video_format = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4/best'
-        output_template = os.path.join(tmpdir, '%(playlist_index)s.%(title)s.%(ext)s')
-        ytdlp_video_args = [ YTDLP_PATH, '-f', video_format, '-o', output_template ]
-        cookie_file_path_dl = None
-        if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
-             try:
-                 cookie_file_path_dl = os.path.join(tmpdir, 'cookies_dl.txt')
-                 with open(cookie_file_path_dl, 'w', encoding='utf-8') as f: f.write(cookie_data)
-                 ytdlp_video_args.extend(['--cookies', cookie_file_path_dl])
-             except Exception as e:
-                 logging.error(f"Failed to write cookie file for download: {e}")
-                 ytdlp_video_args = [arg for arg in ytdlp_video_args if not arg.startswith('--cookies')]
-        ytdlp_video_args.extend(['--', playlist_url])
-        logging.info(f"yt-dlp video download args: {' '.join(ytdlp_video_args)}")
-        video_process = subprocess.run(ytdlp_video_args, check=True, timeout=1800, capture_output=True, text=True, encoding='utf-8')
-        logging.info(f"yt-dlp video download stdout: {video_process.stdout}")
-        if video_process.stderr: logging.warning(f"yt-dlp video download stderr: {video_process.stderr}")
-
-        # --- 2. List, Sort, and Create FFmpeg List File ---
-        files = os.listdir(tmpdir)
-        video_files = [f for f in files if f.lower().endswith(('.mp4', '.mkv', '.webm')) and not f.startswith('cookies_')]
-        if not video_files:
-             if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
-             stderr_snippet = video_process.stderr[:500] if video_process.stderr else "No stderr output."
-             return jsonify({"error": f"yt-dlp did not produce any video files. Stderr: {stderr_snippet}"}), 500
-        video_files.sort(key=lambda f: sort_files_by_playlist_index(f, ''))
-        logging.info(f"Found and sorted video files: {video_files}")
-        ffmpeg_list_path = os.path.join(tmpdir, 'mylist.txt')
-        with open(ffmpeg_list_path, 'w', encoding='utf-8') as f:
-            for vf in video_files:
-                escaped_path = os.path.join(tmpdir, vf).replace("'", "'\\''")
-                f.write(f"file '{escaped_path}'\n")
-        logging.info(f"Generated FFmpeg file list: {ffmpeg_list_path}")
-
-        # --- 3. Run FFmpeg ---
-        def sanitize_fs_filename(name):
-             name = name.replace('/', '_').replace('\\', '_').replace(':', '_').replace('*', '_').replace('?', '_').replace('"', '_').replace('<', '_').replace('>', '_').replace('|', '_')
-             return name.strip() or 'untitled_video'
-        final_video_filename = f"{sanitize_fs_filename(playlist_title)}.mp4"
-        final_video_path = os.path.join(tmpdir, final_video_filename)
-        ffmpeg_args = [ FFMPEG_PATH, '-f', 'concat', '-safe', '0', '-i', ffmpeg_list_path, '-c', 'copy', final_video_path ]
-        logging.info(f"Running ffmpeg command: {' '.join(ffmpeg_args)}")
-        ffmpeg_process = subprocess.run(ffmpeg_args, check=True, timeout=3600, capture_output=True, text=True, encoding='utf-8')
-        logging.info(f"ffmpeg stdout: {ffmpeg_process.stdout}")
-        if ffmpeg_process.stderr: logging.warning(f"ffmpeg stderr: {ffmpeg_process.stderr}")
-        logging.info(f"FFmpeg finished. Combined video at: {final_video_path}")
-
-        # --- 4. Schedule Cleanup ---
-        @after_this_request
-        def cleanup(response):
-            try:
-                if tmpdir and os.path.exists(tmpdir):
-                    logging.info(f"Cleaning up combine video temporary directory: {tmpdir}")
-                    shutil.rmtree(tmpdir)
-            except Exception as e: logging.error(f"Error during combine video cleanup: {e}")
-            return response
-
-        # --- 5. Send Combined Video File ---
-        logging.info(f"Sending combined video file: {final_video_filename} from directory: {tmpdir}")
-        fallback_filename = 'combined_video.mp4';
-        encoded_filename = sanitize_filename_header(final_video_filename)
-        headers = { 'Content-Disposition': f'attachment; filename="{fallback_filename}"; filename*=UTF-8\'\'{encoded_filename}' }
-        mime_type = 'video/mp4'
-        headers['Content-Type'] = mime_type
-        return send_from_directory(tmpdir, final_video_filename, as_attachment=True), 200, headers
-
-    # --- Error Handling ---
-    except subprocess.CalledProcessError as e:
-        tool_name = "Tool"
-        cmd_str = ' '.join(e.cmd) if isinstance(e.cmd, list) else str(e.cmd)
-        if YTDLP_PATH and YTDLP_PATH in cmd_str: tool_name = "yt-dlp"
-        elif FFMPEG_PATH and FFMPEG_PATH in cmd_str: tool_name = "ffmpeg"
-        if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
-        logging.error(f"{tool_name} (combine video) failed: {e.stderr}")
-        error_detail = e.stderr[:500] if e.stderr else f"Unknown {tool_name} error"
-        if "confirm you’re not a bot" in error_detail or "Use --cookies" in error_detail:
-             return jsonify({"error": f"Authentication required for one or more items. Please provide cookies. ({error_detail})"}), 403
-        else:
-            return jsonify({"error": f"{tool_name} failed: {error_detail}"}), 500
-    except subprocess.TimeoutExpired:
-        if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
-        logging.error(f"Processing (combine video) timed out for URL: {playlist_url}")
-        return jsonify({"error": "Processing timed out"}), 504
+                title = playlist_info.get('title') or playlist_info.get('playlist_title')
+                if title: playlist_title_for_file = title
     except Exception as e:
-        if tmpdir and os.path.exists(tmpdir): shutil.rmtree(tmpdir)
-        logging.error(f"An unexpected error occurred (combine video): {e}", exc_info=True)
-        return jsonify({"error": f"An internal server error occurred"}), 500
+        logging.warning(f"[{job_id}] Quick title fetch for combine MP3 failed: {e}")
+        # If title_tmpdir was created in this try block and an error occurred before its finally
+        if 'title_tmpdir' in locals() and title_tmpdir and os.path.exists(title_tmpdir): shutil.rmtree(title_tmpdir)
+
+
+    with jobs_lock:
+        jobs[job_id] = {
+            "status": "queued",
+            "playlist_url": playlist_url,
+            "type": "combine_playlist_mp3",
+            "playlist_title": playlist_title_for_file # Store for final filename
+        }
+    thread = threading.Thread(target=_process_combine_playlist_mp3_task, args=(job_id, playlist_url, cookie_data))
+    thread.start()
+    logging.info(f"Queued job {job_id} for combine playlist MP3: {playlist_url}")
+    return jsonify({"message": "Job queued successfully.", "jobId": job_id}), 202
+
+
+# --- Job Status and Download Endpoints ---
+@app.route('/job-status/<job_id>', methods=['GET'])
+def get_job_status(job_id):
+    with jobs_lock: job = jobs.get(job_id)
+    if not job: return jsonify({"error": "Job not found"}), 404
+    response_data = {"jobId": job_id, "status": job["status"]}
+    if job["status"] == "completed":
+        response_data["filename"] = job.get("filename")
+        response_data["downloadUrl"] = f"/download-file/{job_id}/{sanitize_filename_header(job.get('filename', 'file'))}"
+    elif job["status"] == "failed":
+        response_data["error"] = job.get("error")
+    return jsonify(response_data), 200
+
+@app.route('/download-file/<job_id>/<filename>', methods=['GET'])
+def download_processed_file(job_id, filename):
+    logging.info(f"Download request for job {job_id}, filename {filename}")
+    job_tmp_dir_to_clean = None
+    with jobs_lock: job = jobs.get(job_id)
+
+    if not job or job.get("status") != "completed" or not job.get("filepath") or not job.get("filename"):
+        # If job is missing or not ready, clean up its temp dir if it exists and we know it
+        if job and job.get("job_tmp_dir") and os.path.exists(job.get("job_tmp_dir")):
+            logging.warning(f"[{job_id}] Job not ready for download or info missing. Cleaning up {job.get('job_tmp_dir')}")
+            shutil.rmtree(job.get("job_tmp_dir"))
+            with jobs_lock: # Remove from jobs dict
+                 if job_id in jobs: del jobs[job_id]
+        return jsonify({"error": "Job not found, not completed, or file info missing"}), 404
+
+    actual_filename_on_disk = job.get("filename")
+    file_full_path_on_disk = job.get("filepath")
+    job_tmp_dir_to_clean = job.get("job_tmp_dir") # Get the specific job's temp dir
+
+    if not os.path.exists(file_full_path_on_disk):
+        logging.error(f"File not found on disk for job {job_id}: {file_full_path_on_disk}")
+        if job_tmp_dir_to_clean and os.path.exists(job_tmp_dir_to_clean): shutil.rmtree(job_tmp_dir_to_clean)
+        with jobs_lock:
+            if job_id in jobs: del jobs[job_id]
+        return jsonify({"error": "File not found on server"}), 404
+
+    @after_this_request
+    def cleanup_job_directory(response):
+        try:
+            if job_tmp_dir_to_clean and os.path.exists(job_tmp_dir_to_clean):
+                logging.info(f"[{job_id}] Cleaning up job temporary directory: {job_tmp_dir_to_clean}")
+                shutil.rmtree(job_tmp_dir_to_clean)
+            with jobs_lock:
+                if job_id in jobs:
+                    del jobs[job_id]
+                    logging.info(f"[{job_id}] Removed job entry from memory.")
+        except Exception as e: logging.error(f"[{job_id}] Error during job directory cleanup: {e}")
+        return response
+
+    logging.info(f"Sending file: {actual_filename_on_disk} from directory: {os.path.dirname(file_full_path_on_disk)}")
+    fallback_filename = sanitize_fs_filename(actual_filename_on_disk)
+    encoded_filename = sanitize_filename_header(actual_filename_on_disk)
+    headers = { 'Content-Disposition': f'attachment; filename="{fallback_filename}"; filename*=UTF-8\'\'{encoded_filename}'}
+    return send_from_directory(os.path.dirname(file_full_path_on_disk), actual_filename_on_disk, as_attachment=True), 200, headers
+
+
+# --- Old direct processing endpoints (kept for reference, can be removed) ---
+# @app.route('/process-combine-video', methods=['POST'])
+# def process_combine_video():
+#    # ... (This was the old synchronous combine video logic) ...
+#    return jsonify({"message": "This synchronous endpoint is deprecated. Use job-based processing."}), 410
 
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, threaded=True)
 
