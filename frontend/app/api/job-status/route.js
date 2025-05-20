@@ -13,14 +13,15 @@ export async function GET(request) {
   console.log('--- API /api/job-status ---');
 
   if (!PYTHON_MICROSERVICE_URL) {
-    console.error("PYTHON_SERVICE_URL environment variable is not set.");
-    return NextResponse.json({ error: "Server configuration error." }, { status: 500 });
+    console.error("PYTHON_SERVICE_URL environment variable is not set in /api/job-status/route.js.");
+    return NextResponse.json({ error: "Server configuration error: Processing service URL is missing." }, { status: 500 });
   }
 
   const { searchParams } = new URL(request.url);
   const jobId = searchParams.get('jobId');
 
   if (!jobId) {
+    console.error("No jobId provided in query parameters to /api/job-status");
     return NextResponse.json({ error: 'jobId query parameter is required' }, { status: 400 });
   }
 
@@ -33,22 +34,42 @@ export async function GET(request) {
     });
 
     console.log(`Status for job ${jobId}:`, microserviceResponse.data);
-    // The Python service sends back { jobId, status, filename?, downloadUrl?, error? }
+    // The Python service sends back { jobId, status, filename?, downloadUrl?, error?, message? }
     return NextResponse.json(microserviceResponse.data, { status: microserviceResponse.status });
 
   } catch (error) {
-    console.error(`API /api/job-status - Error calling microservice for job ${jobId}:`, error);
-    if (axios.isAxiosError(error) && error.response) {
-        console.error('Error data:', error.response.data);
-        // If the job is not found on the Python service, it might return a 404
-        // The Python service should return JSON for errors too.
-        return NextResponse.json(
-            { error: `Failed to get job status: ${error.response.data.error || error.response.statusText}` },
-            { status: error.response.status }
-        );
-    } else if (error.code === 'ECONNREFUSED') {
-        return NextResponse.json({ error: "Processing service is unavailable." }, { status: 503 });
+    console.error(`API /api/job-status - Error calling Python microservice for job ${jobId}:`, error.message);
+
+    if (axios.isAxiosError(error)) {
+        if (error.response) {
+            // The Python service responded with an error status code (4xx or 5xx)
+            console.error('Python service error response data:', error.response.data);
+            console.error('Python service error response status:', error.response.status);
+            
+            const pythonErrorData = error.response.data;
+            let pythonErrorMessage = "Unknown error from processing service when fetching job status";
+            // Check if Python returned its own structured error
+            if (typeof pythonErrorData === 'object' && pythonErrorData !== null && pythonErrorData.error) {
+                pythonErrorMessage = pythonErrorData.error;
+            } else if (typeof pythonErrorData === 'string' && pythonErrorData.length > 0) { // Handle plain string errors
+                pythonErrorMessage = pythonErrorData;
+            } else if (error.response.status === 404) {
+                 pythonErrorMessage = `Job with ID ${jobId} not found on the processing service.`;
+            } else {
+                pythonErrorMessage = error.response.statusText || pythonErrorMessage;
+            }
+            
+            return NextResponse.json(
+                { error: `Failed to get job status: ${pythonErrorMessage}`, details: pythonErrorData },
+                { status: error.response.status || 500 }
+            );
+        } else if (error.request) {
+            // The request was made but no response was received
+            console.error('No response received from Python service (ECONNREFUSED or similar):', error.code);
+            return NextResponse.json({ error: "Processing service is unavailable or did not respond while fetching job status.", details: error.code }, { status: 503 });
+        }
     }
-    return NextResponse.json({ error: `Failed to get job status: ${error.message}` }, { status: 502 });
+    // For other types of errors
+    return NextResponse.json({ error: `Failed to get job status due to an unexpected server error.`, details: error.message }, { status: 500 });
   }
 }
