@@ -435,6 +435,9 @@ def download_processed_file(job_id, filename):
     return send_from_directory(os.path.dirname(file_full_path_on_disk), actual_filename_on_disk, as_attachment=True), 200, headers
 
 
+# --- Removed old synchronous /process-combine-video endpoint ---
+# If you need it for video combining, create a new job-based flow for it.
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, threaded=True)
