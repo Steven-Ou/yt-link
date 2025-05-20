@@ -13,52 +13,73 @@ export async function POST(request) {
   console.log('--- API /api/download (Start Single MP3 Job) ---');
 
   if (!PYTHON_MICROSERVICE_URL) {
-      console.error("PYTHON_SERVICE_URL environment variable is not set.");
+      console.error("PYTHON_SERVICE_URL environment variable is not set in /api/download/route.js.");
       return NextResponse.json({ error: "Server configuration error: Processing service URL is missing." }, { status: 500 });
   }
 
-  let url;
+  let url; // Changed from playlistUrl to url for single download
   let cookieData;
   try {
       const body = await request.json();
-      url = body.url;
-      cookieData = body.cookieData;
+      url = body.url; // Expect 'url' for single MP3
+      cookieData = body.cookieData; // Can be null or undefined if not provided
+
       if (!url) {
+          console.error("No url provided in request body to /api/download");
           return NextResponse.json({ error: 'No URL provided in request body' }, { status: 400 });
       }
   } catch (e) {
-       console.error("Error parsing request body:", e);
-       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+       console.error("Error parsing request body in /api/download:", e.message);
+       return NextResponse.json({ error: 'Invalid request body. Ensure it is valid JSON.', details: e.message }, { status: 400 });
   }
 
-  const targetUrl = `${PYTHON_MICROSERVICE_URL}/start-single-mp3-job`;
+  const targetUrl = `${PYTHON_MICROSERVICE_URL}/start-single-mp3-job`; // Correct Python endpoint
   console.log(`Forwarding request to start single MP3 job for ${url} to ${targetUrl}`);
-  console.log(`Cookie data being sent (length): ${cookieData ? cookieData.length : 'None'}`);
+  if (cookieData) {
+    console.log(`Cookie data being sent (length): ${String(cookieData).length}`);
+  } else {
+    console.log('No cookie data being sent.');
+  }
 
   try {
     const microserviceResponse = await axios.post(targetUrl,
-      { url: url, cookieData: cookieData },
+      { url: url, cookieData: cookieData }, // Send 'url'
       {
           headers: { 'Content-Type': 'application/json' },
           timeout: AXIOS_REQUEST_TIMEOUT_MS
       }
     );
 
-    // Expecting { message: "Job queued successfully.", jobId: "..." }
-    console.log('Response from microservice (start job):', microserviceResponse.data);
+    console.log('Response from Python microservice (/start-single-mp3-job):', microserviceResponse.data);
     return NextResponse.json(microserviceResponse.data, { status: microserviceResponse.status });
 
   } catch (error) {
-    console.error('API /api/download - Error calling microservice (start job):', error);
-    if (axios.isAxiosError(error) && error.response) {
-        console.error('Error data:', error.response.data);
-        return NextResponse.json(
-            { error: `Processing service failed: ${error.response.data.error || error.response.statusText}` },
-            { status: error.response.status }
-        );
-    } else if (error.code === 'ECONNREFUSED') {
-        return NextResponse.json({ error: "Processing service is unavailable." }, { status: 503 });
+    console.error('API /api/download - Error calling Python microservice (start-single-mp3-job):', error.message);
+
+    if (axios.isAxiosError(error)) {
+        if (error.response) {
+            console.error('Python service error response data:', error.response.data);
+            console.error('Python service error response status:', error.response.status);
+            
+            const pythonErrorData = error.response.data;
+            let pythonErrorMessage = "Unknown error from processing service";
+            if (typeof pythonErrorData === 'object' && pythonErrorData !== null && pythonErrorData.error) {
+                pythonErrorMessage = pythonErrorData.error;
+            } else if (typeof pythonErrorData === 'string') {
+                pythonErrorMessage = pythonErrorData;
+            } else {
+                pythonErrorMessage = error.response.statusText || pythonErrorMessage;
+            }
+            
+            return NextResponse.json(
+                { error: `Processing service failed: ${pythonErrorMessage}`, details: pythonErrorData },
+                { status: error.response.status || 500 }
+            );
+        } else if (error.request) {
+            console.error('No response received from Python service (ECONNREFUSED or similar):', error.code);
+            return NextResponse.json({ error: "Processing service is unavailable or did not respond.", details: error.code }, { status: 503 });
+        }
     }
-    return NextResponse.json({ error: `Failed to start job: ${error.message}` }, { status: 502 });
+    return NextResponse.json({ error: `Failed to start job due to an unexpected server error.`, details: error.message }, { status: 500 });
   }
 }
