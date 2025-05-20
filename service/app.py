@@ -86,6 +86,11 @@ def _process_single_mp3_task(job_id, url, cookie_data):
                 jobs[job_id].update({"status": "completed", "filename": mp3_file_name, "filepath": full_mp3_path})
         else:
             stderr_snippet = process.stderr[:500] if process.stderr else "No MP3 files produced."
+            # If yt-dlp exited with an error code but we still have no file, report that.
+            if process.returncode != 0 and not stderr_snippet:
+                 stderr_snippet = f"yt-dlp exited with code {process.returncode} but no specific error message captured."
+            elif not stderr_snippet: # No error code, but no file
+                 stderr_snippet = "No MP3 files produced and no specific error from yt-dlp."
             raise Exception(f"yt-dlp did not produce an MP3 file. Stderr: {stderr_snippet}")
     except subprocess.CalledProcessError as e: # Should be less common with check=False
         logging.error(f"[{job_id}] yt-dlp failed. stderr: {e.stderr}")
@@ -103,8 +108,7 @@ def _process_playlist_zip_task(job_id, playlist_url, cookie_data):
     logging.info(f"[{job_id}] Background task started for playlist zip: {playlist_url}")
     job_tmp_dir = None
     playlist_title_for_file = f"playlist_{job_id}" # Default if title fetch fails
-    # Get initial title from job data, which was set with a default in start_job
-    with jobs_lock:
+    with jobs_lock: # Get initial title if set by start_job
         playlist_title_for_file = jobs[job_id].get("playlist_title", playlist_title_for_file)
 
     try:
@@ -135,7 +139,6 @@ def _process_playlist_zip_task(job_id, playlist_url, cookie_data):
         except Exception as e:
             logging.warning(f"[{job_id}] Quick title fetch for zip failed: {e}. Using default: {playlist_title_for_file}")
             if 'cookie_file_path_title' in locals() and cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
-        # Update the job with the (potentially new) title
         with jobs_lock:
             jobs[job_id]["playlist_title"] = playlist_title_for_file
 
@@ -166,6 +169,10 @@ def _process_playlist_zip_task(job_id, playlist_url, cookie_data):
 
         if not mp3_files_for_zip:
             stderr_snippet = process.stderr[:500] if process.stderr else "No MP3 files produced."
+            if process.returncode != 0 and not stderr_snippet:
+                 stderr_snippet = f"yt-dlp exited with code {process.returncode} but no specific error message captured."
+            elif not stderr_snippet:
+                 stderr_snippet = "No MP3 files produced and no specific error from yt-dlp."
             raise Exception(f"yt-dlp did not produce any MP3 files for zipping. Stderr: {stderr_snippet}")
 
         with jobs_lock: jobs[job_id]["status"] = "processing_zip"
@@ -201,7 +208,6 @@ def _process_combine_playlist_mp3_task(job_id, playlist_url, cookie_data):
     with jobs_lock: # Get initial title
         playlist_title = jobs[job_id].get("playlist_title", playlist_title)
 
-
     try:
         job_tmp_dir = tempfile.mkdtemp(prefix=f"{job_id}_combine_mp3_")
         logging.info(f"[{job_id}] Created job temporary directory for combine MP3: {job_tmp_dir}")
@@ -232,7 +238,6 @@ def _process_combine_playlist_mp3_task(job_id, playlist_url, cookie_data):
         except Exception as title_error:
             logging.warning(f"[{job_id}] Could not get playlist title for combine MP3: {str(title_error)}. Using default: {playlist_title}")
             if 'cookie_file_path_title' in locals() and cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
-        # Update job with fetched title
         with jobs_lock:
             jobs[job_id]["playlist_title"] = playlist_title
 
@@ -262,6 +267,10 @@ def _process_combine_playlist_mp3_task(job_id, playlist_url, cookie_data):
         mp3_files_to_combine = [f for f in files_in_job_dir if f.lower().endswith('.mp3') and not f.startswith('cookies_')]
         if not mp3_files_to_combine:
             stderr_snippet = audio_process.stderr[:500] if audio_process.stderr else "No MP3 files produced."
+            if audio_process.returncode != 0 and not stderr_snippet:
+                stderr_snippet = f"yt-dlp exited with code {audio_process.returncode} but no specific error message captured."
+            elif not stderr_snippet:
+                stderr_snippet = "No MP3 files produced and no specific error from yt-dlp."
             raise Exception(f"yt-dlp did not produce any MP3 files for combining. Stderr: {stderr_snippet}")
 
         mp3_files_to_combine.sort(key=lambda f: sort_files_by_playlist_index(f, ''))
