@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react'; // Added useEffect, useRef
+import { useState, useEffect, useRef } from 'react'; // Corrected: removed extra 'g'
 import {
     Box, Button, Container, Divider, Drawer, List, ListItem,
     ListItemButton, ListItemIcon, ListItemText, TextField, Toolbar,
@@ -63,7 +63,7 @@ const customTheme = createTheme({
         background: { default: '#000000', paper: '#FFFFFF', },
         text: { primary: '#1A1A1A', secondary: '#616161', disabled: '#BDBDBD', },
     },
-    components: { /* ... Your Mui component styleOverrides ... */
+    components: {
         MuiCssBaseline: { styleOverrides: { body: { backgroundColor: '#000000', }, }, },
         MuiDrawer: { styleOverrides: { paper: { backgroundColor: '#1A1A1A', color: '#F5F5F5', }, }, },
         MuiListItemButton: { styleOverrides: { root: { '&.Mui-selected': { backgroundColor: 'rgba(229, 57, 53, 0.2)', '&:hover': { backgroundColor: 'rgba(229, 57, 53, 0.3)', }, }, '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.08)', }, }, }, },
@@ -75,22 +75,18 @@ const customTheme = createTheme({
 });
 
 // For constructing final download URLs from Python service
-// Ensure this is set in .env.local as NEXT_PUBLIC_PYTHON_SERVICE_URL=http://localhost:8080
-// and in Vercel environment variables as NEXT_PUBLIC_PYTHON_SERVICE_URL=https://your-render-service-url.onrender.com
 const PYTHON_SERVICE_BASE_URL = process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL || '';
 
 export default function Home() {
     const [currentView, setCurrentView] = useState('welcome');
     const [url, setUrl] = useState('');
     const [playlistUrl, setPlaylistUrl] = useState('');
-    const [combineVideoUrl, setCombineVideoUrl] = useState(''); // For combine playlist MP3/Video
+    const [combineVideoUrl, setCombineVideoUrl] = useState('');
     const [cookieData, setCookieData] = useState('');
 
-    // --- Job Status States ---
     const [activeJobs, setActiveJobs] = useState({});
     const pollingIntervals = useRef({});
 
-    // --- Loading State Helpers ---
     const getJobStatus = (jobType) => activeJobs[jobType]?.status;
     const isLoading = (jobType) => {
         const status = getJobStatus(jobType);
@@ -98,7 +94,6 @@ export default function Home() {
     };
     const isAnyJobLoading = () => Object.values(activeJobs).some(job => job.status === 'queued' || job.status?.startsWith('processing'));
 
-    // --- Function to Start a Job ---
     const startJob = async (jobType, endpoint, payload, operationName) => {
         setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...`, type: jobType } }));
         try {
@@ -119,7 +114,6 @@ export default function Home() {
         }
     };
 
-    // --- Function to Poll Job Status ---
     const pollJobStatus = (jobId, jobType) => {
         if (pollingIntervals.current[jobId]) { clearInterval(pollingIntervals.current[jobId]); }
         pollingIntervals.current[jobId] = setInterval(async () => {
@@ -133,7 +127,6 @@ export default function Home() {
                 console.log(`Job [${jobId}] status:`, data);
                 setActiveJobs(prev => {
                     const currentJob = prev[jobType];
-                    // Only update if the job ID matches, to prevent race conditions if a new job of same type starts
                     if (currentJob && currentJob.id === jobId) {
                         return {
                             ...prev,
@@ -142,14 +135,14 @@ export default function Home() {
                                 status: data.status,
                                 message: data.status === 'completed' ? `Completed: ${data.filename || 'File ready'}` :
                                          data.status === 'failed' ? `Failed: ${data.error || 'Unknown error'}` :
-                                         data.message || `Status: ${data.status}`, // Use message from server if available
+                                         data.message || `Status: ${data.status}`,
                                 downloadUrl: data.status === 'completed' ? data.downloadUrl : null,
                                 filename: data.status === 'completed' ? data.filename : null,
                                 error: data.status === 'failed' ? data.error : null,
                             }
                         };
                     }
-                    return prev; // No change if job ID doesn't match current active job for this type
+                    return prev;
                 });
                 if (data.status === 'completed' || data.status === 'failed') {
                     clearInterval(pollingIntervals.current[jobId]);
@@ -167,30 +160,28 @@ export default function Home() {
                 clearInterval(pollingIntervals.current[jobId]);
                 delete pollingIntervals.current[jobId];
             }
-        }, 5000); // Poll every 5 seconds
+        }, 5000);
     };
 
-    useEffect(() => { // Cleanup intervals on component unmount
+    useEffect(() => {
         const intervals = pollingIntervals.current;
         return () => { Object.values(intervals).forEach(clearInterval); };
     }, []);
 
-    // --- Download Functions (Call startJob) ---
-    const downloadMP3 = () => { // Kept original name
+    const downloadMP3 = () => {
         if (!url) return alert('Enter video URL');
         startJob('singleMp3', '/api/download', { url, cookieData: cookieData.trim() || null }, 'single MP3 download');
     };
-    const downloadPlaylistZip = () => { // Kept original name
+    const downloadPlaylistZip = () => {
         if (!playlistUrl) return alert('Enter playlist URL for Zip download');
         startJob('playlistZip', '/api/download-playlist', { playlistUrl, cookieData: cookieData.trim() || null }, 'playlist zip');
     };
-    const downloadCombinedPlaylistMp3 = () => { // Renamed in previous step, keeping it for clarity
+    const downloadCombinedPlaylistMp3 = () => {
         if (!combineVideoUrl) return alert('Enter playlist URL for Combine MP3');
         startJob('combineMp3', '/api/convert', { playlistUrl: combineVideoUrl, cookieData: cookieData.trim() || null }, 'combine playlist to MP3');
     };
 
-    // --- Cookie Text Field Component ---
-    const CookieInputField = () => ( /* ... Same as your version ... */
+    const CookieInputField = () => (
         <TextField
             label="Paste YouTube Cookies Here (Optional)"
             helperText="Needed for age-restricted/private videos. Export using a browser extension (e.g., 'Get cookies.txt')."
@@ -204,9 +195,8 @@ export default function Home() {
         />
     );
 
-    // --- Job Status Display Component ---
     const JobStatusDisplay = ({ jobInfo }) => {
-        if (!jobInfo || !jobInfo.status || jobInfo.status === 'idle') return null; // Don't show if idle
+        if (!jobInfo || !jobInfo.status || jobInfo.status === 'idle') return null;
 
         let icon = <HourglassEmptyIcon />;
         let color = "text.secondary";
@@ -219,7 +209,8 @@ export default function Home() {
             icon = <ErrorOutlineIcon color="error" />;
             color = "error.main";
         } else if (jobInfo.status === 'queued' || jobInfo.status?.startsWith('processing')) {
-            icon = <CircularProgress size={20} sx={{ mr: 1}} color="inherit" />;
+            icon = <CircularProgress size={20} sx={{ mr: 1}} color="inherit" />; // Use inherit for icon color
+            color = "info.main"; // Use info color for processing text
             showProgressBar = true;
         }
         
@@ -230,7 +221,7 @@ export default function Home() {
                 <Typography variant="subtitle1" sx={{display: 'flex', alignItems: 'center', color: color}}>
                     {icon} <Box component="span" sx={{ml:1}}>{jobInfo.message || `Status: ${jobInfo.status}`}</Box>
                 </Typography>
-                {showProgressBar && <LinearProgress sx={{mt:1, mb:1}}/>}
+                {showProgressBar && <LinearProgress color="info" sx={{mt:1, mb:1}}/>} {/* Use info color for progress bar */}
                 {jobInfo.status === 'completed' && fullDownloadUrl && (
                     <Button variant="contained" color="success" href={fullDownloadUrl} sx={{ mt: 1 }}>
                         Download: {jobInfo.filename}
@@ -240,7 +231,8 @@ export default function Home() {
         );
     };
 
-    // Function to render the main content based on currentView
+    const [expandedDownloads, setExpandedDownloads] = useState(true);
+
     const renderContent = () => {
         switch (currentView) {
             case 'welcome':
@@ -279,7 +271,7 @@ export default function Home() {
                         <JobStatusDisplay jobInfo={activeJobs['playlistZip']} />
                     </Container>
                 );
-            case 'combine': // This is for "Combine Playlist to Single MP3"
+            case 'combine':
                  return (
                      <Container maxWidth="sm" sx={{ mt: 4 }}>
                         <Typography variant='h6' gutterBottom>Convert Playlist to Single MP3</Typography>
@@ -297,7 +289,6 @@ export default function Home() {
         }
     };
 
-    // Main component structure (Your layout with Drawer, Accordion etc.)
     return (
         <ThemeProvider theme={customTheme}>
             <Box sx={{ display: 'flex' }}>
@@ -330,10 +321,9 @@ export default function Home() {
                                             </ListItemButton>
                                         </ListItem>
                                         <ListItem disablePadding sx={{ pl: 4 }}>
-                                            {/* This button now corresponds to "Combine Playlist to Single MP3" */}
                                             <ListItemButton selected={currentView === 'combine'} onClick={() => setCurrentView('combine')}>
-                                                <ListItemIcon><VideoLibraryIcon /></ListItemIcon> {/* Consider changing icon if it's now audio */}
-                                                <ListItemText primary="Combine Playlist MP3" /> {/* Updated text */}
+                                                <ListItemIcon><VideoLibraryIcon /></ListItemIcon>
+                                                <ListItemText primary="Combine Playlist MP3" />
                                             </ListItemButton>
                                         </ListItem>
                                     </List>
