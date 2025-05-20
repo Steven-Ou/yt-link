@@ -9,7 +9,10 @@ import uuid
 import threading
 from flask import Flask, request, send_file, jsonify, Response, stream_with_context, after_this_request, send_from_directory
 from urllib.parse import quote
+from flask_cors import CORS # Add this import
 
+app = Flask(__name__)
+CORS(app) # Initialize CORS for all routes, or configure more specifically
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
