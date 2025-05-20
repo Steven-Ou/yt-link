@@ -1,441 +1,348 @@
-import os
-import subprocess
-import tempfile
-import shutil
-import logging
-import zipfile
-import json
-import uuid # For generating unique job IDs
-import threading # For background processing
-from flask import Flask, request, send_file, jsonify, Response, stream_with_context, after_this_request, send_from_directory
-from urllib.parse import quote
+'use client';
+import { useState, useEffect, useRef } from 'react'; // Corrected: removed extra 'g'
+import {
+    Box, Button, Container, Divider, Drawer, List, ListItem,
+    ListItemButton, ListItemIcon, ListItemText, TextField, Toolbar,
+    Typography, CssBaseline,
+    // Import Accordion components
+    Accordion, AccordionSummary, AccordionDetails,
+    // Import for custom theme
+    createTheme, ThemeProvider,
+    // Progress indicators
+    CircularProgress, LinearProgress
+} from '@mui/material';
+import {
+    Home as HomeIcon, Download as DownloadIcon, QueueMusic as QueueMusicIcon,
+    VideoLibrary as VideoLibraryIcon, Coffee as CoffeeIcon,
+    Cookie as CookieIcon,
+    ExpandMore as ExpandMoreIcon,
+    CheckCircleOutline as CheckCircleOutlineIcon,
+    ErrorOutline as ErrorOutlineIcon,
+    HourglassEmpty as HourglassEmptyIcon
+ } from '@mui/icons-material';
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# --- Check if yt-dlp exists ---
-YTDLP_PATH = shutil.which("yt-dlp")
-if not YTDLP_PATH:
-    logging.warning("yt-dlp command not found in PATH. Ensure it's installed and accessible.")
-
-# --- Check if ffmpeg exists ---
-FFMPEG_PATH = shutil.which("ffmpeg")
-if not FFMPEG_PATH:
-    logging.warning("ffmpeg command not found in PATH. Combining audio/videos will likely fail.")
-
-app = Flask(__name__)
-
-# In-memory store for job statuses and file paths
-jobs = {}
-jobs_lock = threading.Lock() # To make access to 'jobs' dictionary thread-safe
-
-# Helper to encode filename for Content-Disposition
-def sanitize_filename_header(filename):
-    return quote(filename)
-
-# Helper function to sort files based on playlist index prefix
-def sort_files_by_playlist_index(a, b):
-    regex = r'^(\d+)\.'
-    import re # Import re locally as it's only used here
-    match_a = re.match(regex, a)
-    match_b = re.match(regex, b)
-    index_a = int(match_a.group(1)) if match_a else float('inf')
-    index_b = int(match_b.group(1)) if match_b else float('inf')
-    return index_a - index_b
-
-# Helper to sanitize filenames for the filesystem
-def sanitize_fs_filename(name):
-    name = name.replace('/', '_').replace('\\', '_').replace(':', '_').replace('*', '_').replace('?', '_').replace('"', '_').replace('<', '_').replace('>', '_').replace('|', '_')
-    return name.strip() or 'untitled_file'
-
-# --- Background Task for Single MP3 Download ---
-def _process_single_mp3_task(job_id, url, cookie_data):
-    logging.info(f"[{job_id}] Background task started for single MP3: {url}")
-    job_tmp_dir = None # Initialize
-    try:
-        job_tmp_dir = tempfile.mkdtemp(prefix=f"{job_id}_single_")
-        logging.info(f"[{job_id}] Created job temporary directory: {job_tmp_dir}")
-        with jobs_lock:
-            jobs[job_id].update({"status": "processing_download", "job_tmp_dir": job_tmp_dir})
-
-        output_template = os.path.join(job_tmp_dir, '%(title)s.%(ext)s')
-        args = [ YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template, '--no-playlist' ] # Added -i
-        if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
-            cookie_file_path = os.path.join(job_tmp_dir, 'cookies.txt')
-            try:
-                with open(cookie_file_path, 'w', encoding='utf-8') as f: f.write(cookie_data)
-                logging.info(f"[{job_id}] Saved cookie data to: {cookie_file_path}")
-                args.extend(['--cookies', cookie_file_path])
-            except Exception as e:
-                logging.error(f"[{job_id}] Failed to write cookie file: {e}")
-                args = [arg for arg in args if not arg.startswith('--cookies')]
-        args.extend(['--', url])
-
-        logging.info(f"[{job_id}] Running yt-dlp. Command: {' '.join(args)}")
-        process = subprocess.run( args, check=False, timeout=600, capture_output=True, text=True, encoding='utf-8') # check=False
-        logging.info(f"[{job_id}] yt-dlp stdout: {process.stdout}")
-        if process.stderr: logging.warning(f"[{job_id}] yt-dlp stderr: {process.stderr}")
-
-        files_in_job_dir = os.listdir(job_tmp_dir)
-        mp3_file_name = next((f for f in files_in_job_dir if f.lower().endswith('.mp3') and not f == 'cookies.txt'), None)
-
-        if mp3_file_name:
-            full_mp3_path = os.path.join(job_tmp_dir, mp3_file_name)
-            logging.info(f"[{job_id}] MP3 file created: {full_mp3_path}")
-            with jobs_lock:
-                jobs[job_id].update({"status": "completed", "filename": mp3_file_name, "filepath": full_mp3_path})
-        else:
-            stderr_snippet = process.stderr[:500] if process.stderr else "No MP3 files produced."
-            # If yt-dlp exited with an error code but we still have no file, report that.
-            if process.returncode != 0 and not stderr_snippet:
-                 stderr_snippet = f"yt-dlp exited with code {process.returncode} but no specific error message captured."
-            elif not stderr_snippet: # No error code, but no file
-                 stderr_snippet = "No MP3 files produced and no specific error from yt-dlp."
-            raise Exception(f"yt-dlp did not produce an MP3 file. Stderr: {stderr_snippet}")
-    except subprocess.CalledProcessError as e: # Should be less common with check=False
-        logging.error(f"[{job_id}] yt-dlp failed. stderr: {e.stderr}")
-        error_detail = e.stderr[:500] if e.stderr else "Unknown yt-dlp error"
-        with jobs_lock: jobs[job_id].update({"status": "failed", "error": f"yt-dlp execution failed: {error_detail}"})
-    except subprocess.TimeoutExpired:
-        logging.error(f"[{job_id}] yt-dlp timed out for URL: {url}")
-        with jobs_lock: jobs[job_id].update({"status": "failed", "error": "Processing timed out during download."})
-    except Exception as e:
-        logging.error(f"[{job_id}] An unexpected error occurred in background task: {e}", exc_info=True)
-        with jobs_lock: jobs[job_id].update({"status": "failed", "error": f"An internal server error occurred: {str(e)}"})
-
-# --- Background Task for Playlist Zip ---
-def _process_playlist_zip_task(job_id, playlist_url, cookie_data):
-    logging.info(f"[{job_id}] Background task started for playlist zip: {playlist_url}")
-    job_tmp_dir = None
-    playlist_title_for_file = f"playlist_{job_id}" # Default if title fetch fails
-    with jobs_lock: # Get initial title if set by start_job
-        playlist_title_for_file = jobs[job_id].get("playlist_title", playlist_title_for_file)
-
-    try:
-        job_tmp_dir = tempfile.mkdtemp(prefix=f"{job_id}_zip_")
-        logging.info(f"[{job_id}] Created job temporary directory for zip: {job_tmp_dir}")
-
-        # --- Fetch Playlist Title (inside thread) ---
-        try:
-            logging.info(f"[{job_id}] Fetching playlist title for zip: {playlist_url}")
-            title_args = [ YTDLP_PATH, '--flat-playlist', '--dump-single-json' ]
-            cookie_file_path_title = None
-            if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
-                try:
-                    cookie_file_path_title = os.path.join(job_tmp_dir, 'cookies_title_zip.txt')
-                    with open(cookie_file_path_title, 'w', encoding='utf-8') as f: f.write(cookie_data)
-                    title_args.extend(['--cookies', cookie_file_path_title])
-                except Exception as e: logging.error(f"[{job_id}] Failed to write cookie file for title (zip): {e}")
-            title_args.extend(['--', playlist_url])
-            title_process = subprocess.run(title_args, timeout=60, capture_output=True, text=True, encoding='utf-8')
-            if cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
-
-            if title_process.returncode == 0 and title_process.stdout:
-                playlist_info = json.loads(title_process.stdout)
-                if isinstance(playlist_info, dict):
-                    title = playlist_info.get('title') or playlist_info.get('playlist_title')
-                    if title: playlist_title_for_file = title
-            logging.info(f"[{job_id}] Using title for zip: {playlist_title_for_file}")
-        except Exception as e:
-            logging.warning(f"[{job_id}] Quick title fetch for zip failed: {e}. Using default: {playlist_title_for_file}")
-            if 'cookie_file_path_title' in locals() and cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
-        with jobs_lock:
-            jobs[job_id]["playlist_title"] = playlist_title_for_file
-
-        with jobs_lock:
-            jobs[job_id].update({"status": "processing_download_playlist", "job_tmp_dir": job_tmp_dir})
-
-        output_template = os.path.join(job_tmp_dir, '%(playlist_index)s.%(title)s.%(ext)s')
-        args = [ YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template ]
-        cookie_file_path_dl = None
-        if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
-            cookie_file_path_dl = os.path.join(job_tmp_dir, 'cookies_dl.txt')
-            try:
-                with open(cookie_file_path_dl, 'w', encoding='utf-8') as f: f.write(cookie_data)
-                logging.info(f"[{job_id}] Saved cookie data for playlist zip to: {cookie_file_path_dl}")
-                args.extend(['--cookies', cookie_file_path_dl])
-            except Exception as e:
-                logging.error(f"[{job_id}] Failed to write cookie file for playlist zip: {e}")
-                args = [arg for arg in args if not arg.startswith('--cookies')]
-        args.extend(['--', playlist_url])
-
-        logging.info(f"[{job_id}] Running yt-dlp for playlist zip. Command: {' '.join(args)}")
-        process = subprocess.run(args, check=False, timeout=1800, capture_output=True, text=True, encoding='utf-8')
-        logging.info(f"[{job_id}] yt-dlp playlist zip stdout: {process.stdout}")
-        if process.stderr: logging.warning(f"[{job_id}] yt-dlp playlist zip stderr: {process.stderr}")
-
-        files_in_job_dir = os.listdir(job_tmp_dir)
-        mp3_files_for_zip = [f for f in files_in_job_dir if f.lower().endswith('.mp3') and not f.startswith('cookies_')]
-
-        if not mp3_files_for_zip:
-            stderr_snippet = process.stderr[:500] if process.stderr else "No MP3 files produced."
-            if process.returncode != 0 and not stderr_snippet:
-                 stderr_snippet = f"yt-dlp exited with code {process.returncode} but no specific error message captured."
-            elif not stderr_snippet:
-                 stderr_snippet = "No MP3 files produced and no specific error from yt-dlp."
-            raise Exception(f"yt-dlp did not produce any MP3 files for zipping. Stderr: {stderr_snippet}")
-
-        with jobs_lock: jobs[job_id]["status"] = "processing_zip"
-        zip_filename = f"{sanitize_fs_filename(playlist_title_for_file)}.zip"
-        zip_file_full_path = os.path.join(job_tmp_dir, zip_filename)
-
-        logging.info(f"[{job_id}] Zipping {len(mp3_files_for_zip)} MP3 files into {zip_file_full_path}")
-        with zipfile.ZipFile(zip_file_full_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for mp3_file in mp3_files_for_zip:
-                zipf.write(os.path.join(job_tmp_dir, mp3_file), arcname=mp3_file)
-
-        logging.info(f"[{job_id}] Zip file created: {zip_file_full_path}")
-        with jobs_lock:
-            jobs[job_id].update({"status": "completed", "filename": zip_filename, "filepath": zip_file_full_path})
-
-    except subprocess.CalledProcessError as e:
-        logging.error(f"[{job_id}] yt-dlp (playlist zip) failed. stderr: {e.stderr}")
-        error_detail = e.stderr[:500] if e.stderr else "Unknown yt-dlp error"
-        with jobs_lock: jobs[job_id].update({"status": "failed", "error": f"yt-dlp execution failed (playlist zip): {error_detail}"})
-    except subprocess.TimeoutExpired:
-        logging.error(f"[{job_id}] yt-dlp (playlist zip) timed out for URL: {playlist_url}")
-        with jobs_lock: jobs[job_id].update({"status": "failed", "error": "Processing timed out during playlist download."})
-    except Exception as e:
-        logging.error(f"[{job_id}] An unexpected error occurred in playlist zip task: {e}", exc_info=True)
-        with jobs_lock: jobs[job_id].update({"status": "failed", "error": f"An internal server error occurred: {str(e)}"})
-
-
-# --- Background Task for Combine Playlist to Single MP3 ---
-def _process_combine_playlist_mp3_task(job_id, playlist_url, cookie_data):
-    logging.info(f"[{job_id}] Background task started for combine playlist MP3: {playlist_url}")
-    job_tmp_dir = None
-    playlist_title = "combined_audio" # Default, will be updated by title fetch
-    with jobs_lock: # Get initial title
-        playlist_title = jobs[job_id].get("playlist_title", playlist_title)
-
-    try:
-        job_tmp_dir = tempfile.mkdtemp(prefix=f"{job_id}_combine_mp3_")
-        logging.info(f"[{job_id}] Created job temporary directory for combine MP3: {job_tmp_dir}")
-
-        # --- Fetch Playlist Title (inside thread) ---
-        try:
-            logging.info(f"[{job_id}] Fetching playlist title for combine MP3: {playlist_url}")
-            title_args = [ YTDLP_PATH, '--flat-playlist', '--dump-single-json' ]
-            cookie_file_path_title = None
-            if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
-                 try:
-                     cookie_file_path_title = os.path.join(job_tmp_dir, 'cookies_title.txt')
-                     with open(cookie_file_path_title, 'w', encoding='utf-8') as f: f.write(cookie_data)
-                     title_args.extend(['--cookies', cookie_file_path_title])
-                 except Exception as e: logging.error(f"[{job_id}] Failed to write cookie file for title: {e}")
-            title_args.extend(['--', playlist_url])
-
-            title_process = subprocess.run(title_args, check=True, timeout=60, capture_output=True, text=True, encoding='utf-8')
-            if cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
-
-            playlist_info = json.loads(title_process.stdout)
-            if isinstance(playlist_info, dict):
-                current_title_val = playlist_info.get('title') or playlist_info.get('playlist_title')
-                if current_title_val: playlist_title = current_title_val
-                else: logging.warning(f"[{job_id}] Could not find 'title' or 'playlist_title' in JSON for combine MP3. Using default.")
-            else: logging.warning(f"[{job_id}] Playlist info for combine MP3 is not a dictionary. Using default.")
-            logging.info(f"[{job_id}] Using playlist title for combined MP3: {playlist_title}")
-        except Exception as title_error:
-            logging.warning(f"[{job_id}] Could not get playlist title for combine MP3: {str(title_error)}. Using default: {playlist_title}")
-            if 'cookie_file_path_title' in locals() and cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
-        with jobs_lock:
-            jobs[job_id]["playlist_title"] = playlist_title
-
-
-        with jobs_lock:
-            jobs[job_id].update({"status": "processing_download_playlist_audio"})
-
-        output_template = os.path.join(job_tmp_dir, '%(playlist_index)s.%(title)s.%(ext)s')
-        ytdlp_audio_args = [ YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template ]
-        cookie_file_path_dl = None
-        if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
-             try:
-                 cookie_file_path_dl = os.path.join(job_tmp_dir, 'cookies_dl.txt')
-                 with open(cookie_file_path_dl, 'w', encoding='utf-8') as f: f.write(cookie_data)
-                 ytdlp_audio_args.extend(['--cookies', cookie_file_path_dl])
-             except Exception as e:
-                 logging.error(f"[{job_id}] Failed to write cookie file for audio download: {e}")
-                 ytdlp_audio_args = [arg for arg in ytdlp_audio_args if not arg.startswith('--cookies')]
-        ytdlp_audio_args.extend(['--', playlist_url])
-
-        logging.info(f"[{job_id}] yt-dlp audio download args: {' '.join(ytdlp_audio_args)}")
-        audio_process = subprocess.run(ytdlp_audio_args, check=False, timeout=3600, capture_output=True, text=True, encoding='utf-8')
-        logging.info(f"[{job_id}] yt-dlp audio download stdout: {audio_process.stdout}")
-        if audio_process.stderr: logging.warning(f"[{job_id}] yt-dlp audio download stderr: {audio_process.stderr}")
-
-        files_in_job_dir = os.listdir(job_tmp_dir)
-        mp3_files_to_combine = [f for f in files_in_job_dir if f.lower().endswith('.mp3') and not f.startswith('cookies_')]
-        if not mp3_files_to_combine:
-            stderr_snippet = audio_process.stderr[:500] if audio_process.stderr else "No MP3 files produced."
-            if audio_process.returncode != 0 and not stderr_snippet:
-                stderr_snippet = f"yt-dlp exited with code {audio_process.returncode} but no specific error message captured."
-            elif not stderr_snippet:
-                stderr_snippet = "No MP3 files produced and no specific error from yt-dlp."
-            raise Exception(f"yt-dlp did not produce any MP3 files for combining. Stderr: {stderr_snippet}")
-
-        mp3_files_to_combine.sort(key=lambda f: sort_files_by_playlist_index(f, ''))
-        logging.info(f"[{job_id}] Found and sorted MP3 files for combining: {mp3_files_to_combine}")
-
-        with jobs_lock: jobs[job_id]["status"] = "processing_ffmpeg_concat_mp3"
-        ffmpeg_list_path = os.path.join(job_tmp_dir, 'mp3_mylist.txt')
-        with open(ffmpeg_list_path, 'w', encoding='utf-8') as f:
-            for mp3_f in mp3_files_to_combine:
-                f.write(f"file '{os.path.join(job_tmp_dir, mp3_f).replace("'", "'\\''")}'\n")
-        logging.info(f"[{job_id}] Generated FFmpeg list for MP3s: {ffmpeg_list_path}")
-
-        final_mp3_filename = f"{sanitize_fs_filename(playlist_title)}.mp3"
-        final_mp3_full_path = os.path.join(job_tmp_dir, final_mp3_filename)
-        ffmpeg_args = [ FFMPEG_PATH, '-f', 'concat', '-safe', '0', '-i', ffmpeg_list_path, '-c', 'copy', final_mp3_full_path ]
-        logging.info(f"[{job_id}] Running ffmpeg command for MP3 concat: {' '.join(ffmpeg_args)}")
-        ffmpeg_process = subprocess.run(ffmpeg_args, check=True, timeout=1800, capture_output=True, text=True, encoding='utf-8')
-        logging.info(f"[{job_id}] ffmpeg MP3 concat stdout: {ffmpeg_process.stdout}")
-        if ffmpeg_process.stderr: logging.warning(f"[{job_id}] ffmpeg MP3 concat stderr: {ffmpeg_process.stderr}")
-
-        logging.info(f"[{job_id}] FFmpeg finished. Combined MP3 at: {final_mp3_full_path}")
-        with jobs_lock:
-            jobs[job_id].update({"status": "completed", "filename": final_mp3_filename, "filepath": final_mp3_full_path})
-
-    except subprocess.CalledProcessError as e:
-        tool_name = "Tool"
-        cmd_str = ' '.join(e.cmd) if isinstance(e.cmd, list) else str(e.cmd)
-        if YTDLP_PATH and YTDLP_PATH in cmd_str: tool_name = "yt-dlp"
-        elif FFMPEG_PATH and FFMPEG_PATH in cmd_str: tool_name = "ffmpeg"
-        logging.error(f"[{job_id}] {tool_name} (combine playlist MP3) failed. stderr: {e.stderr}")
-        error_detail = e.stderr[:500] if e.stderr else f"Unknown {tool_name} error"
-        with jobs_lock: jobs[job_id].update({"status": "failed", "error": f"{tool_name} execution failed (combine playlist MP3): {error_detail}"})
-    except subprocess.TimeoutExpired:
-        logging.error(f"[{job_id}] Processing (combine playlist MP3) timed out.")
-        with jobs_lock: jobs[job_id].update({"status": "failed", "error": "Processing timed out."})
-    except Exception as e:
-        logging.error(f"[{job_id}] An unexpected error occurred in combine playlist MP3 task: {e}", exc_info=True)
-        with jobs_lock: jobs[job_id].update({"status": "failed", "error": f"An internal server error occurred: {str(e)}"})
-
-
-# --- "Start Job" Endpoints ---
-@app.route('/start-single-mp3-job', methods=['POST'])
-def start_single_mp3_job():
-    json_data = request.get_json(silent=True)
-    if not json_data: return jsonify({"error": "Invalid JSON request body"}), 400
-    url = json_data.get('url')
-    cookie_data = json_data.get('cookieData')
-    if not url: return jsonify({"error": "No URL provided"}), 400
-    if not YTDLP_PATH: return jsonify({"error": "Server configuration error: yt-dlp not found."}), 500
-    job_id = str(uuid.uuid4())
-    with jobs_lock:
-        jobs[job_id] = {"status": "queued", "url": url, "type": "single_mp3"}
-    thread = threading.Thread(target=_process_single_mp3_task, args=(job_id, url, cookie_data))
-    thread.start()
-    logging.info(f"Queued job {job_id} for single MP3: {url}")
-    return jsonify({"message": "Job queued successfully.", "jobId": job_id}), 202
-
-@app.route('/start-playlist-zip-job', methods=['POST'])
-def start_playlist_zip_job():
-    json_data = request.get_json(silent=True)
-    if not json_data: return jsonify({"error": "Invalid JSON request body"}), 400
-    playlist_url = json_data.get('playlistUrl')
-    cookie_data = json_data.get('cookieData')
-    if not playlist_url: return jsonify({"error": "No playlist URL provided"}), 400
-    if not YTDLP_PATH: return jsonify({"error": "Server configuration error: yt-dlp not found."}), 500
-
-    job_id = str(uuid.uuid4())
-    # Title fetching is now inside the thread
-    with jobs_lock:
-        jobs[job_id] = {
-            "status": "queued",
-            "playlist_url": playlist_url,
-            "type": "playlist_zip",
-            "playlist_title": f"playlist_{job_id}" # Default, updated by thread
+// Helper function to parse Content-Disposition header
+function getFilenameFromHeaders(headers) {
+    const disposition = headers.get('Content-Disposition');
+    let filename = 'downloaded_file'; // Generic default
+    if (disposition) {
+        console.log("Parsing Content-Disposition for filename:", disposition);
+        // Try filename*=UTF-8''...
+        const utf8FilenameRegex = /filename\*=UTF-8''([\w%.-]+)(?:; ?|$)/i;
+        const utf8Match = disposition.match(utf8FilenameRegex);
+        if (utf8Match && utf8Match[1]) {
+            try {
+                filename = decodeURIComponent(utf8Match[1]);
+                console.log(`Parsed filename* (decoded): ${filename}`);
+                return filename;
+            } catch (e) { console.error("Error decoding filename*:", e); }
         }
-    thread = threading.Thread(target=_process_playlist_zip_task, args=(job_id, playlist_url, cookie_data))
-    thread.start()
-    logging.info(f"Queued job {job_id} for playlist zip: {playlist_url}")
-    return jsonify({"message": "Job queued successfully.", "jobId": job_id}), 202
-
-@app.route('/start-combine-playlist-mp3-job', methods=['POST'])
-def start_combine_playlist_mp3_job():
-    json_data = request.get_json(silent=True)
-    if not json_data: return jsonify({"error": "Invalid JSON request body"}), 400
-    playlist_url = json_data.get('playlistUrl')
-    cookie_data = json_data.get('cookieData')
-    if not playlist_url: return jsonify({"error": "No playlist URL provided"}), 400
-    if not YTDLP_PATH: return jsonify({"error": "Server configuration error: yt-dlp not found."}), 500
-    if not FFMPEG_PATH: return jsonify({"error": "Server configuration error: ffmpeg not found."}), 500
-
-    job_id = str(uuid.uuid4())
-    # Title fetching is now inside the thread
-    with jobs_lock:
-        jobs[job_id] = {
-            "status": "queued",
-            "playlist_url": playlist_url,
-            "type": "combine_playlist_mp3",
-            "playlist_title": f"combined_audio_{job_id}" # Default, updated by thread
+        // Fallback: Try filename="..."
+        const asciiFilenameRegex = /filename=(?:(")([^"]*)\1|([^;\n]*))/i;
+        const asciiMatch = disposition.match(asciiFilenameRegex);
+        if (asciiMatch && (asciiMatch[2] || asciiMatch[3])) {
+            filename = asciiMatch[2] || asciiMatch[3];
+            filename = filename.replace(/[\\/]/g, '_'); // Basic sanitization
+            console.log(`Parsed simple filename= parameter: ${filename}`);
+            return filename;
         }
-    thread = threading.Thread(target=_process_combine_playlist_mp3_task, args=(job_id, playlist_url, cookie_data))
-    thread.start()
-    logging.info(f"Queued job {job_id} for combine playlist MP3: {playlist_url}")
-    return jsonify({"message": "Job queued successfully.", "jobId": job_id}), 202
+    }
+    console.log(`Could not parse filename from headers, using default: ${filename}`);
+    return filename;
+}
 
+const drawerWidth = 240;
 
-# --- Job Status and Download Endpoints ---
-@app.route('/job-status/<job_id>', methods=['GET'])
-def get_job_status(job_id):
-    with jobs_lock: job = jobs.get(job_id)
-    if not job: return jsonify({"error": "Job not found"}), 404
-    response_data = {"jobId": job_id, "status": job["status"]}
-    if job["status"] == "completed":
-        response_data["filename"] = job.get("filename")
-        response_data["downloadUrl"] = f"/download-file/{job_id}/{sanitize_filename_header(job.get('filename', 'file'))}"
-    elif job["status"] == "failed":
-        response_data["error"] = job.get("error")
-    return jsonify(response_data), 200
+// Define your custom theme (from your code)
+const customTheme = createTheme({
+    palette: {
+        mode: 'light',
+        primary: { main: '#E53935', contrastText: '#FFFFFF', },
+        secondary: { main: '#1A1A1A', contrastText: '#FFFFFF', },
+        warning: { main: '#FFB300', contrastText: '#1A1A1A', },
+        background: { default: '#000000', paper: '#FFFFFF', },
+        text: { primary: '#1A1A1A', secondary: '#616161', disabled: '#BDBDBD', },
+    },
+    components: {
+        MuiCssBaseline: { styleOverrides: { body: { backgroundColor: '#000000', }, }, },
+        MuiDrawer: { styleOverrides: { paper: { backgroundColor: '#1A1A1A', color: '#F5F5F5', }, }, },
+        MuiListItemButton: { styleOverrides: { root: { '&.Mui-selected': { backgroundColor: 'rgba(229, 57, 53, 0.2)', '&:hover': { backgroundColor: 'rgba(229, 57, 53, 0.3)', }, }, '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.08)', }, }, }, },
+        MuiTextField: { styleOverrides: { root: { '& .MuiInputBase-input': { color: '#1A1A1A', }, '& .MuiInputLabel-root': { color: '#616161', }, '& .MuiOutlinedInput-notchedOutline': { borderColor: '#BDBDBD', }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#E53935', }, '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#E53935', }, }, }, },
+        MuiAccordion: { styleOverrides: { root: { backgroundColor: '#1A1A1A', color: '#F5F5F5', boxShadow: 'none', '&:before': { display: 'none' }, }, }, },
+        MuiAccordionSummary: { styleOverrides: { root: { '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.08)', }, }, } },
+        MuiDivider: { styleOverrides: { root: { backgroundColor: 'rgba(255, 255, 255, 0.12)', } } }
+    },
+});
 
-@app.route('/download-file/<job_id>/<filename>', methods=['GET'])
-def download_processed_file(job_id, filename):
-    logging.info(f"Download request for job {job_id}, filename {filename}")
-    job_tmp_dir_to_clean = None
-    with jobs_lock: job = jobs.get(job_id)
+// For constructing final download URLs from Python service
+const PYTHON_SERVICE_BASE_URL = process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL || '';
 
-    if not job or job.get("status") != "completed" or not job.get("filepath") or not job.get("filename"):
-        if job and job.get("job_tmp_dir") and os.path.exists(job.get("job_tmp_dir")):
-            logging.warning(f"[{job_id}] Job not ready for download or info missing. Cleaning up {job.get('job_tmp_dir')}")
-            shutil.rmtree(job.get("job_tmp_dir"))
-            with jobs_lock:
-                 if job_id in jobs: del jobs[job_id]
-        return jsonify({"error": "Job not found, not completed, or file info missing"}), 404
+export default function Home() {
+    const [currentView, setCurrentView] = useState('welcome');
+    const [url, setUrl] = useState('');
+    const [playlistUrl, setPlaylistUrl] = useState('');
+    const [combineVideoUrl, setCombineVideoUrl] = useState('');
+    const [cookieData, setCookieData] = useState('');
 
-    actual_filename_on_disk = job.get("filename")
-    file_full_path_on_disk = job.get("filepath")
-    job_tmp_dir_to_clean = job.get("job_tmp_dir")
+    const [activeJobs, setActiveJobs] = useState({});
+    const pollingIntervals = useRef({});
 
-    if not os.path.exists(file_full_path_on_disk):
-        logging.error(f"File not found on disk for job {job_id}: {file_full_path_on_disk}")
-        if job_tmp_dir_to_clean and os.path.exists(job_tmp_dir_to_clean): shutil.rmtree(job_tmp_dir_to_clean)
-        with jobs_lock:
-            if job_id in jobs: del jobs[job_id]
-        return jsonify({"error": "File not found on server"}), 404
+    const getJobStatus = (jobType) => activeJobs[jobType]?.status;
+    const isLoading = (jobType) => {
+        const status = getJobStatus(jobType);
+        return status === 'queued' || status?.startsWith('processing');
+    };
+    const isAnyJobLoading = () => Object.values(activeJobs).some(job => job.status === 'queued' || job.status?.startsWith('processing'));
 
-    @after_this_request
-    def cleanup_job_directory(response):
-        try:
-            if job_tmp_dir_to_clean and os.path.exists(job_tmp_dir_to_clean):
-                logging.info(f"[{job_id}] Cleaning up job temporary directory: {job_tmp_dir_to_clean}")
-                shutil.rmtree(job_tmp_dir_to_clean)
-            with jobs_lock:
-                if job_id in jobs:
-                    del jobs[job_id]
-                    logging.info(f"[{job_id}] Removed job entry from memory.")
-        except Exception as e: logging.error(f"[{job_id}] Error during job directory cleanup: {e}")
-        return response
+    const startJob = async (jobType, endpoint, payload, operationName) => {
+        setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...`, type: jobType } }));
+        try {
+            const res = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (!res.ok) { throw new Error(data.error || `Failed to start ${operationName} (status ${res.status})`); }
+            if (data.jobId) {
+                setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], id: data.jobId, status: 'queued', message: data.message || 'Job started, waiting for progress...' } }));
+                pollJobStatus(data.jobId, jobType);
+            } else { throw new Error(data.error || "Failed to get Job ID from server."); }
+        } catch (error) {
+            console.error(`Client-side error starting ${jobType} job:`, error);
+            setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], status: 'failed', message: `Error starting ${operationName}: ${error.message}` } }));
+        }
+    };
 
-    logging.info(f"Sending file: {actual_filename_on_disk} from directory: {os.path.dirname(file_full_path_on_disk)}")
-    fallback_filename = sanitize_fs_filename(actual_filename_on_disk)
-    encoded_filename = sanitize_filename_header(actual_filename_on_disk)
-    headers = { 'Content-Disposition': f'attachment; filename="{fallback_filename}"; filename*=UTF-8\'\'{encoded_filename}'}
-    # Let send_from_directory determine Content-Type for MP3/ZIP
-    return send_from_directory(os.path.dirname(file_full_path_on_disk), actual_filename_on_disk, as_attachment=True), 200, headers
+    const pollJobStatus = (jobId, jobType) => {
+        if (pollingIntervals.current[jobId]) { clearInterval(pollingIntervals.current[jobId]); }
+        pollingIntervals.current[jobId] = setInterval(async () => {
+            try {
+                const res = await fetch(`/api/job-status?jobId=${jobId}`);
+                if (!res.ok) {
+                    const errorData = await res.json().catch(() => ({ error: `Status check failed with ${res.status}`}));
+                    throw new Error(errorData.error);
+                }
+                const data = await res.json();
+                console.log(`Job [${jobId}] status:`, data);
+                setActiveJobs(prev => {
+                    const currentJob = prev[jobType];
+                    if (currentJob && currentJob.id === jobId) {
+                        return {
+                            ...prev,
+                            [jobType]: {
+                                ...currentJob,
+                                status: data.status,
+                                message: data.status === 'completed' ? `Completed: ${data.filename || 'File ready'}` :
+                                         data.status === 'failed' ? `Failed: ${data.error || 'Unknown error'}` :
+                                         data.message || `Status: ${data.status}`,
+                                downloadUrl: data.status === 'completed' ? data.downloadUrl : null,
+                                filename: data.status === 'completed' ? data.filename : null,
+                                error: data.status === 'failed' ? data.error : null,
+                            }
+                        };
+                    }
+                    return prev;
+                });
+                if (data.status === 'completed' || data.status === 'failed') {
+                    clearInterval(pollingIntervals.current[jobId]);
+                    delete pollingIntervals.current[jobId];
+                }
+            } catch (error) {
+                console.error(`Error polling job ${jobId} status:`, error);
+                setActiveJobs(prev => {
+                     const currentJob = prev[jobType];
+                     if (currentJob && currentJob.id === jobId) {
+                        return { ...prev, [jobType]: { ...currentJob, status: 'failed', message: `Error checking status: ${error.message}` } };
+                     }
+                     return prev;
+                });
+                clearInterval(pollingIntervals.current[jobId]);
+                delete pollingIntervals.current[jobId];
+            }
+        }, 5000);
+    };
 
+    useEffect(() => {
+        const intervals = pollingIntervals.current;
+        return () => { Object.values(intervals).forEach(clearInterval); };
+    }, []);
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port, threaded=True)
+    const downloadMP3 = () => {
+        if (!url) return alert('Enter video URL');
+        startJob('singleMp3', '/api/download', { url, cookieData: cookieData.trim() || null }, 'single MP3 download');
+    };
+    const downloadPlaylistZip = () => {
+        if (!playlistUrl) return alert('Enter playlist URL for Zip download');
+        startJob('playlistZip', '/api/download-playlist', { playlistUrl, cookieData: cookieData.trim() || null }, 'playlist zip');
+    };
+    const downloadCombinedPlaylistMp3 = () => {
+        if (!combineVideoUrl) return alert('Enter playlist URL for Combine MP3');
+        startJob('combineMp3', '/api/convert', { playlistUrl: combineVideoUrl, cookieData: cookieData.trim() || null }, 'combine playlist to MP3');
+    };
 
+    const CookieInputField = () => (
+        <TextField
+            label="Paste YouTube Cookies Here (Optional)"
+            helperText="Needed for age-restricted/private videos. Export using a browser extension (e.g., 'Get cookies.txt')."
+            variant='outlined' fullWidth multiline rows={4}
+            value={cookieData}
+            onChange={(e) => setCookieData(e.target.value)}
+            style={{marginBottom: 16}}
+            placeholder="Starts with # Netscape HTTP Cookie File..."
+            disabled={isAnyJobLoading()}
+            InputProps={{ startAdornment: ( <ListItemIcon sx={{minWidth: '40px', color: 'action.active', mr: 1}}><CookieIcon /></ListItemIcon> ), }}
+        />
+    );
+
+    const JobStatusDisplay = ({ jobInfo }) => {
+        if (!jobInfo || !jobInfo.status || jobInfo.status === 'idle') return null;
+
+        let icon = <HourglassEmptyIcon />;
+        let color = "text.secondary";
+        let showProgressBar = false;
+
+        if (jobInfo.status === 'completed') {
+            icon = <CheckCircleOutlineIcon color="success" />;
+            color = "success.main";
+        } else if (jobInfo.status === 'failed') {
+            icon = <ErrorOutlineIcon color="error" />;
+            color = "error.main";
+        } else if (jobInfo.status === 'queued' || jobInfo.status?.startsWith('processing')) {
+            icon = <CircularProgress size={20} sx={{ mr: 1}} color="inherit" />; // Use inherit for icon color
+            color = "info.main"; // Use info color for processing text
+            showProgressBar = true;
+        }
+        
+        const fullDownloadUrl = jobInfo.downloadUrl && jobInfo.filename ? `${PYTHON_SERVICE_BASE_URL}${jobInfo.downloadUrl}` : null;
+
+        return (
+            <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                <Typography variant="subtitle1" sx={{display: 'flex', alignItems: 'center', color: color}}>
+                    {icon} <Box component="span" sx={{ml:1}}>{jobInfo.message || `Status: ${jobInfo.status}`}</Box>
+                </Typography>
+                {showProgressBar && <LinearProgress color="info" sx={{mt:1, mb:1}}/>} {/* Use info color for progress bar */}
+                {jobInfo.status === 'completed' && fullDownloadUrl && (
+                    <Button variant="contained" color="success" href={fullDownloadUrl} sx={{ mt: 1 }}>
+                        Download: {jobInfo.filename}
+                    </Button>
+                )}
+            </Box>
+        );
+    };
+
+    const [expandedDownloads, setExpandedDownloads] = useState(true);
+
+    const renderContent = () => {
+        switch (currentView) {
+            case 'welcome':
+                 return (
+                    <Box sx={{ textAlign: 'center', mt: 8 }}>
+                        <Typography variant="h2" component="h1" gutterBottom>YT Link V2</Typography>
+                        <Typography variant="h5" color="text.secondary">Welcome!</Typography>
+                         <Typography variant="body1" color="text.secondary" sx={{mt: 2, maxWidth: '600px', mx: 'auto'}}>
+                            Select an option from the menu. Downloads will be processed in the background. You can monitor progress here. Note: Some videos/playlists may require pasting YouTube cookies.
+                        </Typography>
+                    </Box>
+                );
+            case 'single':
+                return (
+                    <Container maxWidth="sm" sx={{ mt: 4 }}>
+                        <Typography variant='h6' gutterBottom>Convert Single Video to MP3</Typography>
+                        <TextField label="YouTube Video URL" variant='outlined' fullWidth value={url} onChange={(e)=> setUrl(e.target.value)} style={{marginBottom: 16}} disabled={isAnyJobLoading()} />
+                        <CookieInputField />
+                        <Button variant='contained' color='primary' fullWidth onClick={downloadMP3} disabled={isLoading('singleMp3') || (isAnyJobLoading() && !isLoading('singleMp3'))}>
+                            {isLoading('singleMp3') && <CircularProgress size={24} sx={{mr:1}} />}
+                            {isLoading('singleMp3') ? 'Processing...' : 'Download MP3'}
+                        </Button>
+                        <JobStatusDisplay jobInfo={activeJobs['singleMp3']} />
+                    </Container>
+                );
+            case 'zip':
+                 return (
+                    <Container maxWidth="sm" sx={{ mt: 4 }}>
+                        <Typography variant='h6' gutterBottom>Download Playlist as Zip</Typography>
+                        <TextField label="YouTube Playlist URL (for Zip)" variant='outlined' fullWidth value={playlistUrl} onChange={(e)=> setPlaylistUrl(e.target.value)} style={{marginBottom: 16}} disabled={isAnyJobLoading()} />
+                        <CookieInputField />
+                        <Button variant='contained' color='secondary' onClick={downloadPlaylistZip} fullWidth style={{marginBottom: 16}} disabled={isLoading('playlistZip') || (isAnyJobLoading() && !isLoading('playlistZip'))}>
+                             {isLoading('playlistZip') && <CircularProgress size={24} sx={{mr:1}} />}
+                             {isLoading('playlistZip') ? 'Processing...' : 'Download Playlist As Zip'}
+                        </Button>
+                        <JobStatusDisplay jobInfo={activeJobs['playlistZip']} />
+                    </Container>
+                );
+            case 'combine':
+                 return (
+                     <Container maxWidth="sm" sx={{ mt: 4 }}>
+                        <Typography variant='h6' gutterBottom>Convert Playlist to Single MP3</Typography>
+                        <TextField label="YouTube Playlist URL (for Single MP3)" variant='outlined' fullWidth value={combineVideoUrl} onChange={(e)=> setCombineVideoUrl(e.target.value)} style={{marginBottom: 16}} disabled={isAnyJobLoading()} />
+                        <CookieInputField />
+                        <Button variant='contained' color='warning' onClick={downloadCombinedPlaylistMp3} fullWidth style={{marginBottom: 16}} disabled={isLoading('combineMp3') || (isAnyJobLoading() && !isLoading('combineMp3'))}>
+                             {isLoading('combineMp3') && <CircularProgress size={24} sx={{mr:1}} />}
+                             {isLoading('combineMp3') ? 'Processing...' : 'Download Playlist As Single MP3'}
+                        </Button>
+                        <JobStatusDisplay jobInfo={activeJobs['combineMp3']} />
+                    </Container>
+                );
+            default:
+                return <Typography>Select an option</Typography>;
+        }
+    };
+
+    return (
+        <ThemeProvider theme={customTheme}>
+            <Box sx={{ display: 'flex' }}>
+                <CssBaseline />
+                <Drawer variant="permanent" sx={{ width: drawerWidth, flexShrink: 0, [`& .MuiDrawer-paper`]: { width: drawerWidth, boxSizing: 'border-box' }, }}>
+                    <Toolbar />
+                    <Box sx={{ overflow: 'auto' }}>
+                        <List>
+                            <ListItem disablePadding>
+                                <ListItemButton selected={currentView === 'welcome'} onClick={() => setCurrentView('welcome')}>
+                                    <ListItemIcon><HomeIcon /></ListItemIcon><ListItemText primary="Welcome" />
+                                </ListItemButton>
+                            </ListItem>
+                            <Divider sx={{ my: 1 }} />
+                            <Accordion expanded={expandedDownloads} onChange={(event, isExpanded) => setExpandedDownloads(isExpanded)} sx={{ boxShadow: 'none', '&:before': { display: 'none' } }}>
+                                <AccordionSummary expandIcon={<ExpandMoreIcon />} aria-controls="panel1a-content" id="panel1a-header" sx={{ minHeight: '48px', '& .MuiAccordionSummary-content': { my: '12px' } }}>
+                                    <ListItemIcon sx={{ minWidth: '40px' }}><DownloadIcon /></ListItemIcon>
+                                    <ListItemText primary="Download Options" primaryTypographyProps={{ fontWeight: 'medium' }} />
+                                </AccordionSummary>
+                                <AccordionDetails sx={{ p: 0 }}>
+                                    <List component="div" disablePadding>
+                                        <ListItem disablePadding sx={{ pl: 4 }}>
+                                            <ListItemButton selected={currentView === 'single'} onClick={() => setCurrentView('single')}>
+                                                <ListItemIcon><DownloadIcon /></ListItemIcon><ListItemText primary="Single MP3" />
+                                            </ListItemButton>
+                                        </ListItem>
+                                        <ListItem disablePadding sx={{ pl: 4 }}>
+                                            <ListItemButton selected={currentView === 'zip'} onClick={() => setCurrentView('zip')}>
+                                                <ListItemIcon><QueueMusicIcon /></ListItemIcon><ListItemText primary="Playlist Zip" />
+                                            </ListItemButton>
+                                        </ListItem>
+                                        <ListItem disablePadding sx={{ pl: 4 }}>
+                                            <ListItemButton selected={currentView === 'combine'} onClick={() => setCurrentView('combine')}>
+                                                <ListItemIcon><VideoLibraryIcon /></ListItemIcon>
+                                                <ListItemText primary="Combine Playlist MP3" />
+                                            </ListItemButton>
+                                        </ListItem>
+                                    </List>
+                                </AccordionDetails>
+                            </Accordion>
+                            <Divider sx={{ my: 1 }} />
+                            <ListItem disablePadding sx={{ mt: 2 }}>
+                                <ListItemButton component="a" href="https://www.buymeacoffee.com/yourlink" target="_blank" rel="noopener noreferrer">
+                                    <ListItemIcon><CoffeeIcon /></ListItemIcon><ListItemText primary="Buy Me A Coffee" />
+                                </ListItemButton>
+                            </ListItem>
+                        </List>
+                    </Box>
+                </Drawer>
+                <Box component="main" sx={{ flexGrow: 1, p: 3, mt: 4, mb: 4, mr: 4, ml: `${drawerWidth + 32}px`, bgcolor: 'background.paper', borderRadius: 4, boxShadow: 3, overflow: 'hidden' }}>
+                    <Toolbar />
+                    {renderContent()}
+                </Box>
+            </Box>
+        </ThemeProvider>
+    );
+};
