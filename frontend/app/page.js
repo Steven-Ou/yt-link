@@ -79,7 +79,7 @@ export default function Home() {
                 } catch (parseError) {
                     // If parsing fails, it means the response was likely HTML (e.g. Next.js 404 page)
                     console.error(`Client-side error: Received non-JSON response from ${endpoint} (status ${res.status}). Response text might be HTML.`);
-                    throw new Error(`Server responded with ${res.status}. The API endpoint might be missing or there's a server error.`);
+                    throw new Error(`Server responded with ${res.status}. The API endpoint "${endpoint}" might be missing or there's a server error.`);
                 }
                 console.error(`Client-side error: Server responded with ${res.status} for ${endpoint}. Error data:`, errorData);
                 throw new Error(errorData.error || `Failed to start ${operationName} (status ${res.status})`);
@@ -102,10 +102,8 @@ export default function Home() {
     const pollJobStatus = (jobId, jobType) => {
         if (pollingIntervals.current[jobId]) { clearInterval(pollingIntervals.current[jobId]); }
 
-        // IMPORTANT: If you renamed the folder for job-status, update this path too!
-        // For example, if it's now /api/get-job-status, change it here.
+        // This path should match your folder structure: app/api/job-status/route.js
         const jobStatusEndpoint = `/api/job-status?jobId=${jobId}`;
-        // const jobStatusEndpoint = `/api/get-job-status?jobId=${jobId}`; // Example if changed
 
         pollingIntervals.current[jobId] = setInterval(async () => {
             try {
@@ -169,21 +167,18 @@ export default function Home() {
 
     const downloadMP3 = () => {
         if (!url) { alert('Please enter a YouTube video URL.'); return; }
-        // ** IMPORTANT: Update this path if your API route for single MP3 download changed **
-        // Assuming /app/api/download/ was renamed to /app/api/start-single-mp3/
-        startJob('singleMp3', '/api/start-single-mp3', { url, cookieData: cookieData.trim() || null }, 'single MP3 download');
+        // Corrected path based on screenshot: app/api/start-single-mp3-job/route.js
+        startJob('singleMp3', '/api/start-single-mp3-job', { url, cookieData: cookieData.trim() || null }, 'single MP3 download');
     };
     const downloadPlaylistZip = () => {
         if (!playlistUrl) { alert('Please enter a YouTube playlist URL for Zip download.'); return; }
-        // ** IMPORTANT: Update this path if your API route for playlist zip download changed **
-        // Assuming /app/api/download-playlist/ was renamed to /app/api/start-download-playlist/
-        startJob('playlistZip', '/api/start-download-playlist', { playlistUrl, cookieData: cookieData.trim() || null }, 'playlist zip');
+        // Corrected path based on screenshot: app/api/start-playlist-zip-job/route.js
+        startJob('playlistZip', '/api/start-playlist-zip-job', { playlistUrl, cookieData: cookieData.trim() || null }, 'playlist zip');
     };
     const downloadCombinedPlaylistMp3 = () => {
         if (!combineVideoUrl) { alert('Please enter a YouTube playlist URL to combine into a single MP3.'); return; }
-        // ** IMPORTANT: Update this path if your API route for combining playlist changed **
-        // Assuming /app/api/convert/ was renamed to /app/api/start-convert/
-        startJob('combineMp3', '/api/start-convert', { playlistUrl: combineVideoUrl, cookieData: cookieData.trim() || null }, 'combine playlist to MP3');
+        // Corrected path based on screenshot: app/api/start-combine-playlist-mp3-job/route.js
+        startJob('combineMp3', '/api/start-combine-playlist-mp3-job', { playlistUrl: combineVideoUrl, cookieData: cookieData.trim() || null }, 'combine playlist to MP3');
     };
 
     const CookieInputField = () => (
@@ -222,7 +217,7 @@ export default function Home() {
         } else if (jobInfo.status === 'not_found') {
             icon = <ErrorOutlineIcon color="warning" />;
             color = "warning.main";
-            messageToDisplay = `Job with ID ${jobInfo.id} not found. It might have expired or an error occurred.`;
+            messageToDisplay = `Job with ID ${jobInfo.id || 'unknown'} not found. It might have expired or an error occurred.`;
         }
         
         const fullDownloadUrl = jobInfo.downloadUrl && jobInfo.filename && PYTHON_SERVICE_BASE_URL
