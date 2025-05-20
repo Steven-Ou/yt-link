@@ -1,20 +1,16 @@
 // /app/api/download-playlist/route.js
 
-// Calls the external Python microservice to handle playlist zipping,
-// including forwarding cookie data.
+// Calls the Python microservice to start a playlist zip download job.
 export const runtime = 'nodejs';
 
 import { NextResponse } from 'next/server';
-import axios from 'axios'; // Using axios for consistency and timeout control
+import axios from 'axios';
 
-// Get the microservice URL from environment variables
 const PYTHON_MICROSERVICE_URL = process.env.PYTHON_SERVICE_URL;
-
-// Define a long timeout in milliseconds (e.g., 1 hour for potentially long playlists)
-const AXIOS_TIMEOUT_MS = 1 * 60 * 60 * 1000; // 1 hour
+const AXIOS_REQUEST_TIMEOUT_MS = 10000; // 10 seconds for job initiation
 
 export async function POST(request) {
-  console.log('--- PLAYLIST ZIP (Calling Microservice with Cookies) API ROUTE HIT ---');
+  console.log('--- API /api/download-playlist (Start Playlist Zip Job) ---');
 
   if (!PYTHON_MICROSERVICE_URL) {
       console.error("PYTHON_SERVICE_URL environment variable is not set.");
@@ -22,11 +18,11 @@ export async function POST(request) {
   }
 
   let playlistUrl;
-  let cookieData; // To hold cookie data
+  let cookieData;
   try {
       const body = await request.json();
       playlistUrl = body.playlistUrl;
-      cookieData = body.cookieData; // Expecting cookieData from frontend (page.js)
+      cookieData = body.cookieData;
       if (!playlistUrl) {
           return NextResponse.json({ error: 'No playlistUrl provided in request body' }, { status: 400 });
       }
@@ -35,68 +31,34 @@ export async function POST(request) {
        return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  // Define the target endpoint on your Python service
-  const targetUrl = `${PYTHON_MICROSERVICE_URL}/process-playlist-zip`;
-  console.log(`Forwarding request for playlist zip ${playlistUrl} to microservice at ${targetUrl}`);
+  // *** Corrected endpoint name ***
+  const targetUrl = `${PYTHON_MICROSERVICE_URL}/start-playlist-zip-job`;
+  console.log(`Forwarding request to start playlist zip job for ${playlistUrl} to ${targetUrl}`);
   console.log(`Cookie data being sent (length): ${cookieData ? cookieData.length : 'None'}`);
 
-
   try {
-    // Make a POST request to the Python microservice
     const microserviceResponse = await axios.post(targetUrl,
-      { // Data payload
-          playlistUrl: playlistUrl,
-          cookieData: cookieData // Forward cookieData
-      },
-      { // Axios config
+      { playlistUrl: playlistUrl, cookieData: cookieData },
+      {
           headers: { 'Content-Type': 'application/json' },
-          responseType: 'stream', // We expect a file stream (the zip)
-          timeout: AXIOS_TIMEOUT_MS
+          timeout: AXIOS_REQUEST_TIMEOUT_MS
       }
     );
 
-    console.log(`Microservice responded with status ${microserviceResponse.status}`);
-
-    // Forward headers and stream body
-    const responseHeaders = new Headers();
-    if (microserviceResponse.headers['content-type']) { // Should be application/zip
-        responseHeaders.set('Content-Type', microserviceResponse.headers['content-type']);
-    }
-    if (microserviceResponse.headers['content-length']) {
-        responseHeaders.set('Content-Length', microserviceResponse.headers['content-length']);
-    }
-    if (microserviceResponse.headers['content-disposition']) { // Should contain zip filename
-        responseHeaders.set('Content-Disposition', microserviceResponse.headers['content-disposition']);
-    }
-    console.log(`Streaming zip response from microservice with headers:`, Object.fromEntries(responseHeaders.entries()));
-
-    return new NextResponse(microserviceResponse.data, {
-      status: 200,
-      headers: responseHeaders,
-    });
+    console.log('Response from microservice (start job):', microserviceResponse.data);
+    return NextResponse.json(microserviceResponse.data, { status: microserviceResponse.status });
 
   } catch (error) {
-    console.error('API /api/download-playlist - Error calling microservice with axios:', error);
-
-    if (axios.isAxiosError(error)) {
-        if (error.response) {
-            console.error('Error data:', error.response.data);
-            console.error('Error status:', error.response.status);
-            console.error('Error headers:', error.response.headers);
-            let errorDetail = 'Processing service error.';
-            if (error.response.data && error.response.data.error) {
-                errorDetail = error.response.data.error;
-            } else if (typeof error.response.data === 'string' && error.response.data.length < 200) {
-                errorDetail = error.response.data;
-            }
-            return NextResponse.json({ error: `Processing service failed: ${errorDetail}` }, { status: error.response.status });
-        } else if (error.request) {
-            console.error('No response received from microservice:', error.request);
-            return NextResponse.json({ error: "No response from processing service (possible timeout or network issue)." }, { status: 504 });
-        } else {
-            console.error('Error setting up request:', error.message);
-        }
+    console.error('API /api/download-playlist - Error calling microservice (start job):', error);
+    if (axios.isAxiosError(error) && error.response) {
+        console.error('Error data:', error.response.data);
+        return NextResponse.json(
+            { error: `Processing service failed: ${error.response.data.error || error.response.statusText}` },
+            { status: error.response.status }
+        );
+    } else if (error.code === 'ECONNREFUSED') {
+        return NextResponse.json({ error: "Processing service is unavailable." }, { status: 503 });
     }
-    return NextResponse.json({ error: `Failed to connect to processing service: ${error.message}` }, { status: 502 });
+    return NextResponse.json({ error: `Failed to start job: ${error.message}` }, { status: 502 });
   }
 }
