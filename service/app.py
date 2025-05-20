@@ -103,40 +103,41 @@ def _process_playlist_zip_task(job_id, playlist_url, cookie_data):
     logging.info(f"[{job_id}] Background task started for playlist zip: {playlist_url}")
     job_tmp_dir = None
     playlist_title_for_file = f"playlist_{job_id}" # Default if title fetch fails
-    with jobs_lock: # Get initial title if set by start_job, or use default
+    # Get initial title from job data, which was set with a default in start_job
+    with jobs_lock:
         playlist_title_for_file = jobs[job_id].get("playlist_title", playlist_title_for_file)
 
     try:
         job_tmp_dir = tempfile.mkdtemp(prefix=f"{job_id}_zip_")
         logging.info(f"[{job_id}] Created job temporary directory for zip: {job_tmp_dir}")
 
-        # --- Fetch Playlist Title (inside thread, if not already set) ---
-        if jobs[job_id].get("playlist_title", "").startswith("playlist_"): # Check if using default
-            try:
-                logging.info(f"[{job_id}] Fetching playlist title for zip: {playlist_url}")
-                title_args = [ YTDLP_PATH, '--flat-playlist', '--dump-single-json' ]
-                cookie_file_path_title = None
-                if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
-                    try:
-                        cookie_file_path_title = os.path.join(job_tmp_dir, 'cookies_title_zip.txt')
-                        with open(cookie_file_path_title, 'w', encoding='utf-8') as f: f.write(cookie_data)
-                        title_args.extend(['--cookies', cookie_file_path_title])
-                    except Exception as e: logging.error(f"[{job_id}] Failed to write cookie file for title (zip): {e}")
-                title_args.extend(['--', playlist_url])
-                title_process = subprocess.run(title_args, timeout=60, capture_output=True, text=True, encoding='utf-8')
-                if cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
+        # --- Fetch Playlist Title (inside thread) ---
+        try:
+            logging.info(f"[{job_id}] Fetching playlist title for zip: {playlist_url}")
+            title_args = [ YTDLP_PATH, '--flat-playlist', '--dump-single-json' ]
+            cookie_file_path_title = None
+            if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
+                try:
+                    cookie_file_path_title = os.path.join(job_tmp_dir, 'cookies_title_zip.txt')
+                    with open(cookie_file_path_title, 'w', encoding='utf-8') as f: f.write(cookie_data)
+                    title_args.extend(['--cookies', cookie_file_path_title])
+                except Exception as e: logging.error(f"[{job_id}] Failed to write cookie file for title (zip): {e}")
+            title_args.extend(['--', playlist_url])
+            title_process = subprocess.run(title_args, timeout=60, capture_output=True, text=True, encoding='utf-8')
+            if cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
 
-                if title_process.returncode == 0 and title_process.stdout:
-                    playlist_info = json.loads(title_process.stdout)
-                    if isinstance(playlist_info, dict):
-                        title = playlist_info.get('title') or playlist_info.get('playlist_title')
-                        if title: playlist_title_for_file = title
-                logging.info(f"[{job_id}] Using title for zip: {playlist_title_for_file}")
-            except Exception as e:
-                logging.warning(f"[{job_id}] Quick title fetch for zip failed: {e}. Using default.")
-                if 'cookie_file_path_title' in locals() and cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
-            with jobs_lock:
-                jobs[job_id]["playlist_title"] = playlist_title_for_file
+            if title_process.returncode == 0 and title_process.stdout:
+                playlist_info = json.loads(title_process.stdout)
+                if isinstance(playlist_info, dict):
+                    title = playlist_info.get('title') or playlist_info.get('playlist_title')
+                    if title: playlist_title_for_file = title
+            logging.info(f"[{job_id}] Using title for zip: {playlist_title_for_file}")
+        except Exception as e:
+            logging.warning(f"[{job_id}] Quick title fetch for zip failed: {e}. Using default: {playlist_title_for_file}")
+            if 'cookie_file_path_title' in locals() and cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
+        # Update the job with the (potentially new) title
+        with jobs_lock:
+            jobs[job_id]["playlist_title"] = playlist_title_for_file
 
         with jobs_lock:
             jobs[job_id].update({"status": "processing_download_playlist", "job_tmp_dir": job_tmp_dir})
@@ -197,12 +198,15 @@ def _process_combine_playlist_mp3_task(job_id, playlist_url, cookie_data):
     logging.info(f"[{job_id}] Background task started for combine playlist MP3: {playlist_url}")
     job_tmp_dir = None
     playlist_title = "combined_audio" # Default, will be updated by title fetch
+    with jobs_lock: # Get initial title
+        playlist_title = jobs[job_id].get("playlist_title", playlist_title)
+
 
     try:
         job_tmp_dir = tempfile.mkdtemp(prefix=f"{job_id}_combine_mp3_")
         logging.info(f"[{job_id}] Created job temporary directory for combine MP3: {job_tmp_dir}")
 
-        # --- Fetch Playlist Title (Moved inside thread) ---
+        # --- Fetch Playlist Title (inside thread) ---
         try:
             logging.info(f"[{job_id}] Fetching playlist title for combine MP3: {playlist_url}")
             title_args = [ YTDLP_PATH, '--flat-playlist', '--dump-single-json' ]
@@ -226,11 +230,11 @@ def _process_combine_playlist_mp3_task(job_id, playlist_url, cookie_data):
             else: logging.warning(f"[{job_id}] Playlist info for combine MP3 is not a dictionary. Using default.")
             logging.info(f"[{job_id}] Using playlist title for combined MP3: {playlist_title}")
         except Exception as title_error:
-            logging.warning(f"[{job_id}] Could not get playlist title for combine MP3: {str(title_error)}. Using default.")
+            logging.warning(f"[{job_id}] Could not get playlist title for combine MP3: {str(title_error)}. Using default: {playlist_title}")
             if 'cookie_file_path_title' in locals() and cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
         # Update job with fetched title
         with jobs_lock:
-            jobs[job_id]["playlist_title"] = playlist_title # Store the determined title
+            jobs[job_id]["playlist_title"] = playlist_title
 
 
         with jobs_lock:
@@ -270,7 +274,7 @@ def _process_combine_playlist_mp3_task(job_id, playlist_url, cookie_data):
                 f.write(f"file '{os.path.join(job_tmp_dir, mp3_f).replace("'", "'\\''")}'\n")
         logging.info(f"[{job_id}] Generated FFmpeg list for MP3s: {ffmpeg_list_path}")
 
-        final_mp3_filename = f"{sanitize_fs_filename(playlist_title)}.mp3" # Use fetched title
+        final_mp3_filename = f"{sanitize_fs_filename(playlist_title)}.mp3"
         final_mp3_full_path = os.path.join(job_tmp_dir, final_mp3_filename)
         ffmpeg_args = [ FFMPEG_PATH, '-f', 'concat', '-safe', '0', '-i', ffmpeg_list_path, '-c', 'copy', final_mp3_full_path ]
         logging.info(f"[{job_id}] Running ffmpeg command for MP3 concat: {' '.join(ffmpeg_args)}")
