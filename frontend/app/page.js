@@ -18,9 +18,6 @@ import {
     HourglassEmpty as HourglassEmptyIcon
  } from '@mui/icons-material';
 
-// Helper function to parse Content-Disposition header (currently unused in this job flow)
-// function getFilenameFromHeaders(headers) { ... }
-
 const drawerWidth = 240;
 
 const customTheme = createTheme({
@@ -44,6 +41,7 @@ const customTheme = createTheme({
 });
 
 const PYTHON_SERVICE_BASE_URL = process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL || '';
+console.log('PYTHON_SERVICE_BASE_URL on client (page load):', PYTHON_SERVICE_BASE_URL); // ADDED FOR DEBUGGING
 
 export default function Home() {
     const [currentView, setCurrentView] = useState('welcome');
@@ -64,63 +62,54 @@ export default function Home() {
 
     const startJob = async (jobType, endpoint, payload, operationName) => {
         setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...`, type: jobType } }));
-        console.log(`Client: Starting jobType "${jobType}" to endpoint "${endpoint}" with payload:`, payload); // Log endpoint being called
+        console.log(`Client: Starting jobType "${jobType}" to endpoint "${endpoint}" with payload:`, payload);
         try {
             const res = await fetch(endpoint, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
             });
-            // Check if the response is not OK (e.g. 404, 500 from Next.js API route itself)
             if (!res.ok) {
                 let errorData;
                 try {
-                    errorData = await res.json(); // Try to parse error as JSON
+                    errorData = await res.json();
                 } catch (parseError) {
-                    // If parsing fails, it means the response was likely HTML (e.g. Next.js 404 page)
                     console.error(`Client-side error: Received non-JSON response from ${endpoint} (status ${res.status}). Response text might be HTML.`);
                     throw new Error(`Server responded with ${res.status}. The API endpoint "${endpoint}" might be missing or there's a server error.`);
                 }
                 console.error(`Client-side error: Server responded with ${res.status} for ${endpoint}. Error data:`, errorData);
                 throw new Error(errorData.error || `Failed to start ${operationName} (status ${res.status})`);
             }
-
-            const data = await res.json(); // Now safe to parse as JSON
+            const data = await res.json();
             if (data.jobId) {
                 setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], id: data.jobId, status: 'queued', message: data.message || 'Job started, waiting for progress...' } }));
                 pollJobStatus(data.jobId, jobType);
             } else {
-                // This case should ideally be handled by res.ok check if server returns proper error JSON with non-2xx status
                 throw new Error(data.error || "Failed to get Job ID from server, but server responded OK.");
             }
         } catch (error) {
-            console.error(`Client-side error starting ${jobType} job:`, error); // This will catch the SyntaxError if res.json() fails on HTML
+            console.error(`Client-side error starting ${jobType} job:`, error);
             setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], status: 'failed', message: `Error starting ${operationName}: ${error.message}` } }));
         }
     };
 
     const pollJobStatus = (jobId, jobType) => {
         if (pollingIntervals.current[jobId]) { clearInterval(pollingIntervals.current[jobId]); }
-
-        // This path should match your folder structure: app/api/job-status/route.js
         const jobStatusEndpoint = `/api/job-status?jobId=${jobId}`;
-
         pollingIntervals.current[jobId] = setInterval(async () => {
             try {
-                console.log(`Client: Polling job status for ${jobId} from ${jobStatusEndpoint}`);
+                // console.log(`Client: Polling job status for ${jobId} from ${jobStatusEndpoint}`); // Can be verbose
                 const res = await fetch(jobStatusEndpoint);
                 if (!res.ok) {
                     let errorData;
-                    try {
-                        errorData = await res.json();
-                    } catch (parseError) {
+                    try { errorData = await res.json(); } catch (parseError) {
                          console.error(`Client-side error: Received non-JSON response from ${jobStatusEndpoint} (status ${res.status}).`);
                          throw new Error(`Status check failed with ${res.status}. API endpoint for job status might be missing.`);
                     }
                     throw new Error(errorData.error || `Status check failed with ${res.status}`);
                 }
                 const data = await res.json();
-                console.log(`Job [${jobId}] status:`, data);
+                console.log(`Job [${jobId}] status update:`, data); // Log the full data object
                 setActiveJobs(prev => {
                     const currentJob = prev[jobType];
                     if (currentJob && currentJob.id === jobId) {
@@ -129,7 +118,7 @@ export default function Home() {
                             [jobType]: {
                                 ...currentJob,
                                 status: data.status,
-                                message: data.message || // Use message from Python service first
+                                message: data.message ||
                                          (data.status === 'completed' ? `Completed: ${data.filename || 'File ready'}` :
                                          data.status === 'failed' ? `Failed: ${data.error || 'Unknown error'}` :
                                          `Status: ${data.status}`),
@@ -167,17 +156,14 @@ export default function Home() {
 
     const downloadMP3 = () => {
         if (!url) { alert('Please enter a YouTube video URL.'); return; }
-        // Corrected path based on screenshot: app/api/start-single-mp3-job/route.js
         startJob('singleMp3', '/api/start-single-mp3-job', { url, cookieData: cookieData.trim() || null }, 'single MP3 download');
     };
     const downloadPlaylistZip = () => {
         if (!playlistUrl) { alert('Please enter a YouTube playlist URL for Zip download.'); return; }
-        // Corrected path based on screenshot: app/api/start-playlist-zip-job/route.js
         startJob('playlistZip', '/api/start-playlist-zip-job', { playlistUrl, cookieData: cookieData.trim() || null }, 'playlist zip');
     };
     const downloadCombinedPlaylistMp3 = () => {
         if (!combineVideoUrl) { alert('Please enter a YouTube playlist URL to combine into a single MP3.'); return; }
-        // Corrected path based on screenshot: app/api/start-combine-playlist-mp3-job/route.js
         startJob('combineMp3', '/api/start-combine-playlist-mp3-job', { playlistUrl: combineVideoUrl, cookieData: cookieData.trim() || null }, 'combine playlist to MP3');
     };
 
@@ -203,7 +189,6 @@ export default function Home() {
         let showProgressBar = false;
         let messageToDisplay = jobInfo.message || `Status: ${jobInfo.status}`;
 
-
         if (jobInfo.status === 'completed') {
             icon = <CheckCircleOutlineIcon color="success" />;
             color = "success.main";
@@ -220,9 +205,21 @@ export default function Home() {
             messageToDisplay = `Job with ID ${jobInfo.id || 'unknown'} not found. It might have expired or an error occurred.`;
         }
         
-        const fullDownloadUrl = jobInfo.downloadUrl && jobInfo.filename && PYTHON_SERVICE_BASE_URL
-                                ? `${PYTHON_SERVICE_BASE_URL}${jobInfo.downloadUrl}`
-                                : null;
+        // Log values used for fullDownloadUrl calculation when job is completed
+        let fullDownloadUrl = null;
+        if (jobInfo.status === 'completed') {
+            console.log('JobStatusDisplay - Job completed. Checking conditions for download button:');
+            console.log('  jobInfo.downloadUrl:', jobInfo.downloadUrl);
+            console.log('  jobInfo.filename:', jobInfo.filename);
+            console.log('  PYTHON_SERVICE_BASE_URL (in component):', PYTHON_SERVICE_BASE_URL);
+            if (jobInfo.downloadUrl && jobInfo.filename && PYTHON_SERVICE_BASE_URL) {
+                fullDownloadUrl = `${PYTHON_SERVICE_BASE_URL}${jobInfo.downloadUrl}`;
+                console.log('  Calculated fullDownloadUrl:', fullDownloadUrl);
+            } else {
+                console.log('  Could not calculate fullDownloadUrl due to missing parts.');
+            }
+        }
+
 
         return (
             <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
@@ -230,14 +227,20 @@ export default function Home() {
                     {icon} <Box component="span" sx={{ml:1}}>{messageToDisplay}</Box>
                 </Typography>
                 {showProgressBar && <LinearProgress color="info" sx={{mt:1, mb:1}}/>}
+                
                 {jobInfo.status === 'completed' && fullDownloadUrl && (
                     <Button variant="contained" color="success" href={fullDownloadUrl} download={jobInfo.filename} sx={{ mt: 1 }}>
                         Download: {jobInfo.filename}
                     </Button>
                 )}
-                 {jobInfo.status === 'completed' && !fullDownloadUrl && PYTHON_SERVICE_BASE_URL && (
+                {jobInfo.status === 'completed' && jobInfo.downloadUrl && jobInfo.filename && !PYTHON_SERVICE_BASE_URL && (
                     <Typography color="error.main" sx={{mt:1}}>
-                        Download link seems malformed. Base URL might be missing or incorrect.
+                        Download unavailable: Python service URL (NEXT_PUBLIC_PYTHON_SERVICE_URL) is not configured in the frontend. Please check .env.local and restart the Next.js server.
+                    </Typography>
+                )}
+                 {jobInfo.status === 'completed' && !fullDownloadUrl && PYTHON_SERVICE_BASE_URL && !(jobInfo.downloadUrl && jobInfo.filename && !PYTHON_SERVICE_BASE_URL) && (
+                    <Typography color="error.main" sx={{mt:1}}>
+                        Download link seems malformed. Backend might not have provided a valid download URL or filename.
                     </Typography>
                 )}
             </Box>
