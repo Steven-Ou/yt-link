@@ -1,14 +1,11 @@
 'use client';
-import { useState, useEffect, useRef } from 'react'; // Corrected: removed extra 'g'
+import { useState, useEffect, useRef } from 'react';
 import {
     Box, Button, Container, Divider, Drawer, List, ListItem,
     ListItemButton, ListItemIcon, ListItemText, TextField, Toolbar,
     Typography, CssBaseline,
-    // Import Accordion components
     Accordion, AccordionSummary, AccordionDetails,
-    // Import for custom theme
     createTheme, ThemeProvider,
-    // Progress indicators
     CircularProgress, LinearProgress
 } from '@mui/material';
 import {
@@ -21,39 +18,11 @@ import {
     HourglassEmpty as HourglassEmptyIcon
  } from '@mui/icons-material';
 
-// Helper function to parse Content-Disposition header
-function getFilenameFromHeaders(headers) {
-    const disposition = headers.get('Content-Disposition');
-    let filename = 'downloaded_file'; // Generic default
-    if (disposition) {
-        console.log("Parsing Content-Disposition for filename:", disposition);
-        // Try filename*=UTF-8''...
-        const utf8FilenameRegex = /filename\*=UTF-8''([\w%.-]+)(?:; ?|$)/i;
-        const utf8Match = disposition.match(utf8FilenameRegex);
-        if (utf8Match && utf8Match[1]) {
-            try {
-                filename = decodeURIComponent(utf8Match[1]);
-                console.log(`Parsed filename* (decoded): ${filename}`);
-                return filename;
-            } catch (e) { console.error("Error decoding filename*:", e); }
-        }
-        // Fallback: Try filename="..."
-        const asciiFilenameRegex = /filename=(?:(")([^"]*)\1|([^;\n]*))/i;
-        const asciiMatch = disposition.match(asciiFilenameRegex);
-        if (asciiMatch && (asciiMatch[2] || asciiMatch[3])) {
-            filename = asciiMatch[2] || asciiMatch[3];
-            filename = filename.replace(/[\\/]/g, '_'); // Basic sanitization
-            console.log(`Parsed simple filename= parameter: ${filename}`);
-            return filename;
-        }
-    }
-    console.log(`Could not parse filename from headers, using default: ${filename}`);
-    return filename;
-}
+// Helper function to parse Content-Disposition header (currently unused in this job flow)
+// function getFilenameFromHeaders(headers) { ... }
 
 const drawerWidth = 240;
 
-// Define your custom theme (from your code)
 const customTheme = createTheme({
     palette: {
         mode: 'light',
@@ -74,7 +43,6 @@ const customTheme = createTheme({
     },
 });
 
-// For constructing final download URLs from Python service
 const PYTHON_SERVICE_BASE_URL = process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL || '';
 
 export default function Home() {
@@ -96,32 +64,62 @@ export default function Home() {
 
     const startJob = async (jobType, endpoint, payload, operationName) => {
         setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...`, type: jobType } }));
+        console.log(`Client: Starting jobType "${jobType}" to endpoint "${endpoint}" with payload:`, payload); // Log endpoint being called
         try {
             const res = await fetch(endpoint, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
             });
-            const data = await res.json();
-            if (!res.ok) { throw new Error(data.error || `Failed to start ${operationName} (status ${res.status})`); }
+            // Check if the response is not OK (e.g. 404, 500 from Next.js API route itself)
+            if (!res.ok) {
+                let errorData;
+                try {
+                    errorData = await res.json(); // Try to parse error as JSON
+                } catch (parseError) {
+                    // If parsing fails, it means the response was likely HTML (e.g. Next.js 404 page)
+                    console.error(`Client-side error: Received non-JSON response from ${endpoint} (status ${res.status}). Response text might be HTML.`);
+                    throw new Error(`Server responded with ${res.status}. The API endpoint might be missing or there's a server error.`);
+                }
+                console.error(`Client-side error: Server responded with ${res.status} for ${endpoint}. Error data:`, errorData);
+                throw new Error(errorData.error || `Failed to start ${operationName} (status ${res.status})`);
+            }
+
+            const data = await res.json(); // Now safe to parse as JSON
             if (data.jobId) {
                 setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], id: data.jobId, status: 'queued', message: data.message || 'Job started, waiting for progress...' } }));
                 pollJobStatus(data.jobId, jobType);
-            } else { throw new Error(data.error || "Failed to get Job ID from server."); }
+            } else {
+                // This case should ideally be handled by res.ok check if server returns proper error JSON with non-2xx status
+                throw new Error(data.error || "Failed to get Job ID from server, but server responded OK.");
+            }
         } catch (error) {
-            console.error(`Client-side error starting ${jobType} job:`, error);
+            console.error(`Client-side error starting ${jobType} job:`, error); // This will catch the SyntaxError if res.json() fails on HTML
             setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], status: 'failed', message: `Error starting ${operationName}: ${error.message}` } }));
         }
     };
 
     const pollJobStatus = (jobId, jobType) => {
         if (pollingIntervals.current[jobId]) { clearInterval(pollingIntervals.current[jobId]); }
+
+        // IMPORTANT: If you renamed the folder for job-status, update this path too!
+        // For example, if it's now /api/get-job-status, change it here.
+        const jobStatusEndpoint = `/api/job-status?jobId=${jobId}`;
+        // const jobStatusEndpoint = `/api/get-job-status?jobId=${jobId}`; // Example if changed
+
         pollingIntervals.current[jobId] = setInterval(async () => {
             try {
-                const res = await fetch(`/api/job-status?jobId=${jobId}`);
+                console.log(`Client: Polling job status for ${jobId} from ${jobStatusEndpoint}`);
+                const res = await fetch(jobStatusEndpoint);
                 if (!res.ok) {
-                    const errorData = await res.json().catch(() => ({ error: `Status check failed with ${res.status}`}));
-                    throw new Error(errorData.error);
+                    let errorData;
+                    try {
+                        errorData = await res.json();
+                    } catch (parseError) {
+                         console.error(`Client-side error: Received non-JSON response from ${jobStatusEndpoint} (status ${res.status}).`);
+                         throw new Error(`Status check failed with ${res.status}. API endpoint for job status might be missing.`);
+                    }
+                    throw new Error(errorData.error || `Status check failed with ${res.status}`);
                 }
                 const data = await res.json();
                 console.log(`Job [${jobId}] status:`, data);
@@ -133,9 +131,10 @@ export default function Home() {
                             [jobType]: {
                                 ...currentJob,
                                 status: data.status,
-                                message: data.status === 'completed' ? `Completed: ${data.filename || 'File ready'}` :
+                                message: data.message || // Use message from Python service first
+                                         (data.status === 'completed' ? `Completed: ${data.filename || 'File ready'}` :
                                          data.status === 'failed' ? `Failed: ${data.error || 'Unknown error'}` :
-                                         data.message || `Status: ${data.status}`,
+                                         `Status: ${data.status}`),
                                 downloadUrl: data.status === 'completed' ? data.downloadUrl : null,
                                 filename: data.status === 'completed' ? data.filename : null,
                                 error: data.status === 'failed' ? data.error : null,
@@ -144,7 +143,7 @@ export default function Home() {
                     }
                     return prev;
                 });
-                if (data.status === 'completed' || data.status === 'failed') {
+                if (data.status === 'completed' || data.status === 'failed' || data.status === 'not_found') {
                     clearInterval(pollingIntervals.current[jobId]);
                     delete pollingIntervals.current[jobId];
                 }
@@ -169,16 +168,22 @@ export default function Home() {
     }, []);
 
     const downloadMP3 = () => {
-        if (!url) return alert('Enter video URL');
-        startJob('singleMp3', '/api/download', { url, cookieData: cookieData.trim() || null }, 'single MP3 download');
+        if (!url) { alert('Please enter a YouTube video URL.'); return; }
+        // ** IMPORTANT: Update this path if your API route for single MP3 download changed **
+        // Assuming /app/api/download/ was renamed to /app/api/start-single-mp3/
+        startJob('singleMp3', '/api/start-single-mp3', { url, cookieData: cookieData.trim() || null }, 'single MP3 download');
     };
     const downloadPlaylistZip = () => {
-        if (!playlistUrl) return alert('Enter playlist URL for Zip download');
-        startJob('playlistZip', '/api/download-playlist', { playlistUrl, cookieData: cookieData.trim() || null }, 'playlist zip');
+        if (!playlistUrl) { alert('Please enter a YouTube playlist URL for Zip download.'); return; }
+        // ** IMPORTANT: Update this path if your API route for playlist zip download changed **
+        // Assuming /app/api/download-playlist/ was renamed to /app/api/start-download-playlist/
+        startJob('playlistZip', '/api/start-download-playlist', { playlistUrl, cookieData: cookieData.trim() || null }, 'playlist zip');
     };
     const downloadCombinedPlaylistMp3 = () => {
-        if (!combineVideoUrl) return alert('Enter playlist URL for Combine MP3');
-        startJob('combineMp3', '/api/convert', { playlistUrl: combineVideoUrl, cookieData: cookieData.trim() || null }, 'combine playlist to MP3');
+        if (!combineVideoUrl) { alert('Please enter a YouTube playlist URL to combine into a single MP3.'); return; }
+        // ** IMPORTANT: Update this path if your API route for combining playlist changed **
+        // Assuming /app/api/convert/ was renamed to /app/api/start-convert/
+        startJob('combineMp3', '/api/start-convert', { playlistUrl: combineVideoUrl, cookieData: cookieData.trim() || null }, 'combine playlist to MP3');
     };
 
     const CookieInputField = () => (
@@ -201,6 +206,8 @@ export default function Home() {
         let icon = <HourglassEmptyIcon />;
         let color = "text.secondary";
         let showProgressBar = false;
+        let messageToDisplay = jobInfo.message || `Status: ${jobInfo.status}`;
+
 
         if (jobInfo.status === 'completed') {
             icon = <CheckCircleOutlineIcon color="success" />;
@@ -209,23 +216,34 @@ export default function Home() {
             icon = <ErrorOutlineIcon color="error" />;
             color = "error.main";
         } else if (jobInfo.status === 'queued' || jobInfo.status?.startsWith('processing')) {
-            icon = <CircularProgress size={20} sx={{ mr: 1}} color="inherit" />; // Use inherit for icon color
-            color = "info.main"; // Use info color for processing text
+            icon = <CircularProgress size={20} sx={{ mr: 1}} color="inherit" />;
+            color = "info.main";
             showProgressBar = true;
+        } else if (jobInfo.status === 'not_found') {
+            icon = <ErrorOutlineIcon color="warning" />;
+            color = "warning.main";
+            messageToDisplay = `Job with ID ${jobInfo.id} not found. It might have expired or an error occurred.`;
         }
         
-        const fullDownloadUrl = jobInfo.downloadUrl && jobInfo.filename ? `${PYTHON_SERVICE_BASE_URL}${jobInfo.downloadUrl}` : null;
+        const fullDownloadUrl = jobInfo.downloadUrl && jobInfo.filename && PYTHON_SERVICE_BASE_URL
+                                ? `${PYTHON_SERVICE_BASE_URL}${jobInfo.downloadUrl}`
+                                : null;
 
         return (
             <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
                 <Typography variant="subtitle1" sx={{display: 'flex', alignItems: 'center', color: color}}>
-                    {icon} <Box component="span" sx={{ml:1}}>{jobInfo.message || `Status: ${jobInfo.status}`}</Box>
+                    {icon} <Box component="span" sx={{ml:1}}>{messageToDisplay}</Box>
                 </Typography>
-                {showProgressBar && <LinearProgress color="info" sx={{mt:1, mb:1}}/>} {/* Use info color for progress bar */}
+                {showProgressBar && <LinearProgress color="info" sx={{mt:1, mb:1}}/>}
                 {jobInfo.status === 'completed' && fullDownloadUrl && (
-                    <Button variant="contained" color="success" href={fullDownloadUrl} sx={{ mt: 1 }}>
+                    <Button variant="contained" color="success" href={fullDownloadUrl} download={jobInfo.filename} sx={{ mt: 1 }}>
                         Download: {jobInfo.filename}
                     </Button>
+                )}
+                 {jobInfo.status === 'completed' && !fullDownloadUrl && PYTHON_SERVICE_BASE_URL && (
+                    <Typography color="error.main" sx={{mt:1}}>
+                        Download link seems malformed. Base URL might be missing or incorrect.
+                    </Typography>
                 )}
             </Box>
         );
