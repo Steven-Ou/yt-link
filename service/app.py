@@ -5,8 +5,8 @@ import shutil
 import logging
 import zipfile
 import json
-import uuid
-import threading
+import uuid # For generating unique job IDs
+import threading # For background processing
 from flask import Flask, request, send_file, jsonify, Response, stream_with_context, after_this_request, send_from_directory
 from urllib.parse import quote
 
@@ -25,21 +25,25 @@ if not FFMPEG_PATH:
 
 app = Flask(__name__)
 
+# In-memory store for job statuses and file paths
 jobs = {}
-jobs_lock = threading.Lock()
+jobs_lock = threading.Lock() # To make access to 'jobs' dictionary thread-safe
 
+# Helper to encode filename for Content-Disposition
 def sanitize_filename_header(filename):
     return quote(filename)
 
+# Helper function to sort files based on playlist index prefix
 def sort_files_by_playlist_index(a, b):
     regex = r'^(\d+)\.'
-    import re
+    import re # Import re locally as it's only used here
     match_a = re.match(regex, a)
     match_b = re.match(regex, b)
     index_a = int(match_a.group(1)) if match_a else float('inf')
     index_b = int(match_b.group(1)) if match_b else float('inf')
     return index_a - index_b
 
+# Helper to sanitize filenames for the filesystem
 def sanitize_fs_filename(name):
     name = name.replace('/', '_').replace('\\', '_').replace(':', '_').replace('*', '_').replace('?', '_').replace('"', '_').replace('<', '_').replace('>', '_').replace('|', '_')
     return name.strip() or 'untitled_file'
@@ -47,7 +51,7 @@ def sanitize_fs_filename(name):
 # --- Background Task for Single MP3 Download ---
 def _process_single_mp3_task(job_id, url, cookie_data):
     logging.info(f"[{job_id}] Background task started for single MP3: {url}")
-    job_tmp_dir = None
+    job_tmp_dir = None # Initialize
     try:
         job_tmp_dir = tempfile.mkdtemp(prefix=f"{job_id}_single_")
         logging.info(f"[{job_id}] Created job temporary directory: {job_tmp_dir}")
@@ -55,7 +59,7 @@ def _process_single_mp3_task(job_id, url, cookie_data):
             jobs[job_id].update({"status": "processing_download", "job_tmp_dir": job_tmp_dir})
 
         output_template = os.path.join(job_tmp_dir, '%(title)s.%(ext)s')
-        args = [ YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template, '--no-playlist' ]
+        args = [ YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template, '--no-playlist' ] # Added -i
         if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
             cookie_file_path = os.path.join(job_tmp_dir, 'cookies.txt')
             try:
@@ -68,7 +72,7 @@ def _process_single_mp3_task(job_id, url, cookie_data):
         args.extend(['--', url])
 
         logging.info(f"[{job_id}] Running yt-dlp. Command: {' '.join(args)}")
-        process = subprocess.run( args, check=False, timeout=600, capture_output=True, text=True, encoding='utf-8')
+        process = subprocess.run( args, check=False, timeout=600, capture_output=True, text=True, encoding='utf-8') # check=False
         logging.info(f"[{job_id}] yt-dlp stdout: {process.stdout}")
         if process.stderr: logging.warning(f"[{job_id}] yt-dlp stderr: {process.stderr}")
 
@@ -83,7 +87,7 @@ def _process_single_mp3_task(job_id, url, cookie_data):
         else:
             stderr_snippet = process.stderr[:500] if process.stderr else "No MP3 files produced."
             raise Exception(f"yt-dlp did not produce an MP3 file. Stderr: {stderr_snippet}")
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError as e: # Should be less common with check=False
         logging.error(f"[{job_id}] yt-dlp failed. stderr: {e.stderr}")
         error_detail = e.stderr[:500] if e.stderr else "Unknown yt-dlp error"
         with jobs_lock: jobs[job_id].update({"status": "failed", "error": f"yt-dlp execution failed: {error_detail}"})
@@ -99,36 +103,40 @@ def _process_playlist_zip_task(job_id, playlist_url, cookie_data):
     logging.info(f"[{job_id}] Background task started for playlist zip: {playlist_url}")
     job_tmp_dir = None
     playlist_title_for_file = f"playlist_{job_id}" # Default if title fetch fails
+    with jobs_lock: # Get initial title if set by start_job, or use default
+        playlist_title_for_file = jobs[job_id].get("playlist_title", playlist_title_for_file)
 
     try:
         job_tmp_dir = tempfile.mkdtemp(prefix=f"{job_id}_zip_")
         logging.info(f"[{job_id}] Created job temporary directory for zip: {job_tmp_dir}")
 
-        # --- Fetch Playlist Title (inside thread) ---
-        try:
-            logging.info(f"[{job_id}] Fetching playlist title for zip: {playlist_url}")
-            title_args = [ YTDLP_PATH, '--flat-playlist', '--dump-single-json' ]
-            cookie_file_path_title = None
-            if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
-                 try:
-                     cookie_file_path_title = os.path.join(job_tmp_dir, 'cookies_title_zip.txt')
-                     with open(cookie_file_path_title, 'w', encoding='utf-8') as f: f.write(cookie_data)
-                     title_args.extend(['--cookies', cookie_file_path_title])
-                 except Exception as e: logging.error(f"[{job_id}] Failed to write cookie file for title (zip): {e}")
-            title_args.extend(['--', playlist_url])
-            title_process = subprocess.run(title_args, timeout=60, capture_output=True, text=True, encoding='utf-8')
-            if cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
-            if title_process.returncode == 0 and title_process.stdout:
-                playlist_info = json.loads(title_process.stdout)
-                if isinstance(playlist_info, dict):
-                    title = playlist_info.get('title') or playlist_info.get('playlist_title')
-                    if title: playlist_title_for_file = title
-            logging.info(f"[{job_id}] Using title for zip: {playlist_title_for_file}")
-        except Exception as e:
-            logging.warning(f"[{job_id}] Quick title fetch for zip failed: {e}. Using default.")
-            if 'cookie_file_path_title' in locals() and cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
-        with jobs_lock:
-            jobs[job_id]["playlist_title"] = playlist_title_for_file # Update job with fetched title
+        # --- Fetch Playlist Title (inside thread, if not already set) ---
+        if jobs[job_id].get("playlist_title", "").startswith("playlist_"): # Check if using default
+            try:
+                logging.info(f"[{job_id}] Fetching playlist title for zip: {playlist_url}")
+                title_args = [ YTDLP_PATH, '--flat-playlist', '--dump-single-json' ]
+                cookie_file_path_title = None
+                if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
+                    try:
+                        cookie_file_path_title = os.path.join(job_tmp_dir, 'cookies_title_zip.txt')
+                        with open(cookie_file_path_title, 'w', encoding='utf-8') as f: f.write(cookie_data)
+                        title_args.extend(['--cookies', cookie_file_path_title])
+                    except Exception as e: logging.error(f"[{job_id}] Failed to write cookie file for title (zip): {e}")
+                title_args.extend(['--', playlist_url])
+                title_process = subprocess.run(title_args, timeout=60, capture_output=True, text=True, encoding='utf-8')
+                if cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
+
+                if title_process.returncode == 0 and title_process.stdout:
+                    playlist_info = json.loads(title_process.stdout)
+                    if isinstance(playlist_info, dict):
+                        title = playlist_info.get('title') or playlist_info.get('playlist_title')
+                        if title: playlist_title_for_file = title
+                logging.info(f"[{job_id}] Using title for zip: {playlist_title_for_file}")
+            except Exception as e:
+                logging.warning(f"[{job_id}] Quick title fetch for zip failed: {e}. Using default.")
+                if 'cookie_file_path_title' in locals() and cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
+            with jobs_lock:
+                jobs[job_id]["playlist_title"] = playlist_title_for_file
 
         with jobs_lock:
             jobs[job_id].update({"status": "processing_download_playlist", "job_tmp_dir": job_tmp_dir})
@@ -188,13 +196,13 @@ def _process_playlist_zip_task(job_id, playlist_url, cookie_data):
 def _process_combine_playlist_mp3_task(job_id, playlist_url, cookie_data):
     logging.info(f"[{job_id}] Background task started for combine playlist MP3: {playlist_url}")
     job_tmp_dir = None
-    playlist_title = "combined_audio" # Default, will be updated
+    playlist_title = "combined_audio" # Default, will be updated by title fetch
 
     try:
         job_tmp_dir = tempfile.mkdtemp(prefix=f"{job_id}_combine_mp3_")
         logging.info(f"[{job_id}] Created job temporary directory for combine MP3: {job_tmp_dir}")
 
-        # --- Fetch Playlist Title (inside thread) ---
+        # --- Fetch Playlist Title (Moved inside thread) ---
         try:
             logging.info(f"[{job_id}] Fetching playlist title for combine MP3: {playlist_url}")
             title_args = [ YTDLP_PATH, '--flat-playlist', '--dump-single-json' ]
@@ -222,7 +230,7 @@ def _process_combine_playlist_mp3_task(job_id, playlist_url, cookie_data):
             if 'cookie_file_path_title' in locals() and cookie_file_path_title and os.path.exists(cookie_file_path_title): os.remove(cookie_file_path_title)
         # Update job with fetched title
         with jobs_lock:
-            jobs[job_id]["playlist_title"] = playlist_title
+            jobs[job_id]["playlist_title"] = playlist_title # Store the determined title
 
 
         with jobs_lock:
@@ -262,11 +270,11 @@ def _process_combine_playlist_mp3_task(job_id, playlist_url, cookie_data):
                 f.write(f"file '{os.path.join(job_tmp_dir, mp3_f).replace("'", "'\\''")}'\n")
         logging.info(f"[{job_id}] Generated FFmpeg list for MP3s: {ffmpeg_list_path}")
 
-        final_mp3_filename = f"{sanitize_fs_filename(playlist_title)}.mp3"
+        final_mp3_filename = f"{sanitize_fs_filename(playlist_title)}.mp3" # Use fetched title
         final_mp3_full_path = os.path.join(job_tmp_dir, final_mp3_filename)
         ffmpeg_args = [ FFMPEG_PATH, '-f', 'concat', '-safe', '0', '-i', ffmpeg_list_path, '-c', 'copy', final_mp3_full_path ]
         logging.info(f"[{job_id}] Running ffmpeg command for MP3 concat: {' '.join(ffmpeg_args)}")
-        ffmpeg_process = subprocess.run(ffmpeg_args, check=True, timeout=1800, capture_output=True, text=True, encoding='utf-8') # 30 min for audio concat
+        ffmpeg_process = subprocess.run(ffmpeg_args, check=True, timeout=1800, capture_output=True, text=True, encoding='utf-8')
         logging.info(f"[{job_id}] ffmpeg MP3 concat stdout: {ffmpeg_process.stdout}")
         if ffmpeg_process.stderr: logging.warning(f"[{job_id}] ffmpeg MP3 concat stderr: {ffmpeg_process.stderr}")
 
@@ -293,7 +301,6 @@ def _process_combine_playlist_mp3_task(job_id, playlist_url, cookie_data):
 # --- "Start Job" Endpoints ---
 @app.route('/start-single-mp3-job', methods=['POST'])
 def start_single_mp3_job():
-    # ... (remains the same) ...
     json_data = request.get_json(silent=True)
     if not json_data: return jsonify({"error": "Invalid JSON request body"}), 400
     url = json_data.get('url')
@@ -301,7 +308,8 @@ def start_single_mp3_job():
     if not url: return jsonify({"error": "No URL provided"}), 400
     if not YTDLP_PATH: return jsonify({"error": "Server configuration error: yt-dlp not found."}), 500
     job_id = str(uuid.uuid4())
-    with jobs_lock: jobs[job_id] = {"status": "queued", "url": url, "type": "single_mp3"}
+    with jobs_lock:
+        jobs[job_id] = {"status": "queued", "url": url, "type": "single_mp3"}
     thread = threading.Thread(target=_process_single_mp3_task, args=(job_id, url, cookie_data))
     thread.start()
     logging.info(f"Queued job {job_id} for single MP3: {url}")
@@ -317,7 +325,7 @@ def start_playlist_zip_job():
     if not YTDLP_PATH: return jsonify({"error": "Server configuration error: yt-dlp not found."}), 500
 
     job_id = str(uuid.uuid4())
-    # Title fetching moved to background thread
+    # Title fetching is now inside the thread
     with jobs_lock:
         jobs[job_id] = {
             "status": "queued",
@@ -341,7 +349,7 @@ def start_combine_playlist_mp3_job():
     if not FFMPEG_PATH: return jsonify({"error": "Server configuration error: ffmpeg not found."}), 500
 
     job_id = str(uuid.uuid4())
-    # Title fetching moved to background thread
+    # Title fetching is now inside the thread
     with jobs_lock:
         jobs[job_id] = {
             "status": "queued",
@@ -358,7 +366,6 @@ def start_combine_playlist_mp3_job():
 # --- Job Status and Download Endpoints ---
 @app.route('/job-status/<job_id>', methods=['GET'])
 def get_job_status(job_id):
-    # ... (remains the same) ...
     with jobs_lock: job = jobs.get(job_id)
     if not job: return jsonify({"error": "Job not found"}), 404
     response_data = {"jobId": job_id, "status": job["status"]}
@@ -371,10 +378,10 @@ def get_job_status(job_id):
 
 @app.route('/download-file/<job_id>/<filename>', methods=['GET'])
 def download_processed_file(job_id, filename):
-    # ... (remains the same) ...
     logging.info(f"Download request for job {job_id}, filename {filename}")
     job_tmp_dir_to_clean = None
     with jobs_lock: job = jobs.get(job_id)
+
     if not job or job.get("status") != "completed" or not job.get("filepath") or not job.get("filename"):
         if job and job.get("job_tmp_dir") and os.path.exists(job.get("job_tmp_dir")):
             logging.warning(f"[{job_id}] Job not ready for download or info missing. Cleaning up {job.get('job_tmp_dir')}")
@@ -382,15 +389,18 @@ def download_processed_file(job_id, filename):
             with jobs_lock:
                  if job_id in jobs: del jobs[job_id]
         return jsonify({"error": "Job not found, not completed, or file info missing"}), 404
+
     actual_filename_on_disk = job.get("filename")
     file_full_path_on_disk = job.get("filepath")
     job_tmp_dir_to_clean = job.get("job_tmp_dir")
+
     if not os.path.exists(file_full_path_on_disk):
         logging.error(f"File not found on disk for job {job_id}: {file_full_path_on_disk}")
         if job_tmp_dir_to_clean and os.path.exists(job_tmp_dir_to_clean): shutil.rmtree(job_tmp_dir_to_clean)
         with jobs_lock:
             if job_id in jobs: del jobs[job_id]
         return jsonify({"error": "File not found on server"}), 404
+
     @after_this_request
     def cleanup_job_directory(response):
         try:
@@ -403,15 +413,14 @@ def download_processed_file(job_id, filename):
                     logging.info(f"[{job_id}] Removed job entry from memory.")
         except Exception as e: logging.error(f"[{job_id}] Error during job directory cleanup: {e}")
         return response
+
     logging.info(f"Sending file: {actual_filename_on_disk} from directory: {os.path.dirname(file_full_path_on_disk)}")
     fallback_filename = sanitize_fs_filename(actual_filename_on_disk)
     encoded_filename = sanitize_filename_header(actual_filename_on_disk)
     headers = { 'Content-Disposition': f'attachment; filename="{fallback_filename}"; filename*=UTF-8\'\'{encoded_filename}'}
+    # Let send_from_directory determine Content-Type for MP3/ZIP
     return send_from_directory(os.path.dirname(file_full_path_on_disk), actual_filename_on_disk, as_attachment=True), 200, headers
 
-
-# --- Removed old synchronous /process-combine-video endpoint ---
-# If you need it for video combining, create a new job-based flow for it.
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
