@@ -1,6 +1,6 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
-import { // React component for the main page
+import { useState, useEffect, useRef } from 'react'; // Importing React hooks
+import {
     Box, Button, Container, Divider, Drawer, List, ListItem,
     ListItemButton, ListItemIcon, ListItemText, TextField, Toolbar,
     Typography, CssBaseline,
