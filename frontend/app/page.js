@@ -18,7 +18,7 @@ import { // Importing Material-UI icons
     HourglassEmpty as HourglassEmptyIcon
  } from '@mui/icons-material';
 
-const drawerWidth = 240;
+const drawerWidth = 240;// Define the width of the drawer
 
 const customTheme = createTheme({
     palette: {
