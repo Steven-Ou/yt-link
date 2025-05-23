@@ -8,7 +8,7 @@ import { // Importing Material-UI components
     createTheme, ThemeProvider,
     CircularProgress, LinearProgress
 } from '@mui/material';
-import {
+import { // Importing Material-UI icons
     Home as HomeIcon, Download as DownloadIcon, QueueMusic as QueueMusicIcon,
     VideoLibrary as VideoLibraryIcon, Coffee as CoffeeIcon,
     Cookie as CookieIcon,
