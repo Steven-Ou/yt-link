@@ -7,5 +7,5 @@ const tcpPortUsed = require('tcp-port-used'); // Importing tcp-port-used module
 const{autoUpdater} = require('electron-updater'); // Importing autoUpdater from electron-updater module
 const log = require('electron-log'); // Importing electron-log module
 
-let flaskProcess = null; // Variable to hold the Flask process
 const FLASK_PORT = 8080; // Port for Flask server
+const FLASK_HOST = '
