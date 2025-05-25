@@ -8,4 +8,4 @@ const{autoUpdater} = require('electron-updater'); // Importing autoUpdater from 
 const log = require('electron-log'); // Importing electron-log module
 
 const FLASK_PORT = 8080; // Port for Flask server
-const FLASK_HOST = '127.0.0.1';
+const FLASK_HOST = '127.0.0.1'; // Host for Flask server
