@@ -5,3 +5,5 @@ const{spawn} = require('child_process'); // Importing spawn from child_process m
 const isDev = require('electron-is-dev'); // Importing electron-is-dev module
 const tcpPortUsed = require('tcp-port-used'); // Importing tcp-port-used module
 const{autoUpdater} = require('electron-updater'); // Importing autoUpdater from electron-updater module
+
+let flaskProcess = null; // Variable to hold the Flask process
