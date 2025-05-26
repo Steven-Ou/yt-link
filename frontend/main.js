@@ -13,4 +13,4 @@ const NEXTJS_DEV_URL ='http://localhost:3000'; // URL for Next.js development se
 const flaskAppDirectory = path.join(__dirname, '..', 'service') // Directory for Flask app
 const flaskAppScript = "app.py"; // Flask app script name
 
-const pythonInterpreterPath = path.join
+const pythonInterpreterPath = path.join(flaskAppDirectory, 'venv', 'bin', 'python'); // Path to Python interpreter in virtual environment
