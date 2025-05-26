@@ -12,3 +12,5 @@ const FLASK_HOST = '127.0.0.1'; // Host for Flask server
 const NEXTJS_DEV_URL ='http://localhost:3000'; // URL for Next.js development server
 const flaskAppDirectory = path.join(__dirname, '..', 'service') // Directory for Flask app
 const flaskAppScript = "app.py"; // Flask app script name
+
+const pythonInterpreterPath = path.join
