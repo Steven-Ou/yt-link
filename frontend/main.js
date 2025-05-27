@@ -24,3 +24,5 @@ let flaskProcess = null; // Variable to hold the Flask process instance
 autoUpdater.logger =log; // Set the logger for autoUpdater
 autoUpdater.logger.transports.file.level = 'info'; // Set the log level to info
 log.info('App starting...'); // Log the app starting message
+
+// Disable auto-download: USER WILL BE THE ONE CONSENTING TO DOWNLOAD
