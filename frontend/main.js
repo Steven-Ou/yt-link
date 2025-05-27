@@ -23,3 +23,4 @@ let flaskProcess = null; // Variable to hold the Flask process instance
 // --- Auto Updater Logging  ---
 autoUpdater.logger =log; // Set the logger for autoUpdater
 autoUpdater.logger.transports.file.level = 'info'; // Set the log level to info
+log.info('App starting...'); // Log the app starting message
