@@ -27,3 +27,5 @@ log.info('App starting...'); // Log the app starting message
 
 // Disable auto-download: USER WILL BE THE ONE CONSENTING TO DOWNLOAD
 autoUpdater.autoDownload = false; // Disable auto-download for updates
+
+//--- Flask Server Mangement --- 
