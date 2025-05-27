@@ -14,3 +14,5 @@ const flaskAppDirectory = path.join(__dirname, '..', 'service') // Directory for
 const flaskAppScript = "app.py"; // Flask app script name
 
 const pythonInterpreterPath = path.join(flaskAppDirectory, 'venv', 'bin', 'python'); // Path to Python interpreter in virtual environment
+// Windows example (uncomment and adjust if needed):
+// const pythonInterpreterPath = path.join(flaskAppDirectory, 'venv', 'Scripts', 'python.exe');
