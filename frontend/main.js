@@ -29,3 +29,4 @@ log.info('App starting...'); // Log the app starting message
 autoUpdater.autoDownload = false; // Disable auto-download for updates
 
 //--- Flask Server Mangement --- 
+function startFlaskServer() {
