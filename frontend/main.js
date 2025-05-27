@@ -32,4 +32,6 @@ autoUpdater.autoDownload = false; // Disable auto-download for updates
 function startFlaskServer() {
     log.info('Starting Flask Server...'); // Log the message indicating Flask server is starting
     log.info(`Using Python interpreter at: ${pythonInterpreterPath}`); // Log the path to the Python interpreter
+    
 }
+
