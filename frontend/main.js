@@ -26,3 +26,4 @@ autoUpdater.logger.transports.file.level = 'info'; // Set the log level to info
 log.info('App starting...'); // Log the app starting message
 
 // Disable auto-download: USER WILL BE THE ONE CONSENTING TO DOWNLOAD
+autoUpdater.autoDownload = false; // Disable auto-download for updates
