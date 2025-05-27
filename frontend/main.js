@@ -21,3 +21,4 @@ let mainWindow; // Variable to hold the main window instance
 let flaskProcess = null; // Variable to hold the Flask process instance
 
 // --- Auto Updater Logging  ---
+autoUpdater.logger =log
