@@ -18,3 +18,4 @@ const pythonInterpreterPath = path.join(flaskAppDirectory, 'venv', 'bin', 'pytho
 // const pythonInterpreterPath = path.join(flaskAppDirectory, 'venv', 'Scripts', 'python.exe');
 
 let mainWindow; // Variable to hold the main window instance
+let flaskProcess = null;
