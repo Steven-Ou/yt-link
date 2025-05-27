@@ -34,6 +34,12 @@ function startFlaskServer() {
     log.info(`Using Python interpreter at: ${pythonInterpreterPath}`); // Log the path to the Python interpreter
     log.info(`Flask app script: ${path.join(flaskAppDirectory,flaskAppScript)}`); // Log the path to the Flask app script
     log.info(`Flask working directory: ${flaskAppDirectory}`); // Log the working directory for Flask app
+
+    try{
+        
+    }
+
 }
+
 
 
