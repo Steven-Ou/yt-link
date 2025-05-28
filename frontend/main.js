@@ -58,7 +58,7 @@ function startFlaskServer() {
     });
 
     flaskProcess.stderr.on('data', (data)=>{//Handle error data from Flask process
-
+        const errorOutput = data.toString().trim();
     });
 }   
 
