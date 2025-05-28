@@ -54,7 +54,7 @@ function startFlaskServer() {
 
     flaskProcess.stdout.on('data', (data)=>{ // Listen for data from Flask process stdout
         const output = data.toString().trim();// Convert buffer data to string and trim whitespace 
-        if(output) log.info(`Flask: ${output}`); 
+        if(output) log.info(`Flask: ${output}`);// Log the output from Flask process 
     });
 
     flaskProcess.stderr.on('data', (data)=>{//Handle error data from Flask process
