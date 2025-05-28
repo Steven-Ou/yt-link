@@ -46,7 +46,7 @@ function startFlaskServer() {
             // shell: process.platform === 'win32'
        });
     } catch (error){
-        log.error('Spawn failed to initiate Flask process.',error);
+        log.error('Spawn failed to initiate Flask process.',error); // Log error if spawning Flask process fails
     }
 
 }
