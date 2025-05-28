@@ -16,7 +16,8 @@ const flaskAppScript = "app.py"; // Flask app script name
 const pythonInterpreterPath = path.join(flaskAppDirectory, 'venv', 'bin', 'python'); // Path to Python interpreter in virtual environment
 // Windows example (uncomment and adjust if needed):
 // const pythonInterpreterPath = path.join(flaskAppDirectory, 'venv', 'Scripts', 'python.exe');
-
+// If not bundling a venv and relying on system python (less recommended for packaged apps):
+// const pythonInterpreterPath = 'python3'; // or 'python'
 let mainWindow; // Variable to hold the main window instance
 let flaskProcess = null; // Variable to hold the Flask process instance
 
