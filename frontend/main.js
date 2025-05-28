@@ -37,8 +37,8 @@ function startFlaskServer() {
 
     try{
       flaskProcess = spawn(pythonInterpreterPath,[flaskAppDirectory], {
-      
-    });
+        cwd:flaskAppDirectory, //
+       });
       
     } catch (err){
 
