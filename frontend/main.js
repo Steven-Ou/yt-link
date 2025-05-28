@@ -47,6 +47,7 @@ function startFlaskServer() {
        });
     } catch (error){
         log.error('Spawn failed to initiate Flask process.',error); // Log error if spawning Flask process fails
+        dialog.showErrorBox('Critical Error', `Could not launch the local server (Flask): ${error.message}`); 
     }
 
 }
