@@ -42,6 +42,8 @@ function startFlaskServer() {
         createWindow(); // Create the main window
         //Calling the update function
         checkUpdates();// Check for updates after the window is created
+    } catch (err){
+        
     }
 
 }
