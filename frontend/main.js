@@ -52,11 +52,11 @@ function startFlaskServer() {
         return; // Exit the function
     }
 
-    flaskProcess.stdout.on('data', (data)=>{ 
+    flaskProcess.stdout.on('data', (data)=>{ // Listen for data from Flask process stdout
         const output = data.toString().trim();// Convert buffer data to string and trim whitespace 
     });
 
-    flaskProcess.stderr.on('data', (data)=>{
+    flaskProcess.stderr.on('data', (data)=>{//Handle error data from Flask process
 
     })
 }   
