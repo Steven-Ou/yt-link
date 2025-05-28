@@ -53,7 +53,7 @@ function startFlaskServer() {
     }
 
     flaskProcess.stdout.on('data', (data)=>{ 
-        const output = data.toString().trim(); 
+        const output = data.toString().trim();// Convert buffer data to string and trim whitespace 
     });
 }   
 
