@@ -18,6 +18,7 @@ const pythonInterpreterPath = path.join(flaskAppDirectory, 'venv', 'bin', 'pytho
 // const pythonInterpreterPath = path.join(flaskAppDirectory, 'venv', 'Scripts', 'python.exe');
 // If not bundling a venv and relying on system python (less recommended for packaged apps):
 // const pythonInterpreterPath = 'python3'; // or 'python'
+
 let mainWindow; // Variable to hold the main window instance
 let flaskProcess = null; // Variable to hold the Flask process instance
 
