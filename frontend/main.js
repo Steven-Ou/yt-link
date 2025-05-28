@@ -36,6 +36,9 @@ function startFlaskServer() {
     log.info(`Flask working directory: ${flaskAppDirectory}`); // Log the working directory for Flask app
 
     try{
+      flaskProcess = spawn(pythonInterpreterPath,[flaskAppDirectory], {
+      
+    });
       
     } catch (err){
 
