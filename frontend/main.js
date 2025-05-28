@@ -45,9 +45,8 @@ function startFlaskServer() {
             // and there are issues with PATH resolution, but direct path to venv is better.
             // shell: process.platform === 'win32'
        });
-      
-    } catch (err){
-
+    } catch (error){
+        log.error('Spawn failed to initiate Flask process.',error);
     }
 
 }
