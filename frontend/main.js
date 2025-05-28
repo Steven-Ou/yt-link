@@ -61,6 +61,8 @@ function startFlaskServer() {
         const errorOutput = data.toString().trim();//Convert buffer data to string and trim whitespace
         if (errorOutput) log.error(`Flask STDERR: ${errorOutput}`);//Log the error output from Flask process
     });
+
+    
 }   
 
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
