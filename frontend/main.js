@@ -54,11 +54,12 @@ function startFlaskServer() {
 
     flaskProcess.stdout.on('data', (data)=>{ // Listen for data from Flask process stdout
         const output = data.toString().trim();// Convert buffer data to string and trim whitespace 
+        if(output) log.info(`Flask: ${output}`); 
     });
 
     flaskProcess.stderr.on('data', (data)=>{//Handle error data from Flask process
 
-    })
+    });
 }   
 
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
