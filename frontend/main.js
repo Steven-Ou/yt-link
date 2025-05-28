@@ -36,7 +36,7 @@ function startFlaskServer() {
     log.info(`Flask working directory: ${flaskAppDirectory}`); // Log the working directory for Flask app
 
     try{
-        
+        console.log(`Waiting for flask server on port ${FLASK_PORT}...`);
     }
 
 }
