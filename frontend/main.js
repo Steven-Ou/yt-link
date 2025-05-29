@@ -74,6 +74,7 @@ function startFlaskServer() {
 
     flaskProcess.on('error',(err)=>{//Handle error event of Flask process 
         log.error('Failed to start or run Flask process:', err); //Log error if Flask process fails to start or run
+        
     })
 
 }   
