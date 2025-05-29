@@ -62,7 +62,9 @@ function startFlaskServer() {
         if (errorOutput) log.error(`Flask STDERR: ${errorOutput}`);//Log the error output from Flask process
     });
 
-    
+    flaskProcess.on('close', (code,signal)=>{
+
+    })
 
 }   
 
