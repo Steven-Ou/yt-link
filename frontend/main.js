@@ -72,7 +72,9 @@ function startFlaskServer() {
         }
     })
 
-    
+    flaskProcess.on('error',(err)=>{ 
+
+    })
 
 }   
 
