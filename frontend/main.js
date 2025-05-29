@@ -79,6 +79,7 @@ function startFlaskServer() {
         app.quit(); // Quit the application
     });
 
+    
 }   
 
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
