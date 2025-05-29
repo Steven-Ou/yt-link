@@ -79,7 +79,7 @@ function startFlaskServer() {
         app.quit(); // Quit the application
     });
 
-    log.info('Flask server process initiated.'); 
+    log.info('Flask server process initiated.');// Log the message indicating Flask server process is initiated
 }   
 
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
