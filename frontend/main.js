@@ -88,6 +88,7 @@ function stopFlaskServer(){ // Function to stop the Flask server
         const killed = flaskProcess.kill();// Attempt to kill the Flask process 
         if(killed){
             log.info('Flask Server process kill signal sent.');// Log the message indicating Flask server process kill signal is sent
+        }else{
             
         }
     }
