@@ -89,7 +89,7 @@ function stopFlaskServer(){ // Function to stop the Flask server
         if(killed){
             log.info('Flask Server process kill signal sent.');// Log the message indicating Flask server process kill signal is sent
         }else{
-            log.warn("Failed to send kill signal to Flask Server Process (Might've exited)."); 
+            log.warn("Failed to send kill signal to Flask Server Process (Might've exited).");// Log warning if failed to send kill signal to Flask server process 
         }
     }
 }
