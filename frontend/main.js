@@ -63,7 +63,7 @@ function startFlaskServer() {
     });
 
     flaskProcess.on('close', (code,signal)=>{ // Handle the close event of Flask process
-
+        log.info(`Flask process exited with code ${code} and signal ${signal}`); 
     })
 
 }   
