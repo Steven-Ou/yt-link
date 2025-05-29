@@ -70,14 +70,14 @@ function startFlaskServer() {
             dialog.showErrorBox('Critical Error', `Flask server exited with code: ${code}`); // Show error dialog
             app.quit(); // Quit the application
         }
-    })
+    });
 
     flaskProcess.on('error',(err)=>{//Handle error event of Flask process 
         log.error('Failed to start or run Flask process:', err); //Log error if Flask process fails to start or run
         dialog.showErrorBox('Flask Server Error', `Failed to start/run the local server: ${err.message}`); // Show error dialog if Flask process fails to start or run
         flaskProcess =null; // Set flaskProcess to null if it fails to start or run
         app.quit(); // Quit the application
-    })
+    });
 
 }   
 
