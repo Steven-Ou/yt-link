@@ -86,6 +86,9 @@ function stopFlaskServer(){ // Function to stop the Flask server
     if(flaskProcess){
         log.info('Attempting to stop Flask Server...');// Log the message indicating Flask server is stopping 
         const killed = flaskProcess.kill();// Attempt to kill the Flask process 
+        if(killed){
+            log.info('Flask Server process kill signal sent.');
+        }
     }
 }
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
