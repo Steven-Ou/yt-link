@@ -64,7 +64,12 @@ function startFlaskServer() {
 
     flaskProcess.on('close', (code,signal)=>{ // Handle the close event of Flask process
         log.info(`Flask process exited with code ${code} and signal ${signal}`); // Log the exit code and signal of Flask process
-        flaskProcess =null;
+        flaskProcess =null; // Set flaskProcess to null after it exits
+        if (code !== 0) { // If the exit code is not 0, it indicates an error
+            log.error(`Flask process exited with error code: ${code}`); // Log the error code
+            dialog.showErrorBox('Critical Error', `Flask server exited with code: ${code}`); // Show error dialog
+            app.quit(); // Quit the application
+        }
     })
 
 }   
