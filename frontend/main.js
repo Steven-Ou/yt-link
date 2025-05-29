@@ -83,7 +83,9 @@ function startFlaskServer() {
 }   
 
 function stopFlaskServer(){ // Function to stop the Flask server
-
+    if(flaskProcess){
+        log.info('Attempting to stop Flask Server...'); 
+    }
 }
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
         await tcpPortUsed.waitUntilUsed(FLASK_PORT, 5000, 1000); // Wait until the Flask server is up and running
