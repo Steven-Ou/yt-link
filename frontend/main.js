@@ -108,6 +108,7 @@ function createWindow(){
     });
     if(isDev){ //If in development mode
         log.info(`Loading Next.js from dev server: ${NEXTJS_DEV_URL} `);// Log the message indicating loading Next.js from dev server 
+        mainWindow.loadURL(NEXTJS_DEV_URL); 
     }
 }
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
