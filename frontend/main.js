@@ -101,6 +101,7 @@ function createWindow(){
         webPreferences:{
             nodeIntegration:false, // Disable Node.js integration for security
             contextIsolation:true, // Enable context isolation for security
+            preload: path.join(__dirname, 'preload.js'), 
         }
     })
 }
