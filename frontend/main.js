@@ -96,7 +96,11 @@ function stopFlaskServer(){ // Function to stop the Flask server
 }
 function createWindow(){
     mainWindow = new BrowserWindow({ 
-
+        width:1280,
+        height:800,
+        webPreferences:{
+            nodeIntegration
+        }
     })
 }
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
