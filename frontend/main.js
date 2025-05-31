@@ -99,7 +99,8 @@ function createWindow(){
         width:1280,
         height:800,
         webPreferences:{
-            nodeIntegration:false, 
+            nodeIntegration:false, // Disable Node.js integration for security
+            
         }
     })
 }
