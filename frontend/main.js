@@ -100,7 +100,7 @@ function createWindow(){
         height:800,
         webPreferences:{
             nodeIntegration:false, // Disable Node.js integration for security
-            contextIsolation:true,
+            contextIsolation:true, // Enable context isolation for security
         }
     })
 }
