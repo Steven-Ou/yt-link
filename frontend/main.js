@@ -106,8 +106,8 @@ function createWindow(){
         },
         icon: path.join(__dirname, 'assets', 'icon.png'), // Set the application icon
     });
-    if(isDev){ 
-
+    if(isDev){ //If in development mode
+        log.info(`Loading Next.js from dev server: ${NEXTJS_DEV_URL} `); 
     }
 }
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
