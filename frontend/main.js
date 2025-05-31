@@ -99,7 +99,7 @@ function createWindow(){
         width:1280,
         height:800,
         webPreferences:{
-            nodeIntegration
+            nodeIntegration:false, 
         }
     })
 }
