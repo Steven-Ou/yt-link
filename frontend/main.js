@@ -103,8 +103,9 @@ function createWindow(){
             contextIsolation:true, // Enable context isolation for security
             enableRemoteModule:false, // Disable remote module for security
             preload: path.join(__dirname, 'preload.js'), // Use a preload script for secure context
-        }
-    })
+        },
+        icon: path.join(__dirname, 'assets', 'icon.png'), // Set the application icon
+    });
 }
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
         await tcpPortUsed.waitUntilUsed(FLASK_PORT, 5000, 1000); // Wait until the Flask server is up and running
