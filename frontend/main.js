@@ -110,7 +110,7 @@ function createWindow(){
         log.info(`Loading Next.js from dev server: ${NEXTJS_DEV_URL} `);// Log the message indicating loading Next.js from dev server 
         mainWindow.loadURL(NEXTJS_DEV_URL); // Load the Next.js development server URL
         mainWindow.webContents.openDevTools(); // Open developer tools
-    }else{ //
+    }else{ //If in production mode
 
     }
 }
