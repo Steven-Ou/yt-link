@@ -81,7 +81,7 @@ function startFlaskServer() {
 
     log.info('Flask server process initiated.');// Log the message indicating Flask server process is initiated
 }   
-
+// Function to check if Flask server is running
 function stopFlaskServer(){ // Function to stop the Flask server
     if(flaskProcess){
         log.info('Attempting to stop Flask Server...');// Log the message indicating Flask server is stopping 
