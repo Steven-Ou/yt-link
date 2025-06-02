@@ -118,6 +118,7 @@ function createWindow(){
 
     mainWindow.on('closed',()=>{
         log.info('Main window closed.'); // Log the message indicating main window is closed
+        mainWindow = null; 
     })
 }
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
