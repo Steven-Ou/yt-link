@@ -111,7 +111,7 @@ function createWindow(){
         mainWindow.loadURL(NEXTJS_DEV_URL); // Load the Next.js development server URL
         mainWindow.webContents.openDevTools(); // Open developer tools
     }else{ //If in production mode
-
+        const indexPath = path.join(__dirname, 'index.html'); 
     }
 }
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
