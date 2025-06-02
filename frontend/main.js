@@ -94,7 +94,7 @@ function stopFlaskServer(){ // Function to stop the Flask server
         flaskProcess=null;// Set flaskProcess to null after stopping it
     }
 }
-
+// --- Application Lifecycle Management ---
 function createWindow(){
     mainWindow = new BrowserWindow({ 
         width:1280,
