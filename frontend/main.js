@@ -115,6 +115,10 @@ function createWindow(){
         log.info(`Loading Next.js from exported path: ${indexPath}`);// Log the message indicating loading Next.js from exported path
         mainWindow.loadFile(indexPath); // Load the exported Next.js HTML file
     }
+
+    mainWindow.on('closed',()=>{
+        log.info('Main window closed.'); 
+    })
 }
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
         await tcpPortUsed.waitUntilUsed(FLASK_PORT, 5000, 1000); // Wait until the Flask server is up and running
