@@ -113,6 +113,7 @@ function createWindow(){
     }else{ //If in production mode
         const indexPath = path.join(__dirname, 'index.html'); // For `next export`
         log.info(`Loading Next.js from exported path: ${indexPath}`);// Log the message indicating loading Next.js from exported path
+        mainWindow.loadFile(indexPath); 
     }
 }
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
