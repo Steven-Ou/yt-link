@@ -6,6 +6,7 @@ const isDev = require('electron-is-dev'); // Importing electron-is-dev module
 const tcpPortUsed = require('tcp-port-used'); // Importing tcp-port-used module
 const{autoUpdater} = require('electron-updater'); // Importing autoUpdater from electron-updater module
 const log = require('electron-log'); // Importing electron-log module
+const { start } = require('repl');
 
 const FLASK_PORT = 8080; // Port for Flask server
 const FLASK_HOST = '127.0.0.1'; // Host for Flask server
@@ -124,7 +125,7 @@ function createWindow(){
     });
 }
 app.whenReady().then(async () => {// When the app is ready
-
+    startFlaskServer(); 
 })
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
         await tcpPortUsed.waitUntilUsed(FLASK_PORT, 5000, 1000); // Wait until the Flask server is up and running
