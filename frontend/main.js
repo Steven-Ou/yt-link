@@ -135,6 +135,7 @@ app.whenReady().then(async () => {// When the app is ready
 
         if(!isDev){//If not in development mode
             log.info('Production mode: Checking for application updates...');//Log the message indicating checking for application updates
+            //Wait a bit after window is shown before checking for updates
         }
     }
 })
