@@ -131,7 +131,7 @@ app.whenReady().then(async () => {// When the app is ready
         log.info(`Waiting for Flask server on port ${FLASK_PORT}...(Timeout: 20s)`); //Log the message indicating waiting for Flask server
         await tcpPortUsed.waitUntilUsed(FLASK_PORT, 500, 20000);//Poll every 500ms for 20s
         log.info(`Flask server detected on port ${FLASK_PORT}. Creating Window...`);//Log the message indicating Flask server is detected
-        createWindow();
+        createWindow();// Create the main window
     }
 })
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
