@@ -134,7 +134,7 @@ app.whenReady().then(async () => {// When the app is ready
         createWindow();// Create the main window
 
         if(!isDev){//If not in development mode
-            log.info('Production mode: Checking for application updates...');
+            log.info('Production mode: Checking for application updates...');//Log the message indicating checking for application updates
         }
     }
 })
