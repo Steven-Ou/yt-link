@@ -133,7 +133,8 @@ app.whenReady().then(async () => {// When the app is ready
         log.info(`Flask server detected on port ${FLASK_PORT}. Creating Window...`);//Log the message indicating Flask server is detected
         createWindow();// Create the main window
 
-        if(!isDev){
+        if(!isDev){//If not in development mode
+            
         }
     }
 })
