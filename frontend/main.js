@@ -153,7 +153,7 @@ app.whenReady().then(async () => {// When the app is ready
             log.info('Development mode: Skipping update check.');//Log the message indicating skipping update check in development mode
         }
     } catch (err) {// If there is an error waiting for Flask server
-        log.error(`Flask Server did not start on port ${FLASK_PORT} within timeout:`, err); //
+        log.error(`Flask Server did not start on port ${FLASK_PORT} within timeout:`, err); // Log the error if Flask server did not start within timeout
     }
 })
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
