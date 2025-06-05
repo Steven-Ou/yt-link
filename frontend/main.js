@@ -144,9 +144,10 @@ app.whenReady().then(async () => {// When the app is ready
                         }else{
                             log.info('checkForUpdates returned no update info or null.');//Log if no update information is found
                         }
-                   }
-                    
-                   )
+                   })
+                   .catch(err =>{
+
+                   })
             })
         }
     }
