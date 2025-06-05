@@ -146,7 +146,7 @@ app.whenReady().then(async () => {// When the app is ready
                         }
                    })
                    .catch(err =>{//If there is an error checking for updates
-                        log.error('Error during inital checkForUpdates:', err);
+                        log.error('Error during inital checkForUpdates:', err);//Log the error during initial check for updates
                    })
             })
         }
