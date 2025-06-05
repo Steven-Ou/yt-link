@@ -137,7 +137,7 @@ app.whenReady().then(async () => {// When the app is ready
             log.info('Production mode: Checking for application updates...');//Log the message indicating checking for application updates
             //Wait a bit after window is shown before checking for updates
             setTimeout(()=>{// Wait for a bit before checking for updates
-
+                autoUpdater.checkForUpdates();// Check for updates
             })
         }
     }
