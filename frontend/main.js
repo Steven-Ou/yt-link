@@ -157,7 +157,7 @@ app.whenReady().then(async () => {// When the app is ready
         dialog.showErrorBox('Server Error', `The local server (Flask) did not start correctly on port ${FLASK_PORT}. The application will now close. Please check logs for details.`);
         // Show error dialog if Flask server did not start correctly
         stopFlaskServer(); // Stop the Flask server if it was started
-
+        app.quit(); // Quit the application
     }
 })
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
