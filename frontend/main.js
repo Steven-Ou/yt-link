@@ -139,7 +139,8 @@ app.whenReady().then(async () => {// When the app is ready
             setTimeout(()=>{// Wait for a bit before checking for updates
                 autoUpdater.checkForUpdates()// Check for updates
                    .then(result =>{
-
+                        if(result && result.updateInfo){//
+                        }
                    }
                     
                    )
