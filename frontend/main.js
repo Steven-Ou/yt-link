@@ -148,7 +148,9 @@ app.whenReady().then(async () => {// When the app is ready
                    .catch(err =>{//If there is an error checking for updates
                         log.error('Error during inital checkForUpdates:', err);//Log the error during initial check for updates
                    });
-            }, 5000); 
+            }, 5000);//Wait for 5 seconds before checking for updates
+        }else{
+            log.info('Development mode: Skipping update check.');//Log the message indicating skipping update check in development mode
         }
     }
 })
