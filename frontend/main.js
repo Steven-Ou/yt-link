@@ -154,7 +154,8 @@ app.whenReady().then(async () => {// When the app is ready
         }
     } catch (err) {// If there is an error waiting for Flask server
         log.error(`Flask Server did not start on port ${FLASK_PORT} within timeout:`, err); // Log the error if Flask server did not start within timeout
-        dialog.showErrorBox('Server Error', `The local server (Flask) did not start correctly on port ${FLASK_PORT}. The application will now close. Please check logs for details.`);// Show error dialog if Flask server did not start correctly
+        dialog.showErrorBox('Server Error', `The local server (Flask) did not start correctly on port ${FLASK_PORT}. The application will now close. Please check logs for details.`);
+        // Show error dialog if Flask server did not start correctly
 
     }
 })
