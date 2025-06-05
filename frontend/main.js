@@ -142,7 +142,7 @@ app.whenReady().then(async () => {// When the app is ready
                         if(result && result.updateInfo){// If there is an update available
                             log.info('Update check found info:', result.updateInfo);// Log the update information 
                         }else{
-                            log
+                            log.info('checkForUpdates returned no update info or null.');
                         }
                    }
                     
