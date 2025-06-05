@@ -161,8 +161,8 @@ app.whenReady().then(async () => {// When the app is ready
     }
 
     app.on(()=>{
-        if(BrowserWindow.getAllWindows().length ===0){
-            
+        if(BrowserWindow.getAllWindows().length ===0){ //If there are no open windows
+
         }
     });
 })
