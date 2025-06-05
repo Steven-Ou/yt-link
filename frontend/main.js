@@ -140,7 +140,7 @@ app.whenReady().then(async () => {// When the app is ready
                 autoUpdater.checkForUpdates()// Check for updates
                    .then(result =>{
                         if(result && result.updateInfo){// If there is an update available
-                            log.info('Update check found info:', result.updateInfo); 
+                            log.info('Update check found info:', result.updateInfo);// Log the update information 
                         }
                    }
                     
