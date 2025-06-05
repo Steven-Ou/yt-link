@@ -7,6 +7,7 @@ const tcpPortUsed = require('tcp-port-used'); // Importing tcp-port-used module
 const{autoUpdater} = require('electron-updater'); // Importing autoUpdater from electron-updater module
 const log = require('electron-log'); // Importing electron-log module
 const { start } = require('repl');
+const { create } = require('domain');
 
 const FLASK_PORT = 8080; // Port for Flask server
 const FLASK_HOST = '127.0.0.1'; // Host for Flask server
@@ -162,7 +163,9 @@ app.whenReady().then(async () => {// When the app is ready
 
     app.on(()=>{
         if(BrowserWindow.getAllWindows().length ===0){ //If there are no open windows
-
+            if(flaskProcess && !flaskProcess.killed){// If Flask process is running and not killed
+                createWindow(); // Create the main window if it was closed
+            }
         }
     });
 })
