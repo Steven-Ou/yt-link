@@ -165,6 +165,8 @@ app.whenReady().then(async () => {// When the app is ready
         if(BrowserWindow.getAllWindows().length ===0){ //If there are no open windows
             if(flaskProcess && !flaskProcess.killed){// If Flask process is running and not killed
                 createWindow(); // Create the main window if it was closed
+            }else{
+                
             }
         }
     });
