@@ -166,7 +166,7 @@ app.whenReady().then(async () => {// When the app is ready
             if(flaskProcess && !flaskProcess.killed){// If Flask process is running and not killed
                 createWindow(); // Create the main window if it was closed
             }else{
-                
+                log.warn('Activate event: Flask process not running or killed, attempting to restart Flask and create window.'); 
             }
         }
     });
