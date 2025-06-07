@@ -171,7 +171,7 @@ app.whenReady().then(async () => {// When the app is ready
                 tcpPortUsed.waitUntilUsed(FLASK_PORT,500,10000)//Wait until Flask server is up and running  
                     .then(() =>createWindow())//Create the main window after Flask server is up
                     .catch(errActivate=>{//If there is an error waiting for Flask server
-
+                        log.error('Flask did not restart on activate:', errActivate);
                     })
             }
         }
