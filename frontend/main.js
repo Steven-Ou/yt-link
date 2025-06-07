@@ -181,7 +181,7 @@ app.whenReady().then(async () => {// When the app is ready
 });
 app.on('window-all-closed',()=>{
     if(process.platform !== 'darwin'){
-        app.quit(); 
+        app.quit(); //Quit the application if all windows are closed and not on macOS
     }
 })
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
