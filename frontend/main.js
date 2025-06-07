@@ -168,7 +168,7 @@ app.whenReady().then(async () => {// When the app is ready
             }else{
                 log.warn('Activate event: Flask process not running or killed, attempting to restart Flask and create window.');//Log warning if Flask process is not running or killed 
                 startFlaskServer();// Start the Flask server again
-                tcpPortUsed.waitUntilUsed(FLASK_PORT,500,10000) 
+                tcpPortUsed.waitUntilUsed(FLASK_PORT,500,10000)//Wait until Flask server is up and running  
             }
         }
     });
