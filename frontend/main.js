@@ -174,11 +174,11 @@ app.whenReady().then(async () => {// When the app is ready
                         log.error('Flask did not restart on activate:', errActivate);//Log the error if Flask server did not restart
                         dialog.showErrorBox('Server Error', `The local server (Flask) could not be restarted. The application will now close.`);//Show error dialog if Flask server could not be restarted
                         app.quit();// Quit the application 
-                    })
+                    });
             }
         }
     });
-})
+});
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
         await tcpPortUsed.waitUntilUsed(FLASK_PORT, 5000, 1000); // Wait until the Flask server is up and running
         console.log(`Flask server detected on port ${FLASK_PORT}. Creating Window...`); // Log the message indicating Flask server is detected.
