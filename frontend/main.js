@@ -173,6 +173,7 @@ app.whenReady().then(async () => {// When the app is ready
                     .catch(errActivate=>{//If there is an error waiting for Flask server
                         log.error('Flask did not restart on activate:', errActivate);//Log the error if Flask server did not restart
                         dialog.showErrorBox('Server Error', `The local server (Flask) could not be restarted. The application will now close.`);//Show error dialog if Flask server could not be restarted
+                        app.quit(); 
                     })
             }
         }
