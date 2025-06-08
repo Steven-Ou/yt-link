@@ -199,8 +199,8 @@ autoUpdater.on('Checking-for-update',()=>{//Event listener for autoUpdater event
     if(manualCheck){//If manual check is true
         dialog.ShowMessageBox({
             title:'No Updates',
-
-        })
+            message:'You are currently running the latest version.'
+        });
     }
 });
 
