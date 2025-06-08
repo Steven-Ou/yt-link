@@ -186,7 +186,7 @@ app.on('window-all-closed',()=>{
     }
 });
 
-app.on('will-quit',()=>{
+app.on('will-quit',()=>{//When the application is about to quit
 
 });
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
