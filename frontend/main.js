@@ -191,7 +191,7 @@ app.on('will-quit',()=>{//When the application is about to quit
     stopFlaskServer(); // Stop the Flask server when the application is about to quit
 });
 
-autoUpdater.on({
+autoUpdater.on({//Event listener for autoUpdater events
 
 });
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
