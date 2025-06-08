@@ -194,7 +194,8 @@ app.on('will-quit',()=>{//When the application is about to quit
 autoUpdater.on('Checking-for-update',()=>{//Event listener for autoUpdater events
     log.info('Updater: Checking for update...');//Log the message indicating checking for update
     if(mainWindow){
-        mainWindow.webContents.send('Update-status','Checking for updates...');
+        mainWindow.webContents.send('Update-status','Checking for updates...');//Send message to renderer process about checking for updates
+    }
 });
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
         await tcpPortUsed.waitUntilUsed(FLASK_PORT, 5000, 1000); // Wait until the Flask server is up and running
