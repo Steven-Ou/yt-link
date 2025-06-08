@@ -196,6 +196,7 @@ autoUpdater.on('Checking-for-update',()=>{//Event listener for autoUpdater event
     if(mainWindow){
         mainWindow.webContents.send('Update-status','Checking for updates...');//Send message to renderer process about checking for updates
     }
+    
 });
 
 
