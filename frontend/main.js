@@ -199,12 +199,6 @@ autoUpdater.on('Checking-for-update',()=>{//Event listener for autoUpdater event
             'Checking for updates...'
         );//Send message to renderer process about checking for updates
     }
-    if(manualCheck){//If manual check is true
-        dialog.ShowMessageBox({
-            title:'No Updates',
-            message:'You are currently running the latest version.'
-        });
-    }
 });
 
 
@@ -213,5 +207,12 @@ autoUpdater.on('Checking-for-update',()=>{//Event listener for autoUpdater event
         console.log(`Flask server detected on port ${FLASK_PORT}. Creating Window...`); // Log the message indicating Flask server is detected.
         createWindow(); // Create the main window
         //Calling the update function
-        checkUpdates();// Check for updates after the window is created*/
+        checkUpdates();// Check for updates after the window is created
 
+if(manualCheck){//If manual check is true
+        dialog.ShowMessageBox({
+            title:'No Updates',
+            message:'You are currently running the latest version.'
+        });
+    }
+        */
