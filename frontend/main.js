@@ -201,7 +201,7 @@ autoUpdater.on('Checking-for-update',()=>{//Event listener for autoUpdater event
     }
 });
 
-autoUpdater.on('Update-available',(info)=>{
+autoUpdater.on('Update-available',(info)=>{//Event listener for update available
 
 });
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
