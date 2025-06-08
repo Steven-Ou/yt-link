@@ -180,7 +180,7 @@ app.whenReady().then(async () => {// When the app is ready
     });
 });
 
-app.on('window-all-closed',()=>{
+app.on('window-all-closed',()=>{}
     if(process.platform !== 'darwin'){
         app.quit(); //Quit the application if all windows are closed and not on macOS
     }
