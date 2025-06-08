@@ -197,7 +197,9 @@ autoUpdater.on('Checking-for-update',()=>{//Event listener for autoUpdater event
         mainWindow.webContents.send('Update-status','Checking for updates...');//Send message to renderer process about checking for updates
     }
     if(manualCheck){//If manual check is true
-
+        dialog.ShowMessageBox({
+            
+        })
     }
 });
 
