@@ -194,7 +194,10 @@ app.on('will-quit',()=>{//When the application is about to quit
 autoUpdater.on('Checking-for-update',()=>{//Event listener for autoUpdater events
     log.info('Updater: Checking for update...');//Log the message indicating checking for update
     if(mainWindow){//If main window exists
-        mainWindow.webContents.send('Update-status','Checking for updates...');//Send message to renderer process about checking for updates
+        mainWindow.webContents.send(
+            'Update-status',
+            'Checking for updates...'
+        );//Send message to renderer process about checking for updates
     }
     if(manualCheck){//If manual check is true
         dialog.ShowMessageBox({
