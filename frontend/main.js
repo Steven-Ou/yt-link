@@ -204,7 +204,7 @@ autoUpdater.on('Checking-for-update',()=>{//Event listener for autoUpdater event
 autoUpdater.on('Update-available',(info)=>{//Event listener for update available
     log.info('Updater: Update available.', info);//Log the message indicating update is available
     if(mainWindow){//If main window exists
-        mainWindow.webContents.send(
+        mainWindow.webContents.send(//Send message to renderer process about update available
             'Update-status',
             `Update available: v${info.version}. Release notes: ${info.releaseNotes || 'N/A'}`
         );
