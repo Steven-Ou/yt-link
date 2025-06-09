@@ -205,8 +205,9 @@ autoUpdater.on('Update-available',(info)=>{//Event listener for update available
     log.info('Updater: Update available.', info);//Log the message indicating update is available
     if(mainWindow){//If main window exists
         mainWindow.webContents.send(
-            
-        )
+            'Update-status',
+            `Update available: v${info.version}. Release notes: ${info.releaseNotes || 'N/A'}`
+        );
     }
 });
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
