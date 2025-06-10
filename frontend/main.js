@@ -266,6 +266,15 @@ autoUpdater.on('download-progress',(progressObj)=>{
     log_message += ` - Downloaded:(${percent}%)`; // Append downloaded percentage to log message
     log+=` (${transferredMB} MB of ${totalMB} MB )`; // Append transferred and total data to log message
     log.info(log_message); // Log the download progress message
+
+    if(mainWindow){
+        mainWindow.webContents.send('Update-progress', { // Send download progress to renderer process
+            percent: percent,
+            transferredMB: transferredMB,
+            totalMB: totalMB,
+            speedKBs: speedKBs
+        });
+    }
 })
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
         await tcpPortUsed.waitUntilUsed(FLASK_PORT, 5000, 1000); // Wait until the Flask server is up and running
