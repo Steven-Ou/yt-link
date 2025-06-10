@@ -1,5 +1,5 @@
 //main.js
-const { app, BrowserWindow} = require('electron'); // Importing app and BrowserWindow from electron
+const { app, BrowserWindow, dialog} = require('electron'); // Importing app and BrowserWindow from electron
 const path = require('path'); // Importing path module
 const{spawn} = require('child_process'); // Importing spawn from child_process module
 const isDev = require('electron-is-dev'); // Importing electron-is-dev module
@@ -251,6 +251,10 @@ autoUpdater.on('Updater-not-available',(info)=>{// Event listener for when no up
 
 autoUpdater.on('error', (err)=>{
     log.error('Updater: Error in auto-updater. ' +(err.stack || err.message || err)); // Log error if there is an error in auto-updater
+    if(mainWindow){ // If main window exists
+        mainWindow.webContents.send('Update-status', `Error checking for updates: ${err.message}`); // Send message to renderer process about error in checking for updates
+    }
+    dialog.showErrorBox('Update Error', `An error occurred while checking for updates: ${err.message}`); // Show error dialog if there is an error in checking for updates
 })
 autoUpdater.on('download-progress',(progressObj)=>{
 
