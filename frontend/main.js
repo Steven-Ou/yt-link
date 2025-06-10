@@ -218,6 +218,8 @@ autoUpdater.on('Update-available',(info)=>{//Event listener for update available
         buttons: ['Download Now', 'Later'], // Buttons for dialog
         defaultId: 0,// Default button index
         cancelId: 1 // Cancel button index
+    }).then((result) => {
+        
     })
 });
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
