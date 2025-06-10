@@ -1,5 +1,5 @@
 //main.js
-const { app, BrowserWindow, dialog} = require('electron'); // Importing app and BrowserWindow from electron
+const { app, BrowserWindow, ipcMain,dialog} = require('electron'); // Importing app and BrowserWindow from electron
 const path = require('path'); // Importing path module
 const{spawn} = require('child_process'); // Importing spawn from child_process module
 const isDev = require('electron-is-dev'); // Importing electron-is-dev module
@@ -41,7 +41,7 @@ function startFlaskServer() {
     log.info(`Flask working directory: ${flaskAppDirectory}`); // Log the working directory for Flask app
 
     try{
-      flaskProcess = spawn(pythonInterpreterPath,[flaskAppDirectory], {
+      flaskProcess = spawn(pythonInterpreterPath,[path.join(flaskAppDirectory,flaskAppScript)], {
         cwd:flaskAppDirectory, // Set the current working directory to the Flask app directory
         stdio: ['ignore', 'pipe', 'pipe'], // Ignore stdin, pipe stdout and stderr
         // On Windows, you might need shell: true if pythonInterpreterPath is just 'python'
@@ -301,7 +301,7 @@ autoUpdater.on('update-downloaded', (info) => { // Event listener for when updat
     });
 });
 
-ipcMain,on('renderer-action',(event, arg)=>{
+ipcMain.on('renderer-action',(event, arg)=>{
     log.info('Received renderer-action with arg:', arg); // Log the action received from renderer process
     event.reply('main-process-reply', 'Hello from main process!'); // Reply to renderer process with a message
 });
