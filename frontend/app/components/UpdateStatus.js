@@ -1,4 +1,4 @@
-// app/components/UpdateStatus.js (or wherever you prefer)
+// Save this file at: frontend/app/components/UpdateStatus.js
 
 'use client'; // This is a Client Component because it uses hooks and browser APIs
 
@@ -19,11 +19,12 @@ export default function UpdateStatus() {
         console.log('Update Status from Main:', message);
         setStatusMessage(message);
         setShowBanner(true);
+        setProgress(0); // Reset progress for new status messages
         // Hide the banner after a few seconds if it's not a progress message
         if (!message.toLowerCase().includes('downloading')) {
             setTimeout(() => {
                 setShowBanner(false);
-            }, 5000); // Hide after 5 seconds
+            }, 6000); // Hide after 6 seconds
         }
       });
 
@@ -36,15 +37,13 @@ export default function UpdateStatus() {
       });
 
       // The 'return' function is a cleanup function that React runs when the component unmounts.
-      // It's good practice to remove the listeners to prevent memory leaks.
       return () => {
-        // We'll need to modify preload.js slightly to make this work perfectly.
-        // See the updated preload.js in the next section.
+        // This removes the listeners to prevent memory leaks if the component ever unmounts.
         removeStatusListener();
         removeProgressListener();
       };
     }
-  }, []); // The empty dependency array means this useEffect runs only once when the component mounts.
+  }, []); // The empty dependency array means this useEffect runs only once.
 
   return (
     <Slide direction="up" in={showBanner} mountOnEnter unmountOnExit>
