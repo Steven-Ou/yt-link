@@ -224,6 +224,11 @@ autoUpdater.on('Update-available',(info)=>{//Event listener for update available
             if(mainWindow){
                 mainWindow.webContents.send('Update-status', 'Downloading Update...'); // Send message to renderer process about downloading update
                 autoUpdater.downloadUpdate() // Start downloading the update
+            }else{
+                log.info('Updater: User deferred the update.');
+                if(mainWindow){
+                    mainWindow.webContents.send('Update-status', 'Update deferred by user.'); // Send message to renderer process about update deferred
+                }
             }
         }
     })
