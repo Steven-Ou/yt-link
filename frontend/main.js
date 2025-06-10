@@ -257,7 +257,7 @@ autoUpdater.on('error', (err)=>{
     dialog.showErrorBox('Update Error', `An error occurred while checking for updates: ${err.message}`); // Show error dialog if there is an error in checking for updates
 })
 autoUpdater.on('download-progress',(progressObj)=>{
-
+    const percent = Math.round(progressObj.percent); // Calculate the percentage of download progress
 })
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
         await tcpPortUsed.waitUntilUsed(FLASK_PORT, 5000, 1000); // Wait until the Flask server is up and running
