@@ -235,6 +235,9 @@ autoUpdater.on('Update-available',(info)=>{//Event listener for update available
         log.error('Updater: Error showing update available dialog:', err); // Log error if showing update dialog fails
     });
 });
+autoUpdater.on(('Updater-not-available',(info)=>{
+    log.info('Updater: Update not available.', info); // Log the message indicating update is not available
+})
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
         await tcpPortUsed.waitUntilUsed(FLASK_PORT, 5000, 1000); // Wait until the Flask server is up and running
         console.log(`Flask server detected on port ${FLASK_PORT}. Creating Window...`); // Log the message indicating Flask server is detected.
