@@ -1,5 +1,5 @@
 // /app/api/download-playlist/route.js
-
+export const dynamic = 'force-static';
 // Calls the Python microservice to start a playlist zip download job.
 export const runtime = 'nodejs';
 
