@@ -1,5 +1,5 @@
 // /app/api/convert/route.js
-
+export const dynamic = 'force-static';
 // Calls the Python microservice to start a job for combining playlist audio into a single MP3.
 export const runtime = 'nodejs';
 
