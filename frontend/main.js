@@ -210,7 +210,7 @@ autoUpdater.on('Update-available',(info)=>{//Event listener for update available
         );
     }
     dialog.showMessageBox({
-        
+        type:"info", // Type of dialog
     })
 });
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
