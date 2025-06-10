@@ -1,5 +1,5 @@
 // /app/api/job-status/route.js
-
+export const dynamic = 'force-static';
 // Calls the Python microservice to get the status of a job.
 export const runtime = 'nodejs';
 
