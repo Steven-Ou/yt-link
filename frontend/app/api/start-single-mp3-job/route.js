@@ -1,5 +1,5 @@
 // /app/api/download/route.js
-
+export const dynamic = 'force-static';
 // Calls the Python microservice to start a single MP3 download job.
 export const runtime = 'nodejs';
 
