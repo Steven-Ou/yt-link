@@ -235,7 +235,8 @@ autoUpdater.on('Update-available',(info)=>{//Event listener for update available
         log.error('Updater: Error showing update available dialog:', err); // Log error if showing update dialog fails
     });
 });
-autoUpdater.on('Updater-not-available',(info)=>{
+
+autoUpdater.on('Updater-not-available',(info)=>{// Event listener for when no update is available
     log.info('Updater: Update not available.', info); // Log the message indicating update is not available
     if(mainWindow){ // If main window exists
         mainWindow.webContents.send('Update-status', "You're on the latest version."); // Send message to renderer process about no updates available
