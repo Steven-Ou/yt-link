@@ -35,55 +35,45 @@ autoUpdater.autoDownload = false; // Disable auto-download for updates
 
 //--- Flask Server Mangement --- 
 function startFlaskServer() {
-    log.info('Starting Flask Server...'); // Log the message indicating Flask server is starting
-    log.info(`Using Python interpreter at: ${pythonInterpreterPath}`); // Log the path to the Python interpreter
-    log.info(`Flask app script: ${path.join(flaskAppDirectory,flaskAppScript)}`); // Log the path to the Flask app script
-    log.info(`Flask working directory: ${flaskAppDirectory}`); // Log the working directory for Flask app
+    log.info('Attempting to start Flask server...');
+    log.info(`Python interpreter: ${pythonInterpreterPath}`);
+    log.info(`Flask app script: ${path.join(flaskAppDirectory, flaskAppScript)}`);
 
-    try{
-      flaskProcess = spawn(pythonInterpreterPath,[path.join(flaskAppDirectory,flaskAppScript)], {
-        cwd:flaskAppDirectory, // Set the current working directory to the Flask app directory
-        stdio: ['ignore', 'pipe', 'pipe'], // Ignore stdin, pipe stdout and stderr
-        // On Windows, you might need shell: true if pythonInterpreterPath is just 'python'
-            // and there are issues with PATH resolution, but direct path to venv is better.
-            // shell: process.platform === 'win32'
-       });
-    } catch (error){
-        log.error('Spawn failed to initiate Flask process.',error); // Log error if spawning Flask process fails
-        dialog.showErrorBox('Critical Error', `Could not launch the local server (Flask): ${error.message}`); //Show error dialog if Flask process fails to start
-        app.quit(); //Quit the application
-        return; // Exit the function
+    try {
+        // Use the full path to the script to avoid ambiguity
+        flaskProcess = spawn(pythonInterpreterPath, [path.join(flaskAppDirectory, flaskAppScript)], {
+            stdio: ['ignore', 'pipe', 'pipe'], // ignore stdin, pipe stdout/stderr
+        });
+    } catch (error) {
+        log.error('Spawn failed to initiate Flask process.', error);
+        dialog.showErrorBox('Critical Error', `Could not launch the local server (Flask): ${error.message}`);
+        app.quit();
+        return;
     }
 
-    flaskProcess.stdout.on('data', (data)=>{ // Listen for data from Flask process stdout
-        const output = data.toString().trim();// Convert buffer data to string and trim whitespace 
-        if(output) log.info(`Flask: ${output}`);// Log the output from Flask process 
+    flaskProcess.stdout.on('data', (data) => {
+        const output = data.toString().trim();
+        if (output) log.info(`Flask STDOUT: ${output}`);
     });
 
-    flaskProcess.stderr.on('data', (data)=>{//Handle error data from Flask process
-        const errorOutput = data.toString().trim();//Convert buffer data to string and trim whitespace
-        if (errorOutput) log.error(`Flask STDERR: ${errorOutput}`);//Log the error output from Flask process
+    flaskProcess.stderr.on('data', (data) => {
+        const errorOutput = data.toString().trim();
+        if (errorOutput) log.error(`Flask STDERR: ${errorOutput}`);
     });
 
-    flaskProcess.on('close', (code,signal)=>{ // Handle the close event of Flask process
-        log.info(`Flask process exited with code ${code} and signal ${signal}`); // Log the exit code and signal of Flask process
-        flaskProcess =null; // Set flaskProcess to null after it exits
-        if (code !== 0) { // If the exit code is not 0, it indicates an error
-            log.error(`Flask process exited with error code: ${code}`); // Log the error code
-            dialog.showErrorBox('Critical Error', `Flask server exited with code: ${code}`); // Show error dialog
-            app.quit(); // Quit the application
-        }
+    flaskProcess.on('close', (code, signal) => {
+        log.info(`Flask process exited with code ${code} and signal ${signal}`);
+        flaskProcess = null;
     });
 
-    flaskProcess.on('error',(err)=>{//Handle error event of Flask process 
-        log.error('Failed to start or run Flask process:', err); //Log error if Flask process fails to start or run
-        dialog.showErrorBox('Flask Server Error', `Failed to start/run the local server: ${err.message}`); // Show error dialog if Flask process fails to start or run
-        flaskProcess =null; // Set flaskProcess to null if it fails to start or run
-        app.quit(); // Quit the application
+    flaskProcess.on('error', (err) => {
+        log.error('Failed to start or run Flask process.', err);
+        dialog.showErrorBox('Flask Server Error', `Failed to start/run the local server: ${err.message}`);
+        flaskProcess = null;
     });
 
-    log.info('Flask server process initiated.');// Log the message indicating Flask server process is initiated
-}   
+    log.info('Flask server process initiated.');
+} 
 // Function to check if Flask server is running
 function stopFlaskServer(){ // Function to stop the Flask server
     if(flaskProcess){
