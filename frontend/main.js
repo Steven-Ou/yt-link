@@ -223,7 +223,7 @@ autoUpdater.on('Update-available',(info)=>{//Event listener for update available
             log.info('Updater:User agreed to download. Starting download...');//Log the message indicating user agreed to download update
             if(mainWindow){
                 mainWindow.webContents.send('Update-status', 'Downloading Update...'); // Send message to renderer process about downloading update
-                
+                autoUpdater.downloadUpdate() // Start downloading the update
             }
         }
     })
