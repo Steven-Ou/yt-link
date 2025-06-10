@@ -260,6 +260,7 @@ autoUpdater.on('download-progress',(progressObj)=>{
     const percent = Math.round(progressObj.percent); // Calculate the percentage of download progress
     const transferredMB = Math.round(progressObj.transferred/(1024*1024)); // Calculate the transferred data in MB
     const totalMB = Math.round(progressObj.total/(1024*1024)); // Calculate the total data in MB
+    const speedKBs = Math.round(progressObj.bytesPerSecond/1024); // Calculate the download speed in KB/s
 })
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
         await tcpPortUsed.waitUntilUsed(FLASK_PORT, 5000, 1000); // Wait until the Flask server is up and running
