@@ -1,0 +1,21 @@
+# .github/dependabot.yml
+
+version: 2
+updates:
+  # Check for npm dependency updates in the 'frontend' directory
+  - package-ecosystem: "npm"
+    directory: "/frontend" # Path to your package.json
+    schedule:
+      interval: "weekly" # Check for updates once a week
+    commit-message:
+      prefix: "npm-deps"
+      include: "scope"
+
+  # Check for Python (pip) dependency updates in the 'service' directory
+  - package-ecosystem: "pip"
+    directory: "/service" # Path to your requirements.txt
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "pip-deps"
+      include: "scope"
