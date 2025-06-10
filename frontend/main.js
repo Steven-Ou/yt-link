@@ -303,5 +303,6 @@ autoUpdater.on('update-downloaded', (info) => { // Event listener for when updat
 
 ipcMain,on('renderer-action',(event, arg)=>{
     log.info('Received renderer-action with arg:', arg); // Log the action received from renderer process
+    event.reply('main-process-reply', 'Hello from main process!'); // Reply to renderer process with a message
 });
 
