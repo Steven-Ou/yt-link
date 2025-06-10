@@ -214,6 +214,10 @@ autoUpdater.on('Update-available',(info)=>{//Event listener for update available
         type:"info", // Type of dialog
         title:"Update Available", // Title of dialog
         message:`A new version (${info.version}) of ${app.getName()} is available.`, // Message of dialog
+        detail: `Release notes:\n${info.releaseNotes || 'No release notes provided.'}\n\nDo you want to download it now?`,
+        buttons: ['Download Now', 'Later'],
+        defaultId: 0,
+        cancelId: 1
     })
 });
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
