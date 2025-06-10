@@ -269,11 +269,12 @@ autoUpdater.on('download-progress',(progressObj)=>{
 
     if(mainWindow){
         mainWindow.webContents.send('Update-progress', { // Send download progress to renderer process
-            percent: percent,
-            transferredMB: transferredMB,
-            totalMB: totalMB,
-            speedKBs: speedKBs
+            percent,
+            transferredMB,
+            totalMB,
+            speedKBs
         });
+        
     }
 })
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
