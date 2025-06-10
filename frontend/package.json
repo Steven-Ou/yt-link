@@ -9,7 +9,7 @@
   "start": "next start",
   "lint": "next lint",
   "electron:dev": "electron .",
-  "electron:build": "next build && electron-builder"
+  "electron:build": "next build && npx electron-builder"
 },
   "build": {
     "appId": "com.steve.ytlink",
