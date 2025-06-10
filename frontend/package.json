@@ -43,8 +43,8 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "your-github-username",
-      "repo": "your-repo-name"
+      "owner": "Steven-Ou",
+      "repo": "yt-link"
     }
   },
   "dependencies": {
