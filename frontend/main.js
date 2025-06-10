@@ -250,7 +250,7 @@ autoUpdater.on('Updater-not-available',(info)=>{// Event listener for when no up
 });
 
 autoUpdater.on('error', (err)=>{
-    
+    log.error('Updater: Error in auto-updater. ' +(err.stack || err.message || err)); // Log error if there is an error in auto-updater
 })
 autoUpdater.on('download-progress',(progressObj)=>{
 
