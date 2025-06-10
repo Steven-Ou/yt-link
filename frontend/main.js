@@ -249,6 +249,9 @@ autoUpdater.on('Updater-not-available',(info)=>{// Event listener for when no up
     }
 });
 
+autoUpdater.on('error', (err)=>{
+    
+})
 autoUpdater.on('download-progress',(progressObj)=>{
 
 })
