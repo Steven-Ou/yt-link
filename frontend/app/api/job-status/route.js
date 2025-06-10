@@ -13,7 +13,7 @@ export async function GET(request) {
   return NextResponse.json({ status: 'This is a static build placeholder for /api/job-status' });
 
   /*
-    // All of your original dynamic code is commented out below to prevent build errors.
+    Comment to prevent build errors.
     
     const axios = require('axios'); // For clarity, moving this inside the commented block
     const PYTHON_MICROSERVICE_URL = process.env.PYTHON_SERVICE_URL;
