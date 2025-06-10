@@ -8,6 +8,7 @@ const{autoUpdater} = require('electron-updater'); // Importing autoUpdater from 
 const log = require('electron-log'); // Importing electron-log module
 const { start } = require('repl');
 const { create } = require('domain');
+const { title } = require('process');
 
 const FLASK_PORT = 8080; // Port for Flask server
 const FLASK_HOST = '127.0.0.1'; // Host for Flask server
@@ -211,6 +212,7 @@ autoUpdater.on('Update-available',(info)=>{//Event listener for update available
     }
     dialog.showMessageBox({
         type:"info", // Type of dialog
+        title:"Update Available", // Title of dialog
     })
 });
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
