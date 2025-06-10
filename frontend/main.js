@@ -281,7 +281,24 @@ autoUpdater.on('download-progress',(progressObj)=>{
 });
 
 autoUpdater.on('update-downloaded', (info) => { // Event listener for when update is downloaded
-    
+    log.info('Updater: Update downloaded. Ready to install.', info);
+    if (mainWindow) mainWindow.webContents.send('update-status', `Update v${info.version} downloaded. Restart to install.`);
+    dialog.showMessageBox({
+        type: 'info',
+        title: 'Update Ready to Install',
+        message: `Version ${info.version} of ${app.getName()} has been downloaded. Restart the application to apply the updates.`,
+        buttons: ['Restart Now', 'Later'],
+        defaultId: 0,
+        cancelId: 1
+    }).then(result => {
+        if (result.response === 0) {
+            log.info('Updater: User chose to restart. Quitting and installing...');
+            autoUpdater.quitAndInstall();
+        } else {
+            log.info('Updater: User chose to install later.');
+            if (mainWindow) mainWindow.webContents.send('update-status', `Update v${info.version} will be installed on next restart.`);
+        }
+    });
 });
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
         await tcpPortUsed.waitUntilUsed(FLASK_PORT, 5000, 1000); // Wait until the Flask server is up and running
