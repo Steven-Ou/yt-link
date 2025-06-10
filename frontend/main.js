@@ -213,6 +213,7 @@ autoUpdater.on('Update-available',(info)=>{//Event listener for update available
     dialog.showMessageBox({
         type:"info", // Type of dialog
         title:"Update Available", // Title of dialog
+        message:`A new version (${info.version}) of ${app.getName()} is available.`, // Message of dialog
     })
 });
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
