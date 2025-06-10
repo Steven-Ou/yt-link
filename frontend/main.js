@@ -240,6 +240,12 @@ autoUpdater.on(('Updater-not-available',(info)=>{
     if(mainWindow){ // If main window exists
         mainWindow.webContents.send('Update-status', "You're on the latest version."); // Send message to renderer process about no updates available
     }
+    if(manualCheck){//If manual check is true
+        dialog.ShowMessageBox({
+            title:'No Updates',
+            message:'You are currently running the latest version.'
+        });
+    }
 })
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
         await tcpPortUsed.waitUntilUsed(FLASK_PORT, 5000, 1000); // Wait until the Flask server is up and running
