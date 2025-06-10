@@ -17,7 +17,8 @@
     "axios": "^1.9.0",
     "next": "15.3.1",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tcp-port-used": "^1.0.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
