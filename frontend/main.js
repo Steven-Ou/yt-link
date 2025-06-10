@@ -279,6 +279,10 @@ autoUpdater.on('download-progress',(progressObj)=>{
             `Downloading Update: ${percent}% (${transferredMB}MB / ${totalMB}MB) at ${speedKBs} KB/s`);
     }
 });
+
+autoUpdater.on('update-downloaded', (info) => { // Event listener for when update is downloaded
+    
+});
  /* console.log(`Waiting for Flask server on port ${FLASK_PORT}...`); // Log the message indicating waiting for Flask server
         await tcpPortUsed.waitUntilUsed(FLASK_PORT, 5000, 1000); // Wait until the Flask server is up and running
         console.log(`Flask server detected on port ${FLASK_PORT}. Creating Window...`); // Log the message indicating Flask server is detected.
