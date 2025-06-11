@@ -1,6 +1,7 @@
-/ frontend/app/layout.js
+// frontend/app/layout.js
 
 import "./globals.css";
+import UpdateStatus from "./components/UpdateStatus";
 
 // You can update this metadata as you see fit
 export const metadata = {
@@ -12,7 +13,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <head>
-        {/* We now import the fonts directly using standard link tags. */}
+        {/* We now import the fonts directly using standard link tags to resolve the build conflict. */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
@@ -20,9 +21,10 @@ export default function RootLayout({ children }) {
           rel="stylesheet"
         />
       </head>
-      {/* We apply the font via a class in globals.css now */}
+      {/* We will apply the font via a class in globals.css now */}
       <body className="font-sans antialiased">
         {children}
+        <UpdateStatus />
       </body>
     </html>
   );
