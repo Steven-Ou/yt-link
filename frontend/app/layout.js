@@ -1,37 +1,28 @@
-// app/layout.js
+/ frontend/app/layout.js
 
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import UpdateStatus from "./components/UpdateStatus"; // Make sure this path is correct
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-// You might want to update this metadata to better describe your application
+// You can update this metadata as you see fit
 export const metadata = {
-  title: "YT Link V2", // Updated title
-  description: "A desktop app for downloading YouTube audio.", // Updated description
+  title: "YT Link V2",
+  description: "Download audio from your favorite videos.",
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body
-        // This keeps your Geist font variables and antialiased styling
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {/* This renders your page content (e.g., page.js) */}
+      <head>
+        {/* We now import the fonts directly using standard link tags. */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Geist+Sans:wght@400;500;700&family=Geist+Mono&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      {/* We apply the font via a class in globals.css now */}
+      <body className="font-sans antialiased">
         {children}
-        
-        {/* This adds the global component to handle and display app update status */}
-        <UpdateStatus />
       </body>
     </html>
   );
