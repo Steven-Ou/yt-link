@@ -2,12 +2,15 @@
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Add this line to enable static exports
   output: 'export',
 
-  // Your other Next.js configurations can go here
+  // --- ADD THIS LINE ---
+  // This tells Next.js to use relative paths for assets, which is
+  // necessary for the app to work correctly when loaded via the
+  // file:// protocol in an Electron app.
+  assetPrefix: './',
+
   reactStrictMode: true,
 };
 
-// Use 'export default' for .mjs files
 export default nextConfig;
