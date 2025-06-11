@@ -4,12 +4,17 @@
 const nextConfig = {
   output: 'export',
 
-  // --- ADD THIS LINE ---
-  // This tells Next.js to use relative paths for assets, which is
-  // necessary for the app to work correctly when loaded via the
-  // file:// protocol in an Electron app.
+  // This is required for Electron to find CSS/JS files correctly.
   assetPrefix: './',
 
+  // This disables the next/font optimization which conflicts with
+  // the relative assetPrefix. Your fonts will still work.
+  experimental: {
+    fontLoaders: [
+      { loader: '@next/font/google', options: { subsets: ['latin'] } },
+    ],
+  },
+  
   reactStrictMode: true,
 };
 
