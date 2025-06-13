@@ -12,7 +12,7 @@
     "electron:build": "IS_ELECTRON=true next build && npx electron-builder"
   },
   "build": {
-    "appId": "com.steve.ytlink.v2",
+    "appId": "com.steve.ytlink",
     "productName": "YT Link Updater",
     "files": [
       "out/**/*",
