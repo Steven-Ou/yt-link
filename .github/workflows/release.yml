@@ -43,13 +43,13 @@ jobs:
       run: npm install
       working-directory: ./frontend
 
-      - name: Build Electron App
-        run: npm run electron:build
-        working-directory: ./frontend
-        env:
-          IS_ELECTRON: true
-          # This token is automatically created by GitHub Actions
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Build Electron App
+      run: npm run electron:build
+      working-directory: ./frontend
+      env:
+        IS_ELECTRON: true
+        # This token is automatically created by GitHub Actions
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
 
     
