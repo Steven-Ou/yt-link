@@ -31,10 +31,10 @@ function startFlaskServer() {
         // In PRODUCTION, we look for the backend inside the app's resources directory.
         const resourcesPath = process.resourcesPath;
         if (process.platform === 'win32') {
-            // On Windows, we assume a self-contained .exe has been built and bundled.
+            // On Windows, we run the bundled app.exe
             backendPath = path.join(resourcesPath, 'service', 'app.exe');
         } else {
-            // On Mac, we bundle the venv and run python from it.
+            // On Mac, we run the bundled Python script from the venv
             const flaskAppDirectory = path.join(resourcesPath, 'service');
             backendPath = path.join(flaskAppDirectory, 'venv', 'bin', 'python');
             backendArgs = [path.join(flaskAppDirectory, 'app.py')];
@@ -60,22 +60,19 @@ function startFlaskServer() {
         app.quit();
         return;
     }
-
+    
     flaskProcess.stdout.on('data', (data) => {
         const output = data.toString().trim();
         if (output) log.info(`Backend STDOUT: ${output}`);
     });
-
     flaskProcess.stderr.on('data', (data) => {
         const errorOutput = data.toString().trim();
         if (errorOutput) log.error(`Backend STDERR: ${errorOutput}`);
     });
-
     flaskProcess.on('close', (code, signal) => {
         log.info(`Backend process exited with code ${code} and signal ${signal}`);
         flaskProcess = null;
     });
-
     flaskProcess.on('error', (err) => {
         log.error('Failed to start or run backend process.', err);
         dialog.showErrorBox('Backend Server Error', `Failed to start/run the local server: ${err.message}`);
@@ -107,6 +104,7 @@ function createWindow(){
             contextIsolation:true, // Enable context isolation for security
             preload: path.join(__dirname, 'preload.js'), // Use a preload script for secure context
         },
+        // icon: path.join(__dirname, 'assets', 'icon.png'), // Note: icon path is usually configured in package.json build settings
     });
 
     // We now use app.isPackaged to determine if it's development or production
@@ -154,7 +152,7 @@ app.whenReady().then(async () => {// When the app is ready
         app.quit(); // Quit the application
     }
 
-    app.on('activate', () => { // Corrected: Added 'activate' event name
+    app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) { //If there are no open windows
             if (flaskProcess && !flaskProcess.killed) { // If backend process is running and not killed
                 createWindow(); // Create the main window if it was closed
@@ -198,13 +196,13 @@ autoUpdater.on('update-available', (info) => {//Event listener for update availa
         mainWindow.webContents.send('update-status', `Update available: v${info.version}.`);
     }
     dialog.showMessageBox({
-        type: "info",
-        title: "Update Available",
-        message: `A new version (${info.version}) of ${app.getName()} is available.`,
+        type: "info", // Type of dialog
+        title: "Update Available", // Title of dialog
+        message: `A new version (${info.version}) of ${app.getName()} is available.`, // Message of dialog
         detail: `Release notes:\n${info.releaseNotes || 'No release notes provided.'}\n\nDo you want to download it now?`,
-        buttons: ['Download Now', 'Later'],
-        defaultId: 0,
-        cancelId: 1
+        buttons: ['Download Now', 'Later'], // Buttons for dialog
+        defaultId: 0, // Default button index
+        cancelId: 1 // Cancel button index
     }).then(result => {
         if (result.response === 0) { // User clicked "Download Now"
             log.info('Updater: User agreed to download. Starting download...');//Log the message indicating user agreed to download update
@@ -219,47 +217,49 @@ autoUpdater.on('update-available', (info) => {//Event listener for update availa
             }
         }
     }).catch(err => {
-        log.error('Updater: Error showing update available dialog:', err);
+        log.error('Updater: Error showing update available dialog:', err); // Log error if showing update dialog fails
     });
 });
 
 autoUpdater.on('update-not-available', (info) => {// Event listener for when no update is available
-    log.info('Updater: Update not available.', info);
-    if (mainWindow) {
-        mainWindow.webContents.send('update-status', "You're on the latest version.");
+    log.info('Updater: Update not available.', info); // Log the message indicating update is not available
+    if (mainWindow) { // If main window exists
+        mainWindow.webContents.send('update-status', "You're on the latest version."); // Send message to renderer process about no updates available
     }
 });
 
 autoUpdater.on('error', (err) => {
-    log.error('Updater: Error in auto-updater. ' + (err.stack || err.message || err));
-    if (mainWindow) {
-        mainWindow.webContents.send('update-status', `Error checking for updates: ${err.message}`);
+    log.error('Updater: Error in auto-updater. ' + (err.stack || err.message || err)); // Log error if there is an error in auto-updater
+    if (mainWindow) { // If main window exists
+        mainWindow.webContents.send('update-status', `Error checking for updates: ${err.message}`); // Send message to renderer process about error in checking for updates
     }
 });
 
 autoUpdater.on('download-progress', (progressObj) => {
-    const percent = Math.round(progressObj.percent);
-    const transferredMB = Math.round(progressObj.transferred / (1024 * 1024));
-    const totalMB = Math.round(progressObj.total / (1024 * 1024));
-    const speedKBs = Math.round(progressObj.bytesPerSecond / 1024);
+    const percent = Math.round(progressObj.percent); // Calculate the percentage of download progress
+    const transferredMB = Math.round(progressObj.transferred / (1024 * 1024)); // Calculate the transferred data in MB
+    const totalMB = Math.round(progressObj.total / (1024 * 1024)); // Calculate the total data in MB
+    const speedKBs = Math.round(progressObj.bytesPerSecond / 1024); // Calculate the download speed in KB/s
 
-    let log_message = `Updater: Download speed: ${speedKBs} KB/s`;
-    log_message += ` - Downloaded: ${percent}%`;
-    log_message += ` (${transferredMB}MB of ${totalMB}MB)`;
-    log.info(log_message);
+    let log_message = `Updater: Download speed: ${speedKBs} KB/s`; // Log message for download speed
+    log_message += ` - Downloaded: ${percent}%`; // Append downloaded percentage to log message
+    log_message += ` (${transferredMB}MB of ${totalMB}MB)`; // Append transferred and total data to log message
+    log.info(log_message); // Log the download progress message
 
     if (mainWindow) {
-        mainWindow.webContents.send('update-download-progress', {
+        mainWindow.webContents.send('update-download-progress', { // Send download progress to renderer process
             percent,
             transferredMB,
             totalMB,
             speedKBs
         });
-        mainWindow.webContents.send('update-status', `Downloading Update: ${percent}% (${transferredMB}MB / ${totalMB}MB) at ${speedKBs} KB/s`);
+        mainWindow.webContents.send( // Send update status to renderer process
+            'update-status', 
+            `Downloading Update: ${percent}% (${transferredMB}MB / ${totalMB}MB) at ${speedKBs} KB/s`);
     }
 });
 
-autoUpdater.on('update-downloaded', (info) => {
+autoUpdater.on('update-downloaded', (info) => { // Event listener for when update is downloaded
     log.info('Updater: Update downloaded. Ready to install.', info);
     if (mainWindow) mainWindow.webContents.send('update-status', `Update v${info.version} downloaded. Restart to install.`);
     dialog.showMessageBox({
@@ -281,6 +281,6 @@ autoUpdater.on('update-downloaded', (info) => {
 });
 
 ipcMain.on('renderer-action', (event, arg) => {
-    log.info('Received renderer-action with arg:', arg);
-    event.reply('main-process-reply', 'Hello from main process!');
+    log.info('Received renderer-action with arg:', arg); // Log the action received from renderer process
+    event.reply('main-process-reply', 'Hello from main process!'); // Reply to renderer process with a message
 });
