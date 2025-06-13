@@ -44,7 +44,7 @@ const customTheme = createTheme({
 
 
 function DownloadSection() {
-    const macDownloadUrl = "https://github.com/Steven-Ou/yt-link/releases/download/Download/YT.Link.V2-1.0.0-arm64.dmg";
+    const macDownloadUrl = "https://github.com/Steven-Ou/yt-link/releases/download/v1.1.3/YT.Link.Final-1.1.0-arm64.dmg";
     const windowsDownloadUrl = "https://github.com/Steven-Ou/yt-link/releases/download/Download/YT.Link.Updater.Setup.1.0.1.exe";
 
     return (
