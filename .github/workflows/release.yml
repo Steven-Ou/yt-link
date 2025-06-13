@@ -30,16 +30,19 @@ jobs:
 
       - name: Build and Package Python Backend (Windows only)
         if: matrix.os == 'windows-latest'
+        # Corrected the copy command by creating the directory first and using bash shell
         run: |
           cd service
           python -m venv venv
-          .\venv\Scripts\activate
+          ./venv/Scripts/activate
           pip install -r requirements.txt
           pip install pyinstaller
           pyinstaller --onefile --noconsole --clean app.py
-          # Copy the built exe to a place the frontend can find it
+          # Create the destination directory before copying
+          mkdir -p ../frontend/service
+          # Copy the built executable to the location expected by the next steps
           cp dist/app.exe ../frontend/service/app.exe
-        shell: pwsh
+        shell: bash
 
       - name: Install Frontend Dependencies
         run: npm install
