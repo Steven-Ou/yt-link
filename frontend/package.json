@@ -1,16 +1,14 @@
 {
   "name": "yt-link-app",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "private": true,
   "main": "main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
     "lint": "next lint",
     "electron:dev": "electron .",
-    "electron:build": "IS_ELECTRON=true next build && npx electron-builder",
-    "electron:build:win": "IS_ELECTRON=true next build && npx electron-builder --win --x64"
+    "electron:build": "next build && npx electron-builder"
   },
   "build": {
     "appId": "com.steve.ytlink.final",
@@ -27,7 +25,10 @@
         "to": "service",
         "filter": [
           "**/*",
-          "!**/.git/*"
+          "!**/.git/*",
+          "!**/dist/*",
+          "!**/build/*",
+          "!**/*.spec"
         ]
       }
     ],
@@ -35,12 +36,7 @@
       "target": "dmg"
     },
     "win": {
-      "target": "zip",
-      "icon": "public/icons/icon.ico"
-    },
-    "linux": {
-      "target": "AppImage",
-      "icon": "public/icons"
+      "target": "zip"
     },
     "publish": {
       "provider": "github",
@@ -53,7 +49,6 @@
     "@emotion/styled": "^11.14.0",
     "@mui/icons-material": "^7.0.2",
     "@mui/material": "^7.0.2",
-    "adm-zip": "^0.5.16",
     "axios": "^1.9.0",
     "electron-log": "^5.4.0",
     "electron-updater": "^6.6.2",
