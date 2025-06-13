@@ -1,286 +1,307 @@
-//main.js
-const { app, BrowserWindow, ipcMain, dialog } = require('electron'); // Importing app and BrowserWindow from electron
-const path = require('path'); // Importing path module
-const { spawn } = require('child_process'); // Importing spawn from child_process module
-const tcpPortUsed = require('tcp-port-used'); // Importing tcp-port-used module
-const { autoUpdater } = require('electron-updater'); // Importing autoUpdater from electron-updater module
-const log = require('electron-log'); // Importing electron-log module
+// main.js
 
-// --- Configuration ---
-const FLASK_PORT = 8080; // Port for Flask server
-const NEXTJS_DEV_URL ='http://localhost:3000'; // URL for Next.js development server
+// --- Core Electron & Node.js Modules ---
+// 'app' controls your application's event lifecycle.
+// 'BrowserWindow' creates and manages application windows.
+// 'ipcMain' handles asynchronous and synchronous messages sent from the renderer process (your web page).
+// 'dialog' lets you display native system dialogs for opening files, showing alerts, etc.
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 
-let mainWindow; // Variable to hold the main window instance
-let flaskProcess = null; // Variable to hold the Flask process instance
+// The 'path' module provides utilities for working with file and directory paths in a cross-platform way.
+const path = require('path');
 
-// --- Auto Updater Configuration & Logging  ---
-autoUpdater.logger = log; // Set the logger for autoUpdater
-autoUpdater.logger.transports.file.level = 'info'; // Set the log level to info
-log.info('App starting...'); // Log the app starting message
+// The 'spawn' function from 'child_process' is used to run external commands, like our Python server.
+const { spawn } = require('child_process');
 
-// Disable auto-download: USER WILL BE THE ONE CONSENTING TO DOWNLOAD
-autoUpdater.autoDownload = false; // Disable auto-download for updates
+// The 'tcp-port-used' module helps us check if our Python server has successfully started on its port.
+const tcpPortUsed = require('tcp-port-used');
 
-//--- Flask Server Mangement --- 
+// The 'autoUpdater' object from 'electron-updater' handles all the logic for checking and applying updates.
+const { autoUpdater } = require('electron-updater');
+
+// The 'electron-log' module provides a simple logging system that works in both development and production.
+const log = require('electron-log');
+
+
+// --- Application Configuration ---
+// Defines the port number that the local Python Flask server will run on.
+const FLASK_PORT = 8080;
+// Defines the URL for the Next.js development server, which allows for hot-reloading.
+const NEXTJS_DEV_URL ='http://localhost:3000';
+
+
+// --- Global Variables ---
+// This variable will hold the reference to our main application window.
+let mainWindow;
+// This variable will hold the reference to the running Python backend process.
+let flaskProcess = null;
+
+
+// --- Auto Updater Configuration & Logging ---
+// Directs the autoUpdater to use electron-log for its output, which is useful for debugging updates.
+autoUpdater.logger = log;
+// Sets the logging level for the updater's log file.
+autoUpdater.logger.transports.file.level = 'info';
+// Logs a message to indicate that the application is starting.
+log.info('App starting...');
+// Disables automatic downloading of updates. The app will now prompt the user before downloading.
+autoUpdater.autoDownload = false;
+
+
+// --- Backend Server Management ---
+// This function starts the Python backend server.
 function startFlaskServer() {
+    // Logs that the function has been called.
     log.info('Attempting to start backend server...');
+    // A variable to hold the path to the executable we need to run.
     let backendPath;
+    // A variable to hold any command-line arguments for the executable.
     let backendArgs = [];
 
+    // 'app.isPackaged' is a built-in Electron property. It's 'true' for the final installed app
+    // and 'false' when running in development mode (with `npm run electron:dev`).
     if (app.isPackaged) {
-        // In PRODUCTION, we look for the backend inside the app's resources directory.
+        // --- PRODUCTION MODE ---
+        // 'process.resourcesPath' is the path to the 'resources' folder inside the packaged app.
         const resourcesPath = process.resourcesPath;
+
+        // 'process.platform' checks the operating system. 'win32' is for Windows.
         if (process.platform === 'win32') {
-            // On Windows, we run the bundled app.exe
+            // On Windows, our GitHub Actions workflow builds and bundles 'app.exe'. This is its path.
             backendPath = path.join(resourcesPath, 'service', 'app.exe');
         } else {
-            // On Mac, we run the bundled Python script from the venv
+            // On Mac, our workflow bundles the Python virtual environment. This is the path to its Python executable.
             const flaskAppDirectory = path.join(resourcesPath, 'service');
             backendPath = path.join(flaskAppDirectory, 'venv', 'bin', 'python');
+            // We need to tell this Python executable to run our 'app.py' script.
             backendArgs = [path.join(flaskAppDirectory, 'app.py')];
         }
     } else {
-        // In DEVELOPMENT, we run the Python script directly from the project source.
+        // --- DEVELOPMENT MODE ---
+        // We build the path to our local 'service' folder relative to the current file.
         const flaskAppDirectory = path.join(__dirname, '..', 'service');
+        
         if (process.platform === 'win32') {
+            // On a Windows development machine, the Python executable is in 'venv\Scripts\'.
             backendPath = path.join(flaskAppDirectory, 'venv', 'Scripts', 'python.exe');
         } else {
+            // On a Mac development machine, it's in 'venv/bin/'.
             backendPath = path.join(flaskAppDirectory, 'venv', 'bin', 'python');
         }
+        // In development, we always tell Python to run our 'app.py' script.
         backendArgs = [path.join(flaskAppDirectory, 'app.py')];
     }
 
+    // Logs the exact command that is about to be executed. This is great for debugging.
     log.info(`Executing backend command: ${backendPath} ${backendArgs.join(' ')}`);
 
     try {
+        // The 'spawn' command runs the backend process.
         flaskProcess = spawn(backendPath, backendArgs);
     } catch (error) {
+        // If 'spawn' itself fails (e.g., file not found), log it and show an error.
         log.error('Spawn failed to initiate backend process.', error);
         dialog.showErrorBox('Critical Error', `Could not launch the local server: ${error.message}`);
-        app.quit();
+        app.quit(); // Quit the app because it cannot function without the backend.
         return;
     }
     
+    // --- Event Listeners for the Backend Process ---
+    // Listens for any standard output (like print statements) from the backend and logs it.
     flaskProcess.stdout.on('data', (data) => {
         const output = data.toString().trim();
         if (output) log.info(`Backend STDOUT: ${output}`);
     });
+    // Listens for any error output from the backend and logs it.
     flaskProcess.stderr.on('data', (data) => {
         const errorOutput = data.toString().trim();
         if (errorOutput) log.error(`Backend STDERR: ${errorOutput}`);
     });
-    flaskProcess.on('close', (code, signal) => {
-        log.info(`Backend process exited with code ${code} and signal ${signal}`);
+    // Listens for when the backend process closes and logs its exit code.
+    flaskProcess.on('close', (code) => {
+        log.info(`Backend process exited with code ${code}`);
         flaskProcess = null;
     });
+    // Listens for any errors related to the process itself (e.g., permissions issues).
     flaskProcess.on('error', (err) => {
-        log.error('Failed to start or run backend process.', err);
+        log.error('Failed to run backend process.', err);
         dialog.showErrorBox('Backend Server Error', `Failed to start/run the local server: ${err.message}`);
-        flaskProcess = null;
     });
 } 
 
-// Function to stop the Flask server
+// This function stops the Python backend server.
 function stopFlaskServer(){
+    // Checks if the backend process is currently running.
     if(flaskProcess){
-        log.info('Attempting to stop Backend Server...');// Log the message indicating backend server is stopping 
-        const killed = flaskProcess.kill();// Attempt to kill the backend process 
-        if(killed){
-            log.info('Backend Server process kill signal sent.');// Log the message indicating backend server process kill signal is sent
-        }else{
-            log.warn("Failed to send kill signal to Backend Server Process (Might've exited).");// Log warning if failed to send kill signal to backend server process 
-        }
-        flaskProcess=null;// Set flaskProcess to null after stopping it
+        // Logs the intention to stop the server.
+        log.info('Stopping backend server...');
+        // The 'kill()' command sends a termination signal to the process.
+        flaskProcess.kill();
+        // Sets the variable to null to indicate the process is stopped.
+        flaskProcess = null;
     }
 }
 
 // --- Electron Window Creation ---
+// This function creates the main application window.
 function createWindow(){
+    // Creates a new browser window instance with specified dimensions.
     mainWindow = new BrowserWindow({ 
-        width:1280,
-        height:800,
-        webPreferences:{
-            nodeIntegration:false, // Disable Node.js integration for security
-            contextIsolation:true, // Enable context isolation for security
-            preload: path.join(__dirname, 'preload.js'), // Use a preload script for secure context
+        width: 1280, 
+        height: 800,
+        // Web Preferences control the features of the web page inside the window.
+        webPreferences: {
+            nodeIntegration: false, // Disables Node.js in the renderer for security.
+            contextIsolation: true, // Creates a separate JavaScript context for security.
+            preload: path.join(__dirname, 'preload.js'), // Specifies a script to run before the web page loads.
         },
-        // icon: path.join(__dirname, 'assets', 'icon.png'), // Note: icon path is usually configured in package.json build settings
     });
 
-    // We now use app.isPackaged to determine if it's development or production
-    if (!app.isPackaged) { //If in development mode
-        log.info(`Loading Next.js from dev server: ${NEXTJS_DEV_URL} `);// Log the message indicating loading Next.js from dev server 
-        mainWindow.loadURL(NEXTJS_DEV_URL); // Load the Next.js development server URL
-        mainWindow.webContents.openDevTools(); // Open developer tools
-    } else { //If in production mode
-        const indexPath = path.join(__dirname, 'out', 'index.html'); // Correct path for next export
-        log.info(`Loading Next.js from production build: ${indexPath}`);// Log the message indicating loading Next.js from production build
-        mainWindow.loadFile(indexPath); // Load the exported Next.js HTML file
+    // Checks if the app is in development or production using Electron's built-in property.
+    if (!app.isPackaged) {
+        // In development, load the URL from the Next.js hot-reloading server.
+        mainWindow.loadURL(NEXTJS_DEV_URL);
+        // Automatically open the browser's Developer Tools for debugging.
+        mainWindow.webContents.openDevTools();
+    } else {
+        // In production, load the pre-built 'index.html' file from the 'out' folder.
+        mainWindow.loadFile(path.join(__dirname, 'out', 'index.html'));
     }
 
-    mainWindow.on('closed',()=>{
-        log.info('Main window closed.'); // Log the message indicating main window is closed
-        mainWindow = null;//Set mainWindow to null after it is closed 
+    // Event listener for when the window is closed.
+    mainWindow.on('closed', () => { 
+        // Sets the mainWindow variable back to null to allow for garbage collection.
+        mainWindow = null;
     });
 }
 
 // --- Application Lifecycle Management ---
-app.whenReady().then(async () => {// When the app is ready
+// This event fires when Electron has finished initialization.
+app.whenReady().then(async () => {
+    // We start our backend server as soon as the app is ready.
     startFlaskServer(); 
-
     try {
-        log.info(`Waiting for backend server on port ${FLASK_PORT}... (Timeout: 20s)`); //Log the message indicating waiting for backend server
-        await tcpPortUsed.waitUntilUsed(FLASK_PORT, 500, 20000); //Poll every 500ms for 20s
-        log.info(`Backend server detected on port ${FLASK_PORT}. Creating window...`);//Log the message indicating backend server is detected
-        createWindow();// Create the main window
+        // Log that we are now waiting for the server to be available on its port.
+        log.info(`Waiting for backend server on port ${FLASK_PORT}... (Timeout: 20s)`);
+        // This will pause execution until the port is in use, or 20 seconds have passed.
+        await tcpPortUsed.waitUntilUsed(FLASK_PORT, 500, 20000);
+        // If the port becomes active, log the success and create the app window.
+        log.info(`Backend server detected on port ${FLASK_PORT}.`);
+        createWindow();
 
-        // Check for updates only when the app is packaged (in production)
+        // Only check for updates when the app is packaged and installed.
         if (app.isPackaged) {
-            log.info('Production mode: Checking for application updates...');//Log the message indicating checking for application updates
-            setTimeout(() => {// Wait for a bit before checking for updates
-                autoUpdater.checkForUpdates().catch(err => {// Check for updates
-                    log.error('Error during initial checkForUpdates:', err);//Log the error during initial check for updates
-                });
-            }, 5000);//Wait for 5 seconds before checking for updates
-        } else {
-            log.info('Development mode: Skipping update check.');//Log the message indicating skipping update check in development mode
+            log.info('Production mode: Checking for application updates...');
+            // Wait 5 seconds after launch to check for updates, so the app can load first.
+            setTimeout(() => autoUpdater.checkForUpdates().catch(err => log.error('Error during initial update check:', err)), 5000);
         }
-    } catch (err) {// If there is an error waiting for backend server
-        log.error(`Backend Server did not start on port ${FLASK_PORT} within timeout:`, err); // Log the error if backend server did not start within timeout
-        dialog.showErrorBox('Server Error', `The local backend server did not start correctly. The application will now close.`); // Show error dialog if backend server did not start correctly
-        stopFlaskServer(); // Stop the backend server if it was started
-        app.quit(); // Quit the application
-    }
-
-    app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) { //If there are no open windows
-            if (flaskProcess && !flaskProcess.killed) { // If backend process is running and not killed
-                createWindow(); // Create the main window if it was closed
-            } else {
-                log.warn('Activate event: Backend process not running or killed, attempting to restart.');//Log warning if backend process is not running or killed 
-                startFlaskServer();// Start the backend server again
-                tcpPortUsed.waitUntilUsed(FLASK_PORT, 500, 10000)//Wait until backend server is up and running  
-                    .then(() => createWindow())//Create the main window after backend server is up
-                    .catch(errActivate => {//If there is an error waiting for backend server
-                        log.error('Backend did not restart on activate:', errActivate);//Log the error if backend server did not restart
-                        dialog.showErrorBox('Server Error', `The local backend could not be restarted. The application will now close.`);//Show error dialog if backend server could not be restarted
-                        app.quit();// Quit the application 
-                    });
-            }
-        }
-    });
-});
-
-app.on('window-all-closed', () => {//When all windows are closed
-    if (process.platform !== 'darwin') {
-        app.quit(); //Quit the application if all windows are closed and not on macOS
+    } catch (err) {
+        // This 'catch' block runs if the port is NOT in use after the timeout.
+        log.error(`Backend server did not start in time:`, err);
+        dialog.showErrorBox('Server Error', `The local backend did not start correctly.`);
+        // Quit the app because it cannot function.
+        app.quit();
     }
 });
 
-app.on('will-quit', () => {//When the application is about to quit
-    log.info('Electron app will quit.');
-    stopFlaskServer(); // Stop the backend server when the application is about to quit
+// This event is for macOS. It re-creates the window if the dock icon is clicked and no windows are open.
+app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
+
+// This event fires when all windows have been closed.
+app.on('window-all-closed', () => {
+    // On macOS, it's common for apps to stay open. On other platforms, we quit.
+    if (process.platform !== 'darwin') app.quit();
+});
+
+// This event fires just before the application begins to close its windows.
+app.on('will-quit', stopFlaskServer);
+
 
 // --- Auto-Updater Event Listeners ---
-autoUpdater.on('checking-for-update', () => {//Event listener for autoUpdater events
-    log.info('Updater: Checking for update...');//Log the message indicating checking for update
-    if (mainWindow) { //If main window exists
-        mainWindow.webContents.send('update-status', 'Checking for updates...');
-    }
+// Fired when the updater starts checking.
+autoUpdater.on('checking-for-update', () => {
+    log.info('Updater: Checking for update...');
+    if (mainWindow) mainWindow.webContents.send('update-status', 'Checking for updates...');
 });
 
-autoUpdater.on('update-available', (info) => {//Event listener for update available
-    log.info('Updater: Update available.', info);//Log the message indicating update is available
-    if (mainWindow) { //If main window exists
-        mainWindow.webContents.send('update-status', `Update available: v${info.version}.`);
-    }
+// Fired when an update is found but not yet downloaded.
+autoUpdater.on('update-available', (info) => {
+    log.info('Updater: Update available.', info);
+    if (mainWindow) mainWindow.webContents.send('update-status', `Update available: v${info.version}`);
+    // Show a native dialog box to ask the user if they want to download the update.
     dialog.showMessageBox({
-        type: "info", // Type of dialog
-        title: "Update Available", // Title of dialog
-        message: `A new version (${info.version}) of ${app.getName()} is available.`, // Message of dialog
-        detail: `Release notes:\n${info.releaseNotes || 'No release notes provided.'}\n\nDo you want to download it now?`,
-        buttons: ['Download Now', 'Later'], // Buttons for dialog
-        defaultId: 0, // Default button index
-        cancelId: 1 // Cancel button index
+        type: "info",
+        title: "Update Available",
+        message: `A new version (${info.version}) is available. Do you want to download it now?`,
+        buttons: ['Download Now', 'Later'],
+        defaultId: 0,
+        cancelId: 1
     }).then(result => {
-        if (result.response === 0) { // User clicked "Download Now"
-            log.info('Updater: User agreed to download. Starting download...');//Log the message indicating user agreed to download update
-            if (mainWindow) {
-                mainWindow.webContents.send('update-status', 'Downloading update...');
-            }
-            autoUpdater.downloadUpdate(); // Start downloading the update
-        } else { // User clicked "Later"
+        // 'result.response' is the index of the button the user clicked.
+        if (result.response === 0) {
+            // User clicked "Download Now", so we start the download.
+            log.info('Updater: User agreed to download.');
+            if (mainWindow) mainWindow.webContents.send('update-status', 'Downloading update...');
+            autoUpdater.downloadUpdate();
+        } else {
+            // User clicked "Later".
             log.info('Updater: User deferred the update.');
-            if (mainWindow) {
-                mainWindow.webContents.send('update-status', 'Update deferred by user.');
-            }
+            if (mainWindow) mainWindow.webContents.send('update-status', 'Update deferred by user.');
         }
-    }).catch(err => {
-        log.error('Updater: Error showing update available dialog:', err); // Log error if showing update dialog fails
     });
 });
 
-autoUpdater.on('update-not-available', (info) => {// Event listener for when no update is available
-    log.info('Updater: Update not available.', info); // Log the message indicating update is not available
-    if (mainWindow) { // If main window exists
-        mainWindow.webContents.send('update-status', "You're on the latest version."); // Send message to renderer process about no updates available
-    }
+// Fired when no update is found.
+autoUpdater.on('update-not-available', (info) => {
+    log.info('Updater: Update not available.', info);
+    if (mainWindow) mainWindow.webContents.send('update-status', "You're on the latest version.");
 });
 
+// Fired if there is an error during the update process.
 autoUpdater.on('error', (err) => {
-    log.error('Updater: Error in auto-updater. ' + (err.stack || err.message || err)); // Log error if there is an error in auto-updater
-    if (mainWindow) { // If main window exists
-        mainWindow.webContents.send('update-status', `Error checking for updates: ${err.message}`); // Send message to renderer process about error in checking for updates
-    }
+    log.error('Updater: Error in auto-updater. ' + err);
+    if (mainWindow) mainWindow.webContents.send('update-status', `Error checking for updates: ${err.message}`);
 });
 
+// Fired periodically with download progress information.
 autoUpdater.on('download-progress', (progressObj) => {
-    const percent = Math.round(progressObj.percent); // Calculate the percentage of download progress
-    const transferredMB = Math.round(progressObj.transferred / (1024 * 1024)); // Calculate the transferred data in MB
-    const totalMB = Math.round(progressObj.total / (1024 * 1024)); // Calculate the total data in MB
-    const speedKBs = Math.round(progressObj.bytesPerSecond / 1024); // Calculate the download speed in KB/s
-
-    let log_message = `Updater: Download speed: ${speedKBs} KB/s`; // Log message for download speed
-    log_message += ` - Downloaded: ${percent}%`; // Append downloaded percentage to log message
-    log_message += ` (${transferredMB}MB of ${totalMB}MB)`; // Append transferred and total data to log message
-    log.info(log_message); // Log the download progress message
-
+    const log_message = `Updater: Downloaded ${Math.round(progressObj.percent)}%`;
+    log.info(log_message);
+    // You can send this progress to the UI using ipcRenderer.
     if (mainWindow) {
-        mainWindow.webContents.send('update-download-progress', { // Send download progress to renderer process
-            percent,
-            transferredMB,
-            totalMB,
-            speedKBs
-        });
-        mainWindow.webContents.send( // Send update status to renderer process
-            'update-status', 
-            `Downloading Update: ${percent}% (${transferredMB}MB / ${totalMB}MB) at ${speedKBs} KB/s`);
+        mainWindow.webContents.send('update-download-progress', { percent: progressObj.percent });
+        mainWindow.webContents.send('update-status', `Downloading update: ${Math.round(progressObj.percent)}%`);
     }
 });
 
-autoUpdater.on('update-downloaded', (info) => { // Event listener for when update is downloaded
-    log.info('Updater: Update downloaded. Ready to install.', info);
+// Fired when the update has been fully downloaded.
+autoUpdater.on('update-downloaded', (info) => {
+    log.info('Updater: Update downloaded.', info);
     if (mainWindow) mainWindow.webContents.send('update-status', `Update v${info.version} downloaded. Restart to install.`);
+    // Show another dialog to ask the user if they want to install the update now.
     dialog.showMessageBox({
         type: 'info',
         title: 'Update Ready to Install',
-        message: `Version ${info.version} of ${app.getName()} has been downloaded. Restart the application to apply the updates.`,
+        message: 'A new version has been downloaded. Restart the application to apply the updates.',
         buttons: ['Restart Now', 'Later'],
         defaultId: 0,
         cancelId: 1
     }).then(result => {
+        // If the user clicks "Restart Now"...
         if (result.response === 0) {
-            log.info('Updater: User chose to restart. Quitting and installing...');
+            // ...the app will quit and the new version will be installed.
             autoUpdater.quitAndInstall();
-        } else {
-            log.info('Updater: User chose to install later.');
-            if (mainWindow) mainWindow.webContents.send('update-status', `Update v${info.version} will be installed on next restart.`);
         }
     });
 });
 
+
+// --- Inter-Process Communication (IPC) Example ---
+// This is an example of how the renderer process (your UI) could send a message to this main process.
 ipcMain.on('renderer-action', (event, arg) => {
-    log.info('Received renderer-action with arg:', arg); // Log the action received from renderer process
-    event.reply('main-process-reply', 'Hello from main process!'); // Reply to renderer process with a message
+    log.info('Received renderer-action with arg:', arg);
+    // This sends a reply back to the renderer process.
+    event.reply('main-process-reply', 'Hello from main process!');
 });
