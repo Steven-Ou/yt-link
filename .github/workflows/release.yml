@@ -31,15 +31,18 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
 
-      - name: Build Python Backend EXE (Windows only)
+      - name: Build and Package Python Backend (Windows only)
         if: matrix.os == 'windows-latest'
+        # Using bash shell for cross-platform compatible commands
         run: |
           cd service
           python -m venv venv
-          ./venv/Scripts/activate
+          source ./venv/Scripts/activate
           pip install -r requirements.txt
           pip install pyinstaller
           pyinstaller --onefile --noconsole --clean app.py
+          mkdir -p ../frontend/service
+          cp dist/app.exe ../frontend/service/app.exe
         shell: bash
 
       - name: Install Frontend Dependencies
@@ -47,10 +50,11 @@ jobs:
         working-directory: ./frontend
 
       - name: Build Electron App
+        # The IS_ELECTRON variable is now set in the 'env' block, which works for all OS.
         run: npm run electron:build -- --publish always
         working-directory: ./frontend
         env:
-          IS_ELECTRON: true
+          IS_ELECTRON: 'true'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Release
