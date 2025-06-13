@@ -6,3 +6,8 @@ on:
       - 'v*.*.*'
 
 jobs:
+  build-and-release:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
