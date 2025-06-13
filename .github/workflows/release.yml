@@ -51,5 +51,14 @@ jobs:
         # This token is automatically created by GitHub Actions
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          frontend/dist/*.dmg
+          frontend/dist/*.zip
+          frontend/dist/*.exe
+          frontend/dist/*.blockmap
+
 
     
