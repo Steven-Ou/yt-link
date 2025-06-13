@@ -1,0 +1,12 @@
+node_modules/
+# PyInstaller temporary files and output
+/build/
+/dist/
+*.spec
+
+# Python virtual environment
+venv/
+
+# Python cache files
+__pycache__/
+*.pyc
