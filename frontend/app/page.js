@@ -45,7 +45,7 @@ const customTheme = createTheme({
 
 function DownloadSection() {
     const macDownloadUrl = "https://github.com/Steven-Ou/yt-link/releases/download/Download/YT.Link.V2-1.0.0-arm64.dmg";
-    const windowsDownloadUrl = "https://github.com/Steven-Ou/yt-link/releases/download/Download/YT.Link.V2.Setup.1.0.0.exe";
+    const windowsDownloadUrl = "https://github.com/Steven-Ou/yt-link/releases/download/Download/YT.Link.Updater.Setup.1.0.1.exe";
 
     return (
         <Paper elevation={3} sx={{ mt: 8, p: { xs: 2, sm: 4 }, borderRadius: 4 }}>
