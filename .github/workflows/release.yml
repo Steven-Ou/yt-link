@@ -4,3 +4,5 @@ on:
   push:
     tags:
       - 'v*.*.*'
+
+jobs:
