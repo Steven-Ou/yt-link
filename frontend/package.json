@@ -13,7 +13,7 @@
   },
   "build": {
     "appId": "com.steve.ytlink.final",
-    "productName": "YT Link Final Installer",
+    "productName": "YT Link Final",
     "files": [
       "out/**/*",
       "main.js",
@@ -35,7 +35,7 @@
       "icon": "public/icons/icon.icns"
     },
     "win": {
-      "target": "nsis",
+      "target": "zip",
       "icon": "public/icons/icon.ico"
     },
     "linux": {
