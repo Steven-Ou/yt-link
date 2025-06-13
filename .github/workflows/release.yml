@@ -11,6 +11,12 @@ jobs:
     strategy:
       matrix:
         os: [macos-latest, windows-latest]
+    
+    # --- THIS SECTION IS NEW ---
+    # This grants the GITHUB_TOKEN the permissions it needs to create a release.
+    permissions:
+      contents: write
+    # --- END OF NEW SECTION ---
 
     steps:
       - name: Check out Git repository
@@ -30,7 +36,6 @@ jobs:
 
       - name: Build and Package Python Backend (Windows only)
         if: matrix.os == 'windows-latest'
-        # Corrected the copy command by creating the directory first and using bash shell
         run: |
           cd service
           python -m venv venv
@@ -38,9 +43,7 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
           pyinstaller --onefile --noconsole --clean app.py
-          # Create the destination directory before copying
           mkdir -p ../frontend/service
-          # Copy the built executable to the location expected by the next steps
           cp dist/app.exe ../frontend/service/app.exe
         shell: bash
 
@@ -53,7 +56,6 @@ jobs:
         working-directory: ./frontend
         env:
           IS_ELECTRON: true
-          # This token is automatically created by GitHub Actions
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Release
