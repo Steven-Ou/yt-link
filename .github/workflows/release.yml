@@ -12,11 +12,8 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest]
     
-    # --- THIS SECTION IS NEW ---
-    # This grants the GITHUB_TOKEN the permissions it needs to create a release.
     permissions:
       contents: write
-    # --- END OF NEW SECTION ---
 
     steps:
       - name: Check out Git repository
@@ -34,7 +31,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
 
-      - name: Build and Package Python Backend (Windows only)
+      - name: Build Python Backend EXE (Windows only)
         if: matrix.os == 'windows-latest'
         run: |
           cd service
@@ -43,8 +40,6 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
           pyinstaller --onefile --noconsole --clean app.py
-          mkdir -p ../frontend/service
-          cp dist/app.exe ../frontend/service/app.exe
         shell: bash
 
       - name: Install Frontend Dependencies
@@ -52,7 +47,7 @@ jobs:
         working-directory: ./frontend
 
       - name: Build Electron App
-        run: npm run electron:build
+        run: npm run electron:build -- --publish always
         working-directory: ./frontend
         env:
           IS_ELECTRON: true
