@@ -1,6 +1,6 @@
 {
   "name": "yt-link-app",
-  "version": "1.1.7",
+  "version": "1.2.0",
   "private": true,
   "main": "main.js",
   "scripts": {
@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "electron:dev": "electron .",
-    "electron:build": "next build && npx electron-builder"
+    "electron:build": "IS_ELECTRON=true next build && npx electron-builder"
   },
   "build": {
     "appId": "com.steve.ytlink.final",
@@ -20,24 +20,30 @@
       "preload.js",
       "package.json"
     ],
-    "extraResources": [
-      {
-        "from": "../service",
-        "to": "service",
-        "filter": [
-          "**/*",
-          "!**/.git/*",
-          "!**/dist/*",
-          "!**/build/*",
-          "!**/*.spec"
-        ]
-      }
-    ],
-    "mac": {
-      "target": "dmg"
-    },
     "win": {
-      "target": "zip"
+      "target": "zip",
+      "icon": "public/icons/icon.ico",
+      "extraResources": [
+        {
+          "from": "build-assets/win",
+          "to": "."
+        }
+      ]
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "public/icons/icon.icns",
+      "extraResources": [
+        {
+          "from": "../service",
+          "to": "service",
+          "filter": [
+            "**/*",
+            "!dist/",
+            "!build/"
+          ]
+        }
+      ]
     },
     "publish": {
       "provider": "github",
