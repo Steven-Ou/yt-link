@@ -12,3 +12,5 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest]
   steps:
+    - name: Check out Git repository
+      uses: actions/checkout@v3
