@@ -1,6 +1,6 @@
 {
-  "name": "yt-link",
-  "version": "1.0.0",
+  "name": "yt-link-app",
+  "version": "1.0.2",
   "private": true,
   "main": "main.js",
   "scripts": {
@@ -12,8 +12,8 @@
     "electron:build": "IS_ELECTRON=true next build && npx electron-builder"
   },
   "build": {
-    "appId": "com.steve.ytlink",
-    "productName": "YT Link",
+    "appId": "com.steve.ytlink.final",
+    "productName": "YT Link Final Installer",
     "files": [
       "out/**/*",
       "main.js",
