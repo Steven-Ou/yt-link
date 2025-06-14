@@ -15,7 +15,7 @@ updates:
   - package-ecosystem: "pip"
     directory: "/service" # Path to your requirements.txt
     schedule:
-      interval: "weekly"
+      interval: "daily"
     commit-message:
       prefix: "pip-deps"
       include: "scope"
