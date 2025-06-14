@@ -44,11 +44,11 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           cd service
-          ./venv/Scripts/activate
-          pyinstaller --onefile --noconsole --clean \
-            --add-binary "venv/Scripts/yt-dlp.exe;." \
-            --add-binary "venv/Scripts/ffmpeg.exe;." \
-            --add-binary "venv/Scripts/ffprobe.exe;." \
+          # Use full paths and avoid shell activation issues
+          ./venv/Scripts/pyinstaller.exe --onefile --noconsole --clean \
+            --add-binary "./venv/Scripts/yt-dlp.exe;." \
+            --add-binary "./venv/Scripts/ffmpeg.exe;." \
+            --add-binary "./venv/Scripts/ffprobe.exe;." \
             app.py
         shell: bash
 
