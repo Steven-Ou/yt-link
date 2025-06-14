@@ -31,16 +31,19 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
       
+      - name: Install ffmpeg (for both OS)
+        uses: federicobond/setup-ffmpeg@v2
+      
       - name: Create Python virtual environment and install dependencies
         run: |
           cd service
           python -m venv venv
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             ./venv/Scripts/python.exe -m pip install -r requirements.txt
-            ./venv/Scripts/python.exe -m pip install pyinstaller static-ffmpeg
+            ./venv/Scripts/python.exe -m pip install pyinstaller
           else
             ./venv/bin/python -m pip install -r requirements.txt
-            ./venv/bin/python -m pip install pyinstaller static-ffmpeg
+            ./venv/bin/python -m pip install pyinstaller
           fi
         shell: bash
 
@@ -48,11 +51,10 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           cd service
-          # This is the final, corrected command with the right paths for all binaries.
+          # This command now works because ffmpeg is on the system PATH
+          # and PyInstaller will find it automatically. We only need to bundle yt-dlp.
           ./venv/Scripts/python.exe -m PyInstaller --onefile --noconsole --clean \
             --add-binary "./venv/Scripts/yt-dlp.exe;." \
-            --add-binary "./venv/Lib/site-packages/static_ffmpeg/ffmpeg.exe;." \
-            --add-binary "./venv/Lib/site-packages/static_ffmpeg/ffprobe.exe;." \
             app.py
         shell: bash
 
