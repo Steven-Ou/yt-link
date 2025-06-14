@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "electron:dev": "electron .",
-    "electron:build": "IS_ELECTRON=true next build && npx electron-builder"
+    "electron:build": "cross-env IS_ELECTRON=true next build && npx electron-builder"
   },
   "build": {
     "appId": "com.steve.ytlink.final",
@@ -65,6 +65,7 @@
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4.1.7",
     "autoprefixer": "^10.4.21",
+    "cross-env": "^7.0.3",
     "electron": "^36.4.0",
     "electron-builder": "^24.13.3",
     "eslint": "^9",
