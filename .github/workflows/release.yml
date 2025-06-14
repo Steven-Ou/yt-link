@@ -35,7 +35,6 @@ jobs:
         run: |
           cd service
           python -m venv venv
-          # This is the corrected, robust way to install dependencies into the venv
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             ./venv/Scripts/python.exe -m pip install -r requirements.txt
             ./venv/Scripts/python.exe -m pip install pyinstaller static-ffmpeg
@@ -49,11 +48,18 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           cd service
-          # This command is now guaranteed to find PyInstaller
+          # Find the actual paths to the executables provided by static-ffmpeg
+          FFMPEG_PATH=$(./venv/Scripts/python.exe -c "import static_ffmpeg; print(static_ffmpeg.get_ffmpeg_path())")
+          FFPROBE_PATH=$(./venv/Scripts/python.exe -c "import static_ffmpeg; print(static_ffmpeg.get_ffprobe_path())")
+          
+          echo "Found ffmpeg at: $FFMPEG_PATH"
+          echo "Found ffprobe at: $FFPROBE_PATH"
+          
+          # Now, use these correct paths in PyInstaller
           ./venv/Scripts/python.exe -m PyInstaller --onefile --noconsole --clean \
             --add-binary "./venv/Scripts/yt-dlp.exe;." \
-            --add-binary "./venv/Scripts/ffmpeg.exe;." \
-            --add-binary "./venv/Scripts/ffprobe.exe;." \
+            --add-binary "$FFMPEG_PATH;." \
+            --add-binary "$FFPROBE_PATH;." \
             app.py
         shell: bash
 
