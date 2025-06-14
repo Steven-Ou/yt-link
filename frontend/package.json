@@ -33,13 +33,12 @@
       "target": "dmg",
       "extraResources": [
         {
-          "from": "../service",
-          "to": "service",
-          "filter": [
-            "**/*",
-            "!dist/",
-            "!build/"
-          ]
+          "from": "../service/venv",
+          "to": "service/venv"
+        },
+        {
+          "from": "../service/app.py",
+          "to": "service/app.py"
         }
       ]
     },
