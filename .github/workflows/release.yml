@@ -32,28 +32,22 @@ jobs:
           cache-dependency-path: 'frontend/package-lock.json'
       
       - name: Install ffmpeg (for both OS)
-        # This is the corrected action name
         uses: eugenmayer/setup-ffmpeg@v2
       
       - name: Create Python virtual environment and install dependencies
         run: |
           cd service
           python -m venv venv
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            ./venv/Scripts/python.exe -m pip install -r requirements.txt
-            ./venv/Scripts/python.exe -m pip install pyinstaller
-          else
-            ./venv/bin/python -m pip install -r requirements.txt
-            ./venv/bin/python -m pip install pyinstaller
-          fi
+          # This robust command works for both Windows and Mac shells
+          ./venv/bin/python -m pip install -r requirements.txt || ./venv/Scripts/python.exe -m pip install -r requirements.txt
+          ./venv/bin/python -m pip install pyinstaller || ./venv/Scripts/python.exe -m pip install pyinstaller
         shell: bash
 
       - name: Build Python Backend EXE (Windows only)
         if: matrix.os == 'windows-latest'
         run: |
           cd service
-          # This command now works because ffmpeg is on the system PATH
-          # and PyInstaller will find it automatically. We only need to bundle yt-dlp.
+          # This robust command explicitly calls the Python in the venv to run the PyInstaller module.
           ./venv/Scripts/python.exe -m PyInstaller --onefile --noconsole --clean \
             --add-binary "./venv/Scripts/yt-dlp.exe;." \
             app.py
