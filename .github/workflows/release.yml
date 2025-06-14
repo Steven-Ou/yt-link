@@ -35,17 +35,21 @@ jobs:
         run: |
           cd service
           python -m venv venv
-          source venv/bin/activate || ./venv/Scripts/activate
-          pip install -r requirements.txt
-          pip install pyinstaller static-ffmpeg
+          # This is the corrected, robust way to install dependencies into the venv
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            ./venv/Scripts/python.exe -m pip install -r requirements.txt
+            ./venv/Scripts/python.exe -m pip install pyinstaller static-ffmpeg
+          else
+            ./venv/bin/python -m pip install -r requirements.txt
+            ./venv/bin/python -m pip install pyinstaller static-ffmpeg
+          fi
         shell: bash
 
       - name: Build Python Backend EXE (Windows only)
         if: matrix.os == 'windows-latest'
         run: |
           cd service
-          # This is the corrected, robust command:
-          # We explicitly use the Python from the venv to run the PyInstaller module.
+          # This command is now guaranteed to find PyInstaller
           ./venv/Scripts/python.exe -m PyInstaller --onefile --noconsole --clean \
             --add-binary "./venv/Scripts/yt-dlp.exe;." \
             --add-binary "./venv/Scripts/ffmpeg.exe;." \
