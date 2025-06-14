@@ -1,6 +1,6 @@
 {
   "name": "yt-link-app",
-  "version": "1.1.5",
+  "version": "1.2.0",
   "private": true,
   "main": "main.js",
   "scripts": {
@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "electron:dev": "electron .",
-    "electron:build": "next build && npx electron-builder"
+    "electron:build": "IS_ELECTRON=true next build && npx electron-builder"
   },
   "build": {
     "appId": "com.steve.ytlink.final",
