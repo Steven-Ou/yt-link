@@ -31,26 +31,27 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
       
-      # --- Python Backend Setup (Runs for BOTH OS) ---
       - name: Create Python virtual environment and install dependencies
         run: |
           cd service
           python -m venv venv
           source venv/bin/activate || ./venv/Scripts/activate
           pip install -r requirements.txt
+          pip install pyinstaller static-ffmpeg
         shell: bash
 
-      # --- Compile Backend for Windows ---
       - name: Build Python Backend EXE (Windows only)
         if: matrix.os == 'windows-latest'
         run: |
           cd service
           ./venv/Scripts/activate
-          pip install pyinstaller
-          pyinstaller --onefile --noconsole --clean app.py
+          pyinstaller --onefile --noconsole --clean ^
+            --add-binary "venv/Scripts/yt-dlp.exe;." ^
+            --add-binary "venv/Scripts/ffmpeg.exe;." ^
+            --add-binary "venv/Scripts/ffprobe.exe;." ^
+            app.py
         shell: bash
-      
-      # --- Frontend and Electron Build (Runs for BOTH OS) ---
+
       - name: Install Frontend Dependencies
         run: npm install
         working-directory: ./frontend
@@ -59,14 +60,9 @@ jobs:
         run: npm run electron:build -- --publish always
         working-directory: ./frontend
         env:
-          # --- REQUIRED FOR MACOS SIGNING ---
-          # These must be configured as secrets in your GitHub repository settings
-          # Go to Settings > Secrets and variables > Actions > New repository secret
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          
-          # --- General Build Environment Variables ---
           IS_ELECTRON: 'true'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
