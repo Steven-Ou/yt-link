@@ -1,71 +1,38 @@
-{
-  "name": "yt-link-app",
-  "version": "1.1.5",
-  "private": true,
-  "main": "main.js",
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "electron:dev": "electron .",
-    "electron:build": "next build && npx electron-builder"
+"build": {
+  "appId": "com.steve.ytlink.final",
+  "productName": "YT Link Final",
+  "files": [
+    "out/**/*",
+    "main.js",
+    "preload.js",
+    "package.json"
+  ],
+  "win": {
+    "target": "zip",
+    "extraResources": [
+      {
+        "from": "../service/dist/app.exe",
+        "to": "service/app.exe"
+      }
+    ]
   },
-  "build": {
-    "appId": "com.steve.ytlink.final",
-    "productName": "YT Link Final",
-    "files": [
-      "out/**/*",
-      "main.js",
-      "preload.js",
-      "package.json"
-    ],
+  "mac": {
+    "target": "dmg",
     "extraResources": [
       {
         "from": "../service",
         "to": "service",
         "filter": [
           "**/*",
-          "!**/.git/*",
-          "!**/dist/*",
-          "!**/build/*",
-          "!**/*.spec"
+          "!dist/",
+          "!build/"
         ]
       }
-    ],
-    "mac": {
-      "target": "dmg"
-    },
-    "win": {
-      "target": "zip"
-    },
-    "publish": {
-      "provider": "github",
-      "owner": "Steven-Ou",
-      "repo": "yt-link"
-    }
+    ]
   },
-  "dependencies": {
-    "@emotion/react": "^11.14.0",
-    "@emotion/styled": "^11.14.0",
-    "@mui/icons-material": "^7.0.2",
-    "@mui/material": "^7.0.2",
-    "axios": "^1.9.0",
-    "electron-log": "^5.4.0",
-    "electron-updater": "^6.6.2",
-    "next": "15.3.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "tcp-port-used": "^1.0.2"
-  },
-  "devDependencies": {
-    "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4.1.7",
-    "autoprefixer": "^10.4.21",
-    "electron": "^36.4.0",
-    "electron-builder": "^24.13.3",
-    "eslint": "^9",
-    "eslint-config-next": "15.3.1",
-    "tailwindcss": "^4"
+  "publish": {
+    "provider": "github",
+    "owner": "Steven-Ou",
+    "repo": "yt-link"
   }
-}
+},
