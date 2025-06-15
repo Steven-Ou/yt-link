@@ -52,30 +52,30 @@ jobs:
         run: |
           cd service
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            # Windows command
+            # Windows: --onefile build
+            PYTHON_EXEC=./venv/Scripts/python.exe
             FFMPEG_PATH=$(where ffmpeg)
             YTDLP_PATH=./venv/Scripts/yt-dlp.exe
-            PYTHON_EXEC=./venv/Scripts/python.exe
+            
+            $PYTHON_EXEC -m PyInstaller --onefile --noconsole --clean \
+              --add-binary "$YTDLP_PATH;." \
+              --add-binary "$FFMPEG_PATH;." \
+              app.py
           else
-            # macOS command
+            # macOS: --onedir build to avoid deprecation warning
+            PYTHON_EXEC=./venv/bin/python
             FFMPEG_PATH=$(which ffmpeg)
             YTDLP_PATH=./venv/bin/yt-dlp
-            PYTHON_EXEC=./venv/bin/python
-          fi
-          
-          echo "Platform: ${{ runner.os }}"
-          echo "Python Executable: $PYTHON_EXEC"
-          echo "yt-dlp Path: $YTDLP_PATH"
-          echo "FFmpeg Path: $FFMPEG_PATH"
 
-          $PYTHON_EXEC -m PyInstaller --onefile --noconsole --clean \
-            --add-binary "$YTDLP_PATH:." \
-            --add-binary "$FFMPEG_PATH:." \
-            app.py
+            $PYTHON_EXEC -m PyInstaller --onedir --noconsole --clean \
+              --add-binary "$YTDLP_PATH:." \
+              --add-binary "$FFMPEG_PATH:." \
+              app.py
+          fi
         shell: bash
 
       - name: Install Frontend Dependencies
-        run: npm ci
+        run: npm install # Use npm install to fix out-of-sync lockfile and missing deps
         working-directory: ./frontend
 
       - name: Build and Package Electron App
