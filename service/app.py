@@ -15,7 +15,7 @@ from flask_cors import CORS
 # --- Logging Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] [%(threadName)s] %(message)s')
 
-# --- Helper to find bundled executables (for PyInstaller) ---
+# --- Helper to find bundled executables ---
 def find_executable(name):
     """Finds an executable, accounting for being bundled by PyInstaller."""
     if getattr(sys, 'frozen', False):
@@ -47,133 +47,150 @@ def handle_global_exception(e):
     logging.error(f"Unhandled exception: {e}", exc_info=True)
     return jsonify(error="An unexpected internal server error occurred.", details=str(e)), 500
 
+# --- Helper Functions ---
 def sanitize_fs_filename(name):
     """Removes illegal characters from a filename."""
     return re.sub(r'[\\/*?:"<>|]', "_", name).strip() or 'untitled_file'
 
 def run_subprocess(job_id, command, timeout):
-    """Runs a subprocess and logs its output."""
+    """A centralized function to run commands and log their output."""
     logging.info(f"[{job_id}] Running command: {' '.join(command)}")
     process = subprocess.run(
-        command, timeout=timeout, capture_output=True, text=True, encoding='utf-8', errors='replace'
+        command,
+        timeout=timeout,
+        capture_output=True,
+        text=True,
+        encoding='utf-8',
+        errors='replace',
+        check=False # We will check the return code manually
     )
-    if process.stdout: logging.info(f"[{job_id}] STDOUT: {process.stdout.strip()}")
-    if process.stderr: logging.warning(f"[{job_id}] STDERR: {process.stderr.strip()}")
+    if process.stdout:
+        logging.info(f"[{job_id}] STDOUT: {process.stdout.strip()}")
+    if process.stderr:
+        logging.warning(f"[{job_id}] STDERR: {process.stderr.strip()}")
     return process
 
-def execute_job(job_id, job_function, *args):
-    """Wrapper to handle exceptions and job status for all tasks."""
+def update_job_status(job_id, status, message, **kwargs):
+    """Thread-safe way to update a job's status."""
+    with jobs_lock:
+        if job_id in jobs:
+            jobs[job_id].update({"status": status, "message": message, **kwargs})
+
+def handle_job_exception(job_id, e, task_name):
+    """Centralized exception handling for jobs."""
+    error_message = f"Error in {task_name}: {e}"
+    logging.error(f"[{job_id}] {error_message}", exc_info=True)
+    update_job_status(job_id, "failed", f"Failed: An error occurred in {task_name}.", error=str(e))
+
+# --- Task Functions ---
+
+def _process_single_mp3_task(job_id, url, cookie_data):
+    """Target function for the single MP3 download thread."""
     try:
-        job_function(job_id, *args)
+        job_tmp_dir = jobs.get(job_id, {}).get("job_tmp_dir")
+        if not job_tmp_dir: raise Exception("Job temporary directory not found.")
+        update_job_status(job_id, "processing", "Downloading audio...")
+        
+        output_template = os.path.join(job_tmp_dir, '%(title)s.%(ext)s')
+        args = [YTDLP_PATH, '-x', '--audio-format', 'mp3', '--no-playlist', '--ffmpeg-location', FFMPEG_PATH, '-o', output_template]
+        if cookie_data:
+            cookie_file = os.path.join(job_tmp_dir, 'cookies.txt')
+            with open(cookie_file, 'w', encoding='utf-8') as f: f.write(cookie_data)
+            args.extend(['--cookies', cookie_file])
+        args.extend(['--', url])
+        
+        process = run_subprocess(job_id, args, 600)
+        
+        mp3_file = next((f for f in os.listdir(job_tmp_dir) if f.lower().endswith('.mp3')), None)
+        if process.returncode != 0 or not mp3_file:
+            raise Exception(f"yt-dlp failed to produce an MP3 file. Stderr: {process.stderr[:500]}")
+        
+        update_job_status(job_id, "completed", f"Completed: {mp3_file}", filename=mp3_file, filepath=os.path.join(job_tmp_dir, mp3_file))
     except Exception as e:
-        error_message = f"Task failed: {e}"
-        logging.error(f"[{job_id}] {error_message}", exc_info=True)
-        with jobs_lock:
-            jobs[job_id].update({"status": "failed", "error": error_message, "message": "An error occurred."})
+        handle_job_exception(job_id, e, "single MP3 task")
 
-# --- Task Implementations ---
+def _process_playlist_zip_task(job_id, playlist_url, cookie_data):
+    """Target function for the playlist zip download thread."""
+    try:
+        job_tmp_dir = jobs.get(job_id, {}).get("job_tmp_dir")
+        if not job_tmp_dir: raise Exception("Job temporary directory not found.")
+        update_job_status(job_id, "processing", "Downloading playlist...")
 
-def process_single_mp3(job_id, url, cookie_data):
-    """Downloads a single video to MP3."""
-    job_tmp_dir = jobs[job_id]["job_tmp_dir"]
-    with jobs_lock: jobs[job_id].update({"status": "processing", "message": "Downloading audio..."})
-    
-    output_template = os.path.join(job_tmp_dir, '%(title)s.%(ext)s')
-    args = [YTDLP_PATH, '-x', '--audio-format', 'mp3', '--no-playlist', '--ffmpeg-location', FFMPEG_PATH, '-o', output_template]
-    if cookie_data:
-        cookie_file = os.path.join(job_tmp_dir, 'cookies.txt')
-        with open(cookie_file, 'w', encoding='utf-8') as f: f.write(cookie_data)
-        args.extend(['--cookies', cookie_file])
-    args.extend(['--', url])
-    
-    process = run_subprocess(job_id, args, 600)
-    
-    mp3_file = next((f for f in os.listdir(job_tmp_dir) if f.lower().endswith('.mp3')), None)
-    if process.returncode != 0 or not mp3_file:
-        raise Exception(f"yt-dlp failed with exit code {process.returncode}. Details: {process.stderr[:500]}")
-    
-    full_path = os.path.join(job_tmp_dir, mp3_file)
-    with jobs_lock: jobs[job_id].update({"status": "completed", "filename": mp3_file, "filepath": full_path, "message": f"Completed: {mp3_file}"})
+        output_template = os.path.join(job_tmp_dir, '%(playlist_index)03d - %(title)s.%(ext)s')
+        args = [YTDLP_PATH, '-x', '--audio-format', 'mp3', '--yes-playlist', '--ignore-errors', '--ffmpeg-location', FFMPEG_PATH, '-o', output_template]
+        if cookie_data:
+            cookie_file = os.path.join(job_tmp_dir, 'cookies.txt')
+            with open(cookie_file, 'w', encoding='utf-8') as f: f.write(cookie_data)
+            args.extend(['--cookies', cookie_file])
+        args.extend(['--', playlist_url])
 
-def process_playlist_zip(job_id, playlist_url, cookie_data):
-    """Downloads a playlist and zips the MP3s."""
-    job_tmp_dir = jobs[job_id]["job_tmp_dir"]
-    with jobs_lock: jobs[job_id].update({"status": "processing", "message": "Downloading playlist..."})
+        run_subprocess(job_id, args, 1800)
+        
+        mp3_files = sorted([f for f in os.listdir(job_tmp_dir) if f.lower().endswith('.mp3')])
+        if not mp3_files:
+            raise Exception("yt-dlp did not produce any MP3 files.")
 
-    output_template = os.path.join(job_tmp_dir, '%(playlist_index)s - %(title)s.%(ext)s')
-    args = [YTDLP_PATH, '-x', '--audio-format', 'mp3', '--yes-playlist', '--ignore-errors', '--ffmpeg-location', FFMPEG_PATH, '-o', output_template]
-    if cookie_data:
-        cookie_file = os.path.join(job_tmp_dir, 'cookies.txt')
-        with open(cookie_file, 'w', encoding='utf-8') as f: f.write(cookie_data)
-        args.extend(['--cookies', cookie_file])
-    args.extend(['--', playlist_url])
+        update_job_status(job_id, "processing", f"Zipping {len(mp3_files)} files...")
+        zip_filename = f"playlist_{job_id}.zip"
+        zip_path = os.path.join(job_tmp_dir, zip_filename)
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for file in mp3_files:
+                zipf.write(os.path.join(job_tmp_dir, file), arcname=file)
 
-    run_subprocess(job_id, args, 3600)
-    
-    mp3_files = sorted([f for f in os.listdir(job_tmp_dir) if f.lower().endswith('.mp3')])
-    if not mp3_files:
-        raise Exception("yt-dlp did not produce any MP3 files.")
+        update_job_status(job_id, "completed", f"Completed: {zip_filename}", filename=zip_filename, filepath=zip_path)
+    except Exception as e:
+        handle_job_exception(job_id, e, "playlist zip task")
 
-    with jobs_lock: jobs[job_id].update({"status": "processing", "message": f"Zipping {len(mp3_files)} files..."})
-    zip_filename = "playlist.zip"
-    zip_path = os.path.join(job_tmp_dir, zip_filename)
-    with zipfile.ZipFile(zip_path, 'w') as zipf:
-        for file in mp3_files:
-            zipf.write(os.path.join(job_tmp_dir, file), arcname=file)
-            
-    with jobs_lock: jobs[job_id].update({"status": "completed", "filename": zip_filename, "filepath": zip_path, "message": f"Completed: {zip_filename}"})
-
-# --- Route Definitions ---
-
-def start_job_thread(job_function, **kwargs):
+# --- API Endpoints ---
+def start_job(target_function, **kwargs):
     """Generic function to start any job in a new thread."""
     if not all([YTDLP_PATH, FFMPEG_PATH]):
-        return jsonify({"error": "Server is not configured correctly."}), 500
-    
+        return jsonify({"error": "Server is not configured correctly; executables missing."}), 500
     job_id = str(uuid.uuid4())
     job_tmp_dir = tempfile.mkdtemp(prefix=f"{job_id}_")
+    with jobs_lock: jobs[job_id] = {"status": "queued", "job_tmp_dir": job_tmp_dir}
     
-    with jobs_lock:
-        jobs[job_id] = {"status": "queued", "message": "Job is queued.", "job_tmp_dir": job_tmp_dir}
-    
-    thread_args = (job_id,) + tuple(kwargs.values())
-    thread = threading.Thread(target=execute_job, args=(job_id, job_function, *kwargs.values()), name=f"Job-{job_id[:6]}")
+    thread = threading.Thread(target=target_function, args=(job_id,) + tuple(kwargs.values()), name=f"Job-{job_id[:8]}")
     thread.start()
     return jsonify({"jobId": job_id})
 
 @app.route('/start-single-mp3-job', methods=['POST'])
 def start_single_mp3_job_route():
-    data = request.get_json()
-    return start_job_thread(process_single_mp3, url=data.get('url'), cookie_data=data.get('cookieData'))
+    data = request.get_json(force=True)
+    return start_job(_process_single_mp3_task, url=data.get('url'), cookie_data=data.get('cookieData'))
 
 @app.route('/start-playlist-zip-job', methods=['POST'])
 def start_playlist_zip_job_route():
-    data = request.get_json()
-    return start_job_thread(process_playlist_zip, playlist_url=data.get('playlistUrl'), cookie_data=data.get('cookieData'))
+    data = request.get_json(force=True)
+    return start_job(_process_playlist_zip_task, playlist_url=data.get('playlistUrl'), cookie_data=data.get('cookieData'))
+
+# The combine playlist feature is complex and has been removed for stability.
+# To re-add it, uncomment this and create a _process_combine_playlist_mp3_task function.
+# @app.route('/start-combine-playlist-mp3-job', methods=['POST'])
+# def start_combine_playlist_mp3_job_route():
+#     return jsonify({"error": "This feature is temporarily disabled."}), 503
 
 @app.route('/job-status/<job_id>')
-def get_job_status(job_id):
+def get_job_status_route(job_id):
     with jobs_lock:
         job = jobs.get(job_id)
-        if not job: return jsonify({"error": "Job not found"}), 404
-        return jsonify(job.copy())
+        return jsonify(job.copy() if job else {"status": "not_found", "error": "Job not found"})
 
 @app.route('/download-file/<job_id>/<filename>')
-def download_file(job_id, filename):
+def download_file_route(job_id, filename):
     with jobs_lock:
-        job_dir = jobs.get(job_id, {}).get("job_tmp_dir")
-        file_path = jobs.get(job_id, {}).get("filepath")
+        job = jobs.get(job_id, {})
+        job_dir = job.get("job_tmp_dir")
+        file_path = job.get("filepath")
 
-    if not all([job_dir, file_path, os.path.exists(file_path)]):
-        return jsonify({"error": "File not found or job is incomplete."}), 404
+    if not all([job, job.get("status") == "completed", file_path, os.path.exists(file_path)]):
+        return jsonify({"error": "File not ready or not found"}), 404
         
     @after_this_request
     def cleanup(response):
-        try:
-            shutil.rmtree(job_dir)
-            logging.info(f"[{job_id}] Cleaned up temp directory: {job_dir}")
-        except Exception as e:
-            logging.error(f"[{job_id}] Error cleaning up directory {job_dir}: {e}")
+        if job_dir and os.path.exists(job_dir):
+            shutil.rmtree(job_dir, ignore_errors=True)
+            logging.info(f"[{job_id}] Cleaned up temporary directory: {job_dir}")
         with jobs_lock:
             if job_id in jobs: del jobs[job_id]
         return response
