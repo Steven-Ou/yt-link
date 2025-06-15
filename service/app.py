@@ -121,8 +121,8 @@ def _process_single_mp3_task(job_id, url, cookie_data):
                 return 
 
         output_template = os.path.join(job_tmp_dir, '%(title)s.%(ext)s')
-        # --- FIX: Added --no-playlist to ensure only a single video is downloaded ---
-        args = [ YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template, '--no-playlist', '--no-warnings', '--verbose' ]
+        # --- FIX: Using --no-playlist and --playlist-items 0 to robustly handle single videos ---
+        args = [ YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template, '--no-playlist', '--playlist-items', '0', '--break-on-reject', '--no-warnings', '--verbose' ]
         
         if FFMPEG_PATH:
             args.extend(['--ffmpeg-location', FFMPEG_PATH])
@@ -147,7 +147,7 @@ def _process_single_mp3_task(job_id, url, cookie_data):
         files_in_job_dir = os.listdir(job_tmp_dir)
         mp3_file_name = next((f for f in files_in_job_dir if f.lower().endswith('.mp3') and not f == 'cookies.txt'), None)
 
-        if mp3_file_name:
+        if mp3_file_name and process.returncode == 0:
             full_mp3_path = os.path.join(job_tmp_dir, mp3_file_name)
             logging.info(f"[{job_id}] MP3 file created: {full_mp3_path}")
             with jobs_lock:
@@ -192,8 +192,8 @@ def _process_playlist_zip_task(job_id, playlist_url, cookie_data):
             else: return 
 
         output_template = os.path.join(job_tmp_dir, '%(playlist_index)03d.%(title)s.%(ext)s')
-        # --- FIX: Added --yes-playlist to ensure the URL is treated as a playlist ---
-        args = [ YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template, '--yes-playlist', '--no-warnings', '--verbose' ]
+        # --- FIX: Using --yes-playlist and --break-on-reject for robustness ---
+        args = [ YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template, '--yes-playlist', '--break-on-reject', '--no-warnings', '--verbose' ]
         
         if FFMPEG_PATH:
             args.extend(['--ffmpeg-location', FFMPEG_PATH])
@@ -248,10 +248,8 @@ def _process_combine_playlist_mp3_task(job_id, playlist_url, cookie_data):
 
         output_template = os.path.join(job_tmp_dir, '%(playlist_index)03d.%(title)s.%(ext)s')
         
-        # --- FIX: Added --yes-playlist to ensure the URL is treated as a playlist ---
-        ytdlp_audio_args = [YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template, '--yes-playlist', '--no-warnings', '--verbose']
-        
-        # Note: --postprocessor-args is no longer needed as we're not using it in this simplified approach
+        # --- FIX: Using --yes-playlist and --break-on-reject for robustness ---
+        ytdlp_audio_args = [YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template, '--yes-playlist', '--break-on-reject', '--no-warnings', '--verbose']
         
         if FFMPEG_PATH:
             ytdlp_audio_args.extend(['--ffmpeg-location', FFMPEG_PATH])
@@ -262,12 +260,13 @@ def _process_combine_playlist_mp3_task(job_id, playlist_url, cookie_data):
              ytdlp_audio_args.extend(['--cookies', cookie_file_path_dl])
         ytdlp_audio_args.extend(['--', playlist_url])
         
-        subprocess.run(ytdlp_audio_args, check=True, timeout=3600, capture_output=True, text=True, encoding='utf-8', errors='replace')
+        # --- FIX: Changed check=True to check=False and handle errors manually ---
+        process = subprocess.run(ytdlp_audio_args, check=False, timeout=3600, capture_output=True, text=True, encoding='utf-8', errors='replace')
 
         mp3_files_to_combine = sorted([f for f in os.listdir(job_tmp_dir) if f.lower().endswith('.mp3')])
 
         if not mp3_files_to_combine:
-            raise Exception("yt-dlp did not produce any MP3 files for combining.")
+            raise Exception(f"yt-dlp did not produce any MP3 files for combining. Exit code: {process.returncode}. Stderr: {process.stderr}")
 
         with jobs_lock:
             if job_id in jobs: jobs[job_id].update({"status": "processing_ffmpeg_concat_mp3", "message": "Combining audio tracks..."});
