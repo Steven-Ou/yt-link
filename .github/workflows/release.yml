@@ -31,9 +31,13 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
       
-      - name: Install ffmpeg (for both OS)
-        id: install_ffmpeg # Assign an ID to this step
-        uses: eugenmayer/setup-ffmpeg@v2.0.0 # Use specific version tag
+      - name: Install FFmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+        
+      - name: Install FFmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg
       
       - name: Create Python virtual environment and install dependencies
         run: |
@@ -48,10 +52,13 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           cd service
+          # Find the path to the installed ffmpeg executable
+          FFMPEG_PATH=$(where ffmpeg)
+          echo "Found ffmpeg at $FFMPEG_PATH"
           # This command now includes the path to ffmpeg.exe for bundling
           ./venv/Scripts/python.exe -m PyInstaller --onefile --noconsole --clean \
             --add-binary "./venv/Scripts/yt-dlp.exe;." \
-            --add-binary "${{ steps.install_ffmpeg.outputs.ffmpeg-path }};." \
+            --add-binary "$FFMPEG_PATH;." \
             app.py
         shell: bash
 
