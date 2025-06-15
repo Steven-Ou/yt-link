@@ -28,18 +28,55 @@ function StatusDisplay({ status }) {
     );
 }
 
+// ** NEW COMPONENT **
+// This banner will only show up when the app is opened in a regular web browser.
+function WebAppWarning() {
+    return (
+        <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-8 rounded-md" role="alert">
+            <p className="font-bold">Web Version Notice</p>
+            <p>This web interface is for demonstration only. The download and conversion features require the backend service and will not work here.</p>
+            <p className="mt-2">For full functionality, please download the desktop application from our GitHub page.</p>
+            <a 
+                href="https://github.com/steven-ou/yt-link/releases" // <-- Direct link to your releases!
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="font-bold underline hover:text-yellow-800"
+            >
+                Download the App
+            </a>
+        </div>
+    );
+}
+
 
 export default function HomePage() {
     const [videoUrl, setVideoUrl] = useState('');
     const [playlistUrl, setPlaylistUrl] = useState('');
     const [cookies, setCookies] = useState('');
-    const [playlistJobId, setPlaylistJobId] = useState(''); // State for the combine mp3s job ID
+    const [playlistJobId, setPlaylistJobId] = useState('');
     
     const [jobStatus, setJobStatus] = useState({ type: '', message: '' });
     const [isLoading, setIsLoading] = useState(false);
+    const [isWebApp, setIsWebApp] = useState(false); // State to track if it's the web version
+
+    // This effect runs once on startup to check the environment.
+    useEffect(() => {
+        // If window.api does NOT exist, it means the preload script didn't run.
+        // This is a reliable way to know we are in a standard browser.
+        if (typeof window.api === 'undefined') {
+            setIsWebApp(true);
+        }
+    }, []);
+
 
     // Generic job handler to reduce repetition
     const handleJobSubmit = async (jobFunction, params, loadingMessage) => {
+        // Prevent submissions if on the web app
+        if (isWebApp) {
+            setJobStatus({ type: 'error', message: 'This feature is only available in the downloaded desktop app.' });
+            return;
+        }
+
         setIsLoading(true);
         setJobStatus({ type: 'loading', message: loadingMessage });
 
@@ -77,20 +114,22 @@ export default function HomePage() {
         handleJobSubmit(window.api.startPlaylistZipJob, { playlistUrl, cookies }, 'Starting playlist download... this may take a while.');
     };
 
-    // Handler for the new Combine MP3s feature
     const handleCombineMp3Submit = (e) => {
         e.preventDefault();
         if (!playlistJobId) {
             setJobStatus({ type: 'error', message: 'Please enter the Job ID of a completed playlist download.' });
             return;
         }
-        // Note: You will need to add `startCombineMp3Job` to your preload.js and main.js files
         handleJobSubmit(window.api.startCombineMp3Job, { jobId: playlistJobId }, 'Starting combination job...');
     };
 
 
     return (
         <main className="container mx-auto p-8 font-sans">
+            
+            {/* Conditionally render the warning banner */}
+            {isWebApp && <WebAppWarning />}
+
             <h1 className="text-4xl font-bold text-center mb-8">YT Link V2</h1>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 
@@ -98,7 +137,6 @@ export default function HomePage() {
                 <div className="bg-white p-6 rounded-lg shadow-md">
                     <h2 className="text-2xl font-semibold mb-4">1. Convert Single Video</h2>
                     <form onSubmit={handleSingleMP3Submit}>
-                        {/* ... form content ... */}
                         <div className="mb-4">
                             <label htmlFor="video-url" className="block text-sm font-medium text-gray-700 mb-1">YouTube Video URL</label>
                             <input
@@ -134,7 +172,6 @@ export default function HomePage() {
                 <div className="bg-white p-6 rounded-lg shadow-md">
                     <h2 className="text-2xl font-semibold mb-4">2. Download Playlist</h2>
                     <form onSubmit={handlePlaylistZipSubmit}>
-                        {/* ... form content ... */}
                         <div className="mb-4">
                             <label htmlFor="playlist-url" className="block text-sm font-medium text-gray-700 mb-1">YouTube Playlist URL</label>
                             <input
@@ -166,7 +203,7 @@ export default function HomePage() {
                     </form>
                 </div>
 
-                {/* Combine MP3s Card - ADDED */}
+                {/* Combine MP3s Card */}
                 <div className="bg-white p-6 rounded-lg shadow-md md:col-span-2 lg:col-span-1">
                     <h2 className="text-2xl font-semibold mb-4">3. Combine Playlist MP3s</h2>
                     <form onSubmit={handleCombineMp3Submit}>
