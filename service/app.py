@@ -56,18 +56,10 @@ def run_subprocess(job_id, command, timeout):
     """A centralized function to run commands and log their output."""
     logging.info(f"[{job_id}] Running command: {' '.join(command)}")
     process = subprocess.run(
-        command,
-        timeout=timeout,
-        capture_output=True,
-        text=True,
-        encoding='utf-8',
-        errors='replace',
-        check=False # We will check the return code manually
+        command, timeout=timeout, capture_output=True, text=True, encoding='utf-8', errors='replace', check=False
     )
-    if process.stdout:
-        logging.info(f"[{job_id}] STDOUT: {process.stdout.strip()}")
-    if process.stderr:
-        logging.warning(f"[{job_id}] STDERR: {process.stderr.strip()}")
+    if process.stdout: logging.info(f"[{job_id}] STDOUT: {process.stdout.strip()}")
+    if process.stderr: logging.warning(f"[{job_id}] STDERR: {process.stderr.strip()}")
     return process
 
 def update_job_status(job_id, status, message, **kwargs):
@@ -83,7 +75,6 @@ def handle_job_exception(job_id, e, task_name):
     update_job_status(job_id, "failed", f"Failed: An error occurred in {task_name}.", error=str(e))
 
 # --- Task Functions ---
-
 def _process_single_mp3_task(job_id, url, cookie_data):
     """Target function for the single MP3 download thread."""
     try:
@@ -163,12 +154,6 @@ def start_single_mp3_job_route():
 def start_playlist_zip_job_route():
     data = request.get_json(force=True)
     return start_job(_process_playlist_zip_task, playlist_url=data.get('playlistUrl'), cookie_data=data.get('cookieData'))
-
-# The combine playlist feature is complex and has been removed for stability.
-# To re-add it, uncomment this and create a _process_combine_playlist_mp3_task function.
-# @app.route('/start-combine-playlist-mp3-job', methods=['POST'])
-# def start_combine_playlist_mp3_job_route():
-#     return jsonify({"error": "This feature is temporarily disabled."}), 503
 
 @app.route('/job-status/<job_id>')
 def get_job_status_route(job_id):
