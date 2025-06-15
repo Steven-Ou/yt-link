@@ -203,8 +203,8 @@ export default function Home() {
             case 'welcome':
                  return (
                     <Box sx={{ textAlign: 'center', mt: 4 }}>
-                        <Typography variant="h2" component="h1" gutterBottom>YT Link V2</Typography>
-                        <Typography variant="h5" color="text.secondary">Welcome!</Typography>
+                        <Typography variant="h2" component="h1" gutterBottom>YT Link Converter!</Typography>
+                        <Typography variant="h5" color="text.secondary">Welcome!!</Typography>
                          <Typography variant="body1" color="text.secondary" sx={{mt: 2, maxWidth: '600px', mx: 'auto'}}> Select an option from the menu. Downloads will be processed in the background. Or, download the desktop app for a better experience. </Typography>
                         <DownloadSection />
                     </Box>
