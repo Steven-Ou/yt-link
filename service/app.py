@@ -122,6 +122,11 @@ def _process_single_mp3_task(job_id, url, cookie_data):
 
         output_template = os.path.join(job_tmp_dir, '%(title)s.%(ext)s')
         args = [ YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template, '--no-playlist', '--no-warnings', '--verbose' ]
+        
+        # --- FIX: Explicitly tell yt-dlp where ffmpeg is ---
+        if FFMPEG_PATH:
+            args.extend(['--ffmpeg-location', FFMPEG_PATH])
+            
         if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
             cookie_file_path = os.path.join(job_tmp_dir, 'cookies.txt')
             try:
@@ -188,6 +193,11 @@ def _process_playlist_zip_task(job_id, playlist_url, cookie_data):
 
         output_template = os.path.join(job_tmp_dir, '%(playlist_index)03d.%(title)s.%(ext)s')
         args = [ YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template, '--no-warnings', '--verbose' ]
+        
+        # --- FIX: Explicitly tell yt-dlp where ffmpeg is ---
+        if FFMPEG_PATH:
+            args.extend(['--ffmpeg-location', FFMPEG_PATH])
+            
         if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
             cookie_file_path_dl = os.path.join(job_tmp_dir, 'cookies_dl.txt')
             with open(cookie_file_path_dl, 'w', encoding='utf-8') as f: f.write(cookie_data)
@@ -240,6 +250,10 @@ def _process_combine_playlist_mp3_task(job_id, playlist_url, cookie_data):
         ffmpeg_pp_args = ["ffmpeg_o:-ar", "48000", "ffmpeg_o:-q:a", "3"]
         ytdlp_audio_args = [YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template, '--no-warnings', '--verbose', '--postprocessor-args', ' '.join(ffmpeg_pp_args)]
         
+        # --- FIX: Explicitly tell yt-dlp where ffmpeg is ---
+        if FFMPEG_PATH:
+            ytdlp_audio_args.extend(['--ffmpeg-location', FFMPEG_PATH])
+
         if cookie_data and isinstance(cookie_data, str) and cookie_data.strip():
              cookie_file_path_dl = os.path.join(job_tmp_dir, 'cookies_dl.txt')
              with open(cookie_file_path_dl, 'w', encoding='utf-8') as f: f.write(cookie_data)
