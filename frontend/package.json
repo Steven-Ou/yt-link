@@ -1,7 +1,7 @@
 {
-  "name": "yt-link-v2",
-  "version": "2.0.0",
-  "description": "YT Link V2 allows you to download YouTube videos as MP3s, or entire playlists as a ZIP file.",
+  "name": "yt-link",
+  "version": "0.0.1",
+  "description": "YT Link allows you to download YouTube videos as MP3s, or entire playlists as a ZIP file.",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -17,24 +17,24 @@
     "@emotion/react": "^11.11.4",
     "@emotion/styled": "^11.11.5",
     "@mui/material": "^5.16.4",
+    "autoprefixer": "^10.4.19",
     "axios": "^1.7.2",
     "next": "14.2.5",
     "node-fetch": "^2.7.0",
+    "postcss": "^8",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "tailwindcss": "^3.4.1"
   },
   "devDependencies": {
-    "autoprefixer": "^10.4.19",
     "electron": "^31.2.1",
     "electron-builder": "^24.13.3",
     "eslint": "^8",
-    "eslint-config-next": "14.2.5",
-    "postcss": "^8",
-    "tailwindcss": "^3.4.1"
+    "eslint-config-next": "14.2.5"
   },
   "build": {
-    "appId": "com.steven-ou.yt-link-v2",
-    "productName": "YT Link V2",
+    "appId": "com.steven-ou.yt-link",
+    "productName": "YT Link",
     "directories": {
       "output": "dist"
     },
