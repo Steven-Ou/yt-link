@@ -121,9 +121,9 @@ def _process_single_mp3_task(job_id, url, cookie_data):
                 return 
 
         output_template = os.path.join(job_tmp_dir, '%(title)s.%(ext)s')
+        # --- FIX: Added --no-playlist to ensure only a single video is downloaded ---
         args = [ YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template, '--no-playlist', '--no-warnings', '--verbose' ]
         
-        # --- FIX: Explicitly tell yt-dlp where ffmpeg is ---
         if FFMPEG_PATH:
             args.extend(['--ffmpeg-location', FFMPEG_PATH])
             
@@ -192,9 +192,9 @@ def _process_playlist_zip_task(job_id, playlist_url, cookie_data):
             else: return 
 
         output_template = os.path.join(job_tmp_dir, '%(playlist_index)03d.%(title)s.%(ext)s')
-        args = [ YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template, '--no-warnings', '--verbose' ]
+        # --- FIX: Added --yes-playlist to ensure the URL is treated as a playlist ---
+        args = [ YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template, '--yes-playlist', '--no-warnings', '--verbose' ]
         
-        # --- FIX: Explicitly tell yt-dlp where ffmpeg is ---
         if FFMPEG_PATH:
             args.extend(['--ffmpeg-location', FFMPEG_PATH])
             
@@ -247,10 +247,12 @@ def _process_combine_playlist_mp3_task(job_id, playlist_url, cookie_data):
             else: return
 
         output_template = os.path.join(job_tmp_dir, '%(playlist_index)03d.%(title)s.%(ext)s')
-        ffmpeg_pp_args = ["ffmpeg_o:-ar", "48000", "ffmpeg_o:-q:a", "3"]
-        ytdlp_audio_args = [YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template, '--no-warnings', '--verbose', '--postprocessor-args', ' '.join(ffmpeg_pp_args)]
         
-        # --- FIX: Explicitly tell yt-dlp where ffmpeg is ---
+        # --- FIX: Added --yes-playlist to ensure the URL is treated as a playlist ---
+        ytdlp_audio_args = [YTDLP_PATH, '-i', '-x', '--audio-format', 'mp3', '-o', output_template, '--yes-playlist', '--no-warnings', '--verbose']
+        
+        # Note: --postprocessor-args is no longer needed as we're not using it in this simplified approach
+        
         if FFMPEG_PATH:
             ytdlp_audio_args.extend(['--ffmpeg-location', FFMPEG_PATH])
 
