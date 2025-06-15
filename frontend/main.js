@@ -61,21 +61,14 @@ function startFlaskServer() {
     // 'app.isPackaged' is a built-in Electron property. It's 'true' for the final installed app
     // and 'false' when running in development mode (with `npm run electron:dev`).
     if (app.isPackaged) {
-        // --- PRODUCTION MODE ---
-        // 'process.resourcesPath' is the path to the 'resources' folder inside the packaged app.
+        // --- PRODUCTION MODE (macOS and Windows) ---
         const resourcesPath = process.resourcesPath;
+        // The executable name depends on the platform
+        const exeName = process.platform === 'win32' ? 'app.exe' : 'app';
+        backendPath = path.join(resourcesPath, 'service', exeName);
+        // No arguments are needed for the PyInstaller executable
+        backendArgs = [];
 
-        // 'process.platform' checks the operating system. 'win32' is for Windows.
-        if (process.platform === 'win32') {
-            // On Windows, our GitHub Actions workflow builds and bundles 'app.exe'. This is its path.
-            backendPath = path.join(resourcesPath, 'service', 'app.exe');
-        } else {
-            // On Mac, our workflow bundles the Python virtual environment. This is the path to its Python executable.
-            const flaskAppDirectory = path.join(resourcesPath, 'service');
-            backendPath = path.join(flaskAppDirectory, 'venv', 'bin', 'python');
-            // We need to tell this Python executable to run our 'app.py' script.
-            backendArgs = [path.join(flaskAppDirectory, 'app.py')];
-        }
     } else {
         // --- DEVELOPMENT MODE ---
         // We build the path to our local 'service' folder relative to the current file.
