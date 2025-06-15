@@ -63,7 +63,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4.1.7",
+    "@tailwindcss/postcss": "^4.1.10",
     "autoprefixer": "^10.4.21",
     "cross-env": "^7.0.3",
     "electron": "^36.4.0",
