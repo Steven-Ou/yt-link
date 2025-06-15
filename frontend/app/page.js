@@ -1,210 +1,199 @@
-'use client';
-import { useState, useEffect, useRef } from 'react';
-import {
-    Box, Button, Container, Divider, Drawer, List, ListItem,
-    ListItemButton, ListItemIcon, ListItemText, TextField, Toolbar,
-    Typography, CssBaseline, Accordion, AccordionSummary, AccordionDetails,
-    createTheme, ThemeProvider, CircularProgress, LinearProgress, Paper, Stack
-} from '@mui/material';
-import {
-    Home as HomeIcon, Download as DownloadIcon, QueueMusic as QueueMusicIcon,
-    VideoLibrary as VideoLibraryIcon, Coffee as CoffeeIcon, Cookie as CookieIcon,
-    ExpandMore as ExpandMoreIcon, CheckCircleOutline as CheckCircleOutlineIcon,
-    ErrorOutline as ErrorOutlineIcon, HourglassEmpty as HourglassEmptyIcon,
-    Window as WindowsIcon, Apple as AppleIcon
-} from '@mui/icons-material';
+// frontend/app/page.js
+'use client'; // Required for Next.js 13+ App Router to use hooks
 
-const drawerWidth = 240;
+import { useState, useEffect } from 'react';
 
-const customTheme = createTheme({
-    palette: {
-        mode: 'light',
-        primary: { main: '#E53935', contrastText: '#FFFFFF' },
-        secondary: { main: '#1A1A1A', contrastText: '#FFFFFF' },
-        warning: { main: '#FFB300', contrastText: '#1A1A1A' },
-        background: { default: '#000000', paper: '#FFFFFF' },
-        text: { primary: '#1A1A1A', secondary: '#616161' },
-    },
-    components: {
-        MuiCssBaseline: { styleOverrides: { body: { backgroundColor: '#000000' } } },
-        MuiDrawer: { styleOverrides: { paper: { backgroundColor: '#1A1A1A', color: '#F5F5F5' } } },
-        MuiListItemButton: { styleOverrides: { root: { '&.Mui-selected': { backgroundColor: 'rgba(229, 57, 53, 0.2)' } } } }
-    },
-});
+// A simple component to show job status
+function StatusDisplay({ status }) {
+    if (!status.message) return null;
 
-function DownloadSection() {
-    const macDownloadUrl = "https://github.com/Steven-Ou/yt-link/releases/download/v0.0.0/YT.Link.Final-1.2.0-arm64.dmg";
-    const windowsDownloadUrl = "https://github.com/Steven-Ou/yt-link/releases/download/v0.0.0/YT.Link.Final-1.2.0-win.zip";
+    const baseClasses = "text-center p-2 mt-4 rounded-md";
+    const successClasses = "bg-green-100 text-green-800";
+    const errorClasses = "bg-red-100 text-red-800";
+    const loadingClasses = "bg-blue-100 text-blue-800 animate-pulse";
+    
+    let statusClasses = "";
+    if (status.type === 'error') {
+        statusClasses = errorClasses;
+    } else if (status.type === 'success') {
+        statusClasses = successClasses;
+    } else if (status.type === 'loading') {
+        statusClasses = loadingClasses;
+    }
 
     return (
-        <Paper elevation={3} sx={{ mt: 8, p: { xs: 2, sm: 4 }, borderRadius: 4 }}>
-            <Typography variant="h4" component="h2" gutterBottom align="center" fontWeight="bold">Download the Desktop App</Typography>
-            <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 4, maxWidth: '500px', mx: 'auto' }}>
-                Get the full-featured desktop application for a seamless, local experience.
-            </Typography>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center">
-                <Button variant="contained" color="secondary" size="large" startIcon={<AppleIcon />} href={macDownloadUrl}>Download for macOS</Button>
-                <Button variant="contained" color="primary" size="large" startIcon={<WindowsIcon />} href={windowsDownloadUrl}>Download for Windows</Button>
-            </Stack>
-        </Paper>
+        <div className={`${baseClasses} ${statusClasses}`}>
+            <p>{status.message}</p>
+        </div>
     );
 }
 
-export default function Home() {
-    const [currentView, setCurrentView] = useState('welcome');
-    const [url, setUrl] = useState('');
+
+export default function HomePage() {
+    const [videoUrl, setVideoUrl] = useState('');
     const [playlistUrl, setPlaylistUrl] = useState('');
-    const [cookieData, setCookieData] = useState('');
-    const [activeJobs, setActiveJobs] = useState({});
-    const pollingIntervals = useRef({});
-    const [isElectron, setIsElectron] = useState(false);
-
-    useEffect(() => {
-        setIsElectron(!!window.electronAPI);
-    }, []);
+    const [cookies, setCookies] = useState('');
+    const [playlistJobId, setPlaylistJobId] = useState(''); // State for the combine mp3s job ID
     
-    const PYTHON_SERVICE_BASE_URL = 'http://127.0.0.1:8080';
+    const [jobStatus, setJobStatus] = useState({ type: '', message: '' });
+    const [isLoading, setIsLoading] = useState(false);
 
-    const isLoading = (jobType) => activeJobs[jobType]?.status === 'processing' || activeJobs[jobType]?.status === 'queued';
-    const isAnyJobLoading = () => Object.values(activeJobs).some(job => isLoading(job.type));
+    // Generic job handler to reduce repetition
+    const handleJobSubmit = async (jobFunction, params, loadingMessage) => {
+        setIsLoading(true);
+        setJobStatus({ type: 'loading', message: loadingMessage });
 
-    const startJob = async (jobType, endpoint, payload) => {
-        const fullEndpoint = `${PYTHON_SERVICE_BASE_URL}/${endpoint}`;
-        setActiveJobs(prev => ({ ...prev, [jobType]: { status: 'queued', message: 'Initiating...', type: jobType } }));
         try {
-            const res = await fetch(fullEndpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-            if (!res.ok) {
-                 const errorData = await res.json().catch(() => ({ error: `Server error: ${res.status}` }));
-                 throw new Error(errorData.error || 'Unknown server error');
+            const result = await jobFunction(params);
+            console.log('Job started successfully:', result);
+            let successMessage = result.message || 'Job started successfully!';
+            if (result.jobId) {
+                successMessage += ` Job ID: ${result.jobId}`;
             }
-            const data = await res.json();
-            if (data.jobId) {
-                setActiveJobs(prev => ({ ...prev, [jobType]: { id: data.jobId, status: 'processing', message: 'Job started...', type: jobType } }));
-                pollJobStatus(data.jobId, jobType);
-            } else {
-                throw new Error("Failed to get Job ID from server.");
-            }
+            setJobStatus({ type: 'success', message: successMessage });
         } catch (error) {
-            setActiveJobs(prev => ({ ...prev, [jobType]: { status: 'failed', message: `Error: ${error.message}`, type: jobType } }));
+            console.error("Error received in renderer:", error);
+            setJobStatus({ type: 'error', message: `Error: ${error.message}` });
+        } finally {
+            setIsLoading(false);
         }
     };
 
-    const pollJobStatus = (jobId, jobType) => {
-        if (pollingIntervals.current[jobId]) clearInterval(pollingIntervals.current[jobId]);
-        pollingIntervals.current[jobId] = setInterval(async () => {
-            try {
-                const res = await fetch(`${PYTHON_SERVICE_BASE_URL}/job-status/${jobId}`);
-                const data = await res.json();
-                setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], ...data } }));
-                if (data.status === 'completed' || data.status === 'failed' || data.status === 'not_found') {
-                    clearInterval(pollingIntervals.current[jobId]);
-                    delete pollingIntervals.current[jobId];
-                }
-            } catch (error) {
-                setActiveJobs(prev => ({ ...prev, [jobType]: { status: 'failed', message: `Status check failed.` } }));
-                clearInterval(pollingIntervals.current[jobId]);
-            }
-        }, 3000);
-    };
-    
-    useEffect(() => () => Object.values(pollingIntervals.current).forEach(clearInterval), []);
-
-    const JobStatusDisplay = ({ jobType }) => {
-        const jobInfo = activeJobs[jobType];
-        if (!jobInfo) return null;
-
-        let icon, color;
-        const showProgressBar = isLoading(jobType);
-
-        if (jobInfo.status === 'completed') { icon = <CheckCircleOutlineIcon color="success" />; color = "success.main"; }
-        else if (jobInfo.status === 'failed') { icon = <ErrorOutlineIcon color="error" />; color = "error.main"; }
-        else if (showProgressBar) { icon = <CircularProgress size={20} sx={{ mr: 1}} color="inherit" />; color = "info.main"; }
-        else { icon = <HourglassEmptyIcon />; color = "text.secondary"; }
-        
-        const downloadUrl = (jobInfo.status === 'completed' && jobInfo.id && jobInfo.filename) 
-            ? `${PYTHON_SERVICE_BASE_URL}/download-file/${jobInfo.id}/${jobInfo.filename}` 
-            : null;
-
-        return (
-            <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', color }}>
-                    {icon}
-                    <Box component="span" sx={{ ml: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                        {jobInfo.error_detail ? `Error Detail: ${jobInfo.error_detail}` : (jobInfo.message || `Status: ${jobInfo.status}`)}
-                    </Box>
-                </Typography>
-                {showProgressBar && <LinearProgress color="info" sx={{ mt: 1 }} />}
-                {downloadUrl && <Button variant="contained" color="success" href={downloadUrl} sx={{ mt: 1 }}>Download File</Button>}
-            </Box>
-        );
-    };
-
-    const renderContent = () => {
-        const anyLoading = isAnyJobLoading();
-        switch (currentView) {
-            case 'welcome': 
-                return (
-                    <Box sx={{ textAlign: 'center', mt: 4 }}>
-                        <Typography variant="h2" component="h1" gutterBottom>YT Link Converter!</Typography>
-                        <Typography variant="h5" color="text.secondary">Welcome!!</Typography>
-                        <Typography variant="body1" color="text.secondary" sx={{mt: 2, maxWidth: '600px', mx: 'auto'}}>
-                            Please be aware the download options on this website are for demonstration only and **will not work**. 
-                            For full functionality, please download the desktop application below. You may need to trust the app after downloading.
-                            Once installed, the download options will work as intended.
-                        </Typography>
-                        <DownloadSection />
-                    </Box>
-                );
-            case 'single': return (
-                <Container maxWidth="sm" sx={{ mt: 4 }}>
-                    <Typography variant='h6' gutterBottom>Convert Single Video to MP3</Typography>
-                    <TextField label="YouTube Video URL" variant='outlined' fullWidth value={url} onChange={(e) => setUrl(e.target.value)} disabled={anyLoading} sx={{mb: 2}} />
-                    <TextField label="Cookies (Optional)" multiline rows={4} fullWidth value={cookieData} onChange={(e) => setCookieData(e.target.value)} disabled={anyLoading} />
-                    <Button sx={{mt: 2}} variant='contained' color='primary' fullWidth onClick={() => startJob('singleMp3', 'start-single-mp3-job', { url, cookieData })} disabled={isLoading('singleMp3') || (anyLoading && !isLoading('singleMp3'))}>
-                        {isLoading('singleMp3') ? <CircularProgress size={24} color="inherit"/> : 'Download MP3'}
-                    </Button>
-                    <JobStatusDisplay jobType="singleMp3" />
-                </Container>
-            );
-            case 'zip': return (
-                <Container maxWidth="sm" sx={{ mt: 4 }}>
-                    <Typography variant='h6' gutterBottom>Download Playlist as Zip</Typography>
-                    <TextField label="YouTube Playlist URL" variant='outlined' fullWidth value={playlistUrl} onChange={(e) => setPlaylistUrl(e.target.value)} disabled={anyLoading} sx={{mb: 2}}/>
-                    <TextField label="Cookies (Optional)" multiline rows={4} fullWidth value={cookieData} onChange={(e) => setCookieData(e.target.value)} disabled={anyLoading} />
-                    <Button sx={{mt: 2}} variant='contained' color='secondary' fullWidth onClick={() => startJob('playlistZip', 'start-playlist-zip-job', { playlistUrl, cookieData })} disabled={isLoading('playlistZip') || (anyLoading && !isLoading('playlistZip'))}>
-                        {isLoading('playlistZip') ? <CircularProgress size={24} color="inherit"/> : 'Download Playlist as Zip'}
-                    </Button>
-                    <JobStatusDisplay jobType="zip" />
-                </Container>
-            );
-            default: return <DownloadSection />;
+    const handleSingleMP3Submit = (e) => {
+        e.preventDefault();
+        if (!videoUrl) {
+            setJobStatus({ type: 'error', message: 'Please enter a YouTube Video URL.' });
+            return;
         }
+        handleJobSubmit(window.api.startSingleMp3Job, { videoUrl, cookies }, 'Starting download... please wait.');
     };
+
+    const handlePlaylistZipSubmit = (e) => {
+        e.preventDefault();
+        if (!playlistUrl) {
+            setJobStatus({ type: 'error', message: 'Please enter a YouTube Playlist URL.' });
+            return;
+        }
+        handleJobSubmit(window.api.startPlaylistZipJob, { playlistUrl, cookies }, 'Starting playlist download... this may take a while.');
+    };
+
+    // Handler for the new Combine MP3s feature
+    const handleCombineMp3Submit = (e) => {
+        e.preventDefault();
+        if (!playlistJobId) {
+            setJobStatus({ type: 'error', message: 'Please enter the Job ID of a completed playlist download.' });
+            return;
+        }
+        // Note: You will need to add `startCombineMp3Job` to your preload.js and main.js files
+        handleJobSubmit(window.api.startCombineMp3Job, { jobId: playlistJobId }, 'Starting combination job...');
+    };
+
 
     return (
-        <ThemeProvider theme={customTheme}>
-            <Box sx={{ display: 'flex' }}>
-                <CssBaseline />
-                <Drawer variant="permanent" sx={{ width: drawerWidth, flexShrink: 0, [`& .MuiDrawer-paper`]: { width: drawerWidth, boxSizing: 'border-box' } }}>
-                    <Toolbar />
-                    <List>
-                        <ListItemButton selected={currentView === 'welcome'} onClick={() => setCurrentView('welcome')}><ListItemIcon><HomeIcon /></ListItemIcon><ListItemText primary="Welcome" /></ListItemButton>
-                        <Divider />
-                        <ListItemButton selected={currentView === 'single'} onClick={() => setCurrentView('single')}><ListItemIcon><DownloadIcon /></ListItemIcon><ListItemText primary="Single MP3" /></ListItemButton>
-                        <ListItemButton selected={currentView === 'zip'} onClick={() => setCurrentView('zip')}><ListItemIcon><QueueMusicIcon /></ListItemIcon><ListItemText primary="Playlist Zip" /></ListItemButton>
-                        {/* Combine feature is disabled for now for stability */}
-                        <ListItemButton disabled><ListItemIcon><VideoLibraryIcon /></ListItemIcon><ListItemText primary="Combine MP3 (Soon)" /></ListItemButton>
-                    </List>
-                </Drawer>
-                <Box component="main" sx={{ flexGrow: 1, p: 3, bgcolor: 'background.paper' }}>
-                    <Toolbar />
-                    {renderContent()}
-                </Box>
-            </Box>
-        </ThemeProvider>
+        <main className="container mx-auto p-8 font-sans">
+            <h1 className="text-4xl font-bold text-center mb-8">YT Link V2</h1>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                
+                {/* Single MP3 Card */}
+                <div className="bg-white p-6 rounded-lg shadow-md">
+                    <h2 className="text-2xl font-semibold mb-4">1. Convert Single Video</h2>
+                    <form onSubmit={handleSingleMP3Submit}>
+                        {/* ... form content ... */}
+                        <div className="mb-4">
+                            <label htmlFor="video-url" className="block text-sm font-medium text-gray-700 mb-1">YouTube Video URL</label>
+                            <input
+                                id="video-url"
+                                type="text"
+                                value={videoUrl}
+                                onChange={(e) => setVideoUrl(e.target.value)}
+                                placeholder="https://www.youtube.com/watch?v=..."
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div className="mb-4">
+                            <label htmlFor="cookies-single" className="block text-sm font-medium text-gray-700 mb-1">Cookies (Optional)</label>
+                            <textarea
+                                id="cookies-single"
+                                value={cookies}
+                                onChange={(e) => setCookies(e.target.value)}
+                                rows="3"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            ></textarea>
+                        </div>
+                        <button 
+                            type="submit"
+                            disabled={isLoading}
+                            className="w-full bg-red-600 text-white font-bold py-2 px-4 rounded-md hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        >
+                            {isLoading ? 'Processing...' : 'DOWNLOAD MP3'}
+                        </button>
+                    </form>
+                </div>
+
+                {/* Playlist Zip Card */}
+                <div className="bg-white p-6 rounded-lg shadow-md">
+                    <h2 className="text-2xl font-semibold mb-4">2. Download Playlist</h2>
+                    <form onSubmit={handlePlaylistZipSubmit}>
+                        {/* ... form content ... */}
+                        <div className="mb-4">
+                            <label htmlFor="playlist-url" className="block text-sm font-medium text-gray-700 mb-1">YouTube Playlist URL</label>
+                            <input
+                                id="playlist-url"
+                                type="text"
+                                value={playlistUrl}
+                                onChange={(e) => setPlaylistUrl(e.target.value)}
+                                placeholder="https://www.youtube.com/playlist?list=..."
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div className="mb-4">
+                            <label htmlFor="cookies-playlist" className="block text-sm font-medium text-gray-700 mb-1">Cookies (Optional)</label>
+                            <textarea
+                                id="cookies-playlist"
+                                value={cookies}
+                                onChange={(e) => setCookies(e.target.value)}
+                                rows="3"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            ></textarea>
+                        </div>
+                        <button
+                            type="submit"
+                            disabled={isLoading}
+                            className="w-full bg-gray-800 text-white font-bold py-2 px-4 rounded-md hover:bg-gray-900 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        >
+                             {isLoading ? 'Processing...' : 'DOWNLOAD PLAYLIST AS ZIP'}
+                        </button>
+                    </form>
+                </div>
+
+                {/* Combine MP3s Card - ADDED */}
+                <div className="bg-white p-6 rounded-lg shadow-md md:col-span-2 lg:col-span-1">
+                    <h2 className="text-2xl font-semibold mb-4">3. Combine Playlist MP3s</h2>
+                    <form onSubmit={handleCombineMp3Submit}>
+                        <div className="mb-4">
+                            <label htmlFor="playlist-job-id" className="block text-sm font-medium text-gray-700 mb-1">Playlist Job ID</label>
+                            <input
+                                id="playlist-job-id"
+                                type="text"
+                                value={playlistJobId}
+                                onChange={(e) => setPlaylistJobId(e.target.value)}
+                                placeholder="Enter Job ID from a completed Step 2"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <button
+                            type="submit"
+                            disabled={isLoading}
+                            className="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        >
+                             {isLoading ? 'Processing...' : 'COMBINE MP3s'}
+                        </button>
+                    </form>
+                </div>
+
+            </div>
+
+            <StatusDisplay status={jobStatus} />
+        </main>
     );
 }
