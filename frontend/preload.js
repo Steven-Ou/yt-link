@@ -1,50 +1,20 @@
-// preload.js
+// frontend/preload.js
+
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Expose protected methods that allow the renderer process to communicate
-// with the main process without exposing the entire ipcRenderer object.
-contextBridge.exposeInMainWorld('electronAPI', {
-  // --- LISTENERS: From Main Process to Renderer Process ---
+// We are exposing a controlled API to the renderer process (your Next.js app)
+// instead of exposing the entire ipcRenderer module.
+contextBridge.exposeInMainWorld('api', {
+    // Each function here corresponds to an ipcMain.handle call in main.js
+    // It uses ipcRenderer.invoke which is designed to work with ipcMain.handle
+    
+    startSingleMp3Job: (args) => ipcRenderer.invoke('start-single-mp3-job', args),
 
-  /**
-   * Listens for general status updates from the auto-updater.
-   * @param {function} callback - The function to call with the status message.
-   * @returns {function} A function to remove the event listener.
-   */
-  onUpdateStatus: (callback) => {
-    const listener = (_event, value) => callback(value);
-    ipcRenderer.on('update-status', listener);
-    return () => ipcRenderer.removeListener('update-status', listener);
-  },
+    startPlaylistZipJob: (args) => ipcRenderer.invoke('start-playlist-zip-job', args),
 
-  /**
-   * Listens for download progress updates.
-   * @param {function} callback - The function to call with the progress object.
-   * @returns {function} A function to remove the event listener.
-   */
-  onUpdateDownloadProgress: (callback) => {
-    const listener = (_event, value) => callback(value);
-    ipcRenderer.on('update-download-progress', listener);
-    return () => ipcRenderer.removeListener('update-download-progress', listener);
-  },
+    getJobStatus: (args) => ipcRenderer.invoke('get-job-status', args),
 
-  /**
-   * Listens for a reply from the main process (example).
-   * @param {function} callback - The function to call with the reply data.
-   * @returns {function} A function to remove the event listener.
-   */
-  onMainProcessReply: (callback) => {
-    const listener = (_event, value) => callback(value);
-    ipcRenderer.on('main-process-reply', listener);
-    return () => ipcRenderer.removeListener('main-process-reply', listener);
-  },
-
-
-  // --- SENDERS: From Renderer Process to Main Process ---
-  
-  /**
-   * Sends an action/message from the renderer process to the main process (example).
-   * @param {*} arg - The argument or data to send.
-   */
-  sendRendererAction: (arg) => ipcRenderer.send('renderer-action', arg)
+    // You can add other functions here as needed
+    // For example, if you need to listen for ongoing progress updates:
+    onUpdateStatus: (callback) => ipcRenderer.on('update-status', (event, ...args) => callback(...args)),
 });
