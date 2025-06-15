@@ -1,19 +1,38 @@
 {
-  "name": "yt-link-app",
-  "version": "1.2.0",
-  "private": true,
+  "name": "yt-link-v2",
+  "version": "0.0.1",
+  "description": "YT Link V2 allows you to download YouTube videos as MP3s, or entire playlists as a ZIP file.",
   "main": "main.js",
   "scripts": {
+    "start": "electron .",
     "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "build": "next build && next export",
     "lint": "next lint",
-    "electron:dev": "electron .",
-    "electron:build": "cross-env IS_ELECTRON=true next build && npx electron-builder"
+    "package": "electron-builder"
+  },
+  "keywords": [],
+  "author": "Steven Ou",
+  "license": "ISC",
+  "dependencies": {
+    "next": "14.2.5",
+    "node-fetch": "^2.7.0",
+    "react": "^18",
+    "react-dom": "^18"
+  },
+  "devDependencies": {
+    "electron": "^31.2.1",
+    "electron-builder": "^24.13.3",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.5",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1"
   },
   "build": {
-    "appId": "com.steve.ytlink.final",
-    "productName": "YT Link Final",
+    "appId": "com.steven-ou.yt-link-v2",
+    "productName": "YT Link V2",
+    "directories": {
+      "output": "dist"
+    },
     "files": [
       "out/**/*",
       "main.js",
@@ -21,55 +40,13 @@
       "package.json"
     ],
     "win": {
-      "target": "zip",
-      "extraResources": [
-        {
-          "from": "../service/dist/app.exe",
-          "to": "service/app.exe"
-        }
-      ]
+      "target": "nsis"
     },
     "mac": {
-      "target": "dmg",
-      "extraResources": [
-        {
-          "from": "../service/venv",
-          "to": "service/venv"
-        },
-        {
-          "from": "../service/app.py",
-          "to": "service/app.py"
-        }
-      ]
+      "target": "dmg"
     },
-    "publish": {
-      "provider": "github",
-      "owner": "Steven-Ou",
-      "repo": "yt-link"
+    "linux": {
+      "target": "AppImage"
     }
-  },
-  "dependencies": {
-    "@emotion/react": "^11.14.0",
-    "@emotion/styled": "^11.14.0",
-    "@mui/icons-material": "^7.0.2",
-    "@mui/material": "^7.0.2",
-    "axios": "^1.9.0",
-    "electron-log": "^5.4.0",
-    "electron-updater": "^6.6.2",
-    "next": "15.3.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "tcp-port-used": "^1.0.2"
-  },
-  "devDependencies": {
-    "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4.1.7",
-    "autoprefixer": "^10.4.21",
-    "cross-env": "^7.0.3",
-    "electron": "^36.4.0",
-    "electron-builder": "^24.13.3",
-    "eslint": "^9",
-    "eslint-config-next": "15.3.1",
-    "tailwindcss": "^4"
   }
 }
