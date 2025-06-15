@@ -205,7 +205,7 @@ export default function Home() {
                     <Box sx={{ textAlign: 'center', mt: 4 }}>
                         <Typography variant="h2" component="h1" gutterBottom>YT Link Converter!</Typography>
                         <Typography variant="h5" color="text.secondary">Welcome!!</Typography>
-                         <Typography variant="body1" color="text.secondary" sx={{mt: 2, maxWidth: '600px', mx: 'auto'}}> Please download the apps if you're on the Website! Website won't work. Please trust the app when you download it. Select an Download Options. Follow the direction. Downloads will be processed in the background. When the download finish, make sure to click on the green button to download the file! That's it!</Typography>
+                         <Typography variant="body1" color="text.secondary" sx={{mt: 2, maxWidth: '600px', mx: 'auto'}}> Please download the apps if you&apos;re on the Website! Website won&apos;t work. Please trust the app when you download it. Select an Download Options. Follow the direction. Downloads will be processed in the background. When the download finish, make sure to click on the green button to download the file! That&apos;s it!</Typography>
                         <DownloadSection />
                     </Box>
                 );
