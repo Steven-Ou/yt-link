@@ -50,7 +50,7 @@ function DownloadSection() {
     return (
         <Paper elevation={3} sx={{ mt: 8, p: { xs: 2, sm: 4 }, borderRadius: 4 }}>
             <Typography variant="h4" component="h2" gutterBottom align="center" fontWeight="bold"> Download the Desktop App </Typography>
-            <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 4, maxWidth: '500px', mx: 'auto' }}> Get the full-featured desktop application for a seamless, local experience. Includes background processing and auto-updates. </Typography>
+            <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 4, maxWidth: '500px', mx: 'auto' }}> Get the full-featured desktop application for a seamless, local experience. Includes background processing and auto-updates. (For Windows users, make sure to extract the zip after downloading.) </Typography>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center">
                 <Button variant="contained" color="secondary" size="large" startIcon={<AppleIcon />} href={macDownloadUrl} sx={{ textTransform: 'none', fontWeight: 'bold' }}> Download for macOS </Button>
                 <Button variant="contained" color="primary" size="large" startIcon={<WindowsIcon />} href={windowsDownloadUrl} sx={{ textTransform: 'none', fontWeight: 'bold' }}> Download for Windows </Button>
