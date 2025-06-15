@@ -144,7 +144,19 @@ export default function Home() {
     const renderContent = () => {
         const anyLoading = isAnyJobLoading();
         switch (currentView) {
-            case 'welcome': return <DownloadSection />;
+            case 'welcome': 
+                return (
+                    <Box sx={{ textAlign: 'center', mt: 4 }}>
+                        <Typography variant="h2" component="h1" gutterBottom>YT Link Converter!</Typography>
+                        <Typography variant="h5" color="text.secondary">Welcome!!</Typography>
+                        <Typography variant="body1" color="text.secondary" sx={{mt: 2, maxWidth: '600px', mx: 'auto'}}>
+                            Please be aware the download options on this website are for demonstration only and **will not work**. 
+                            For full functionality, please download the desktop application below. You may need to trust the app after downloading.
+                            Once installed, the download options will work as intended.
+                        </Typography>
+                        <DownloadSection />
+                    </Box>
+                );
             case 'single': return (
                 <Container maxWidth="sm" sx={{ mt: 4 }}>
                     <Typography variant='h6' gutterBottom>Convert Single Video to MP3</Typography>
