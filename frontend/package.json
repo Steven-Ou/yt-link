@@ -19,7 +19,7 @@
     "@mui/material": "^5.16.4",
     "autoprefixer": "^10.4.19",
     "axios": "^1.7.2",
-    "next": "14.2.5",
+    "next": "15.3.3",
     "node-fetch": "^2.7.0",
     "postcss": "^8",
     "react": "^18",
