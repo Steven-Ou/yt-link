@@ -62,17 +62,18 @@ def run_subprocess(job_id, command, timeout):
     if process.stderr: logging.warning(f"[{job_id}] STDERR: {process.stderr.strip()}")
     return process
 
-def update_job_status(job_id, status, message, **kwargs):
+def update_job_status(job_id, status, **kwargs):
     """Thread-safe way to update a job's status."""
     with jobs_lock:
         if job_id in jobs:
-            jobs[job_id].update({"status": status, "message": message, **kwargs})
+            jobs[job_id].update({"status": status, **kwargs})
 
 def handle_job_exception(job_id, e, task_name):
     """Centralized exception handling for jobs."""
     error_message = f"Error in {task_name}: {e}"
     logging.error(f"[{job_id}] {error_message}", exc_info=True)
-    update_job_status(job_id, "failed", f"Failed: An error occurred in {task_name}.", error=str(e))
+    # FIX: Pass the detailed error message back to the frontend.
+    update_job_status(job_id, "failed", message=f"Failed: An error occurred in {task_name}.", error_detail=str(e))
 
 # --- Task Functions ---
 def _process_single_mp3_task(job_id, url, cookie_data):
@@ -80,7 +81,7 @@ def _process_single_mp3_task(job_id, url, cookie_data):
     try:
         job_tmp_dir = jobs.get(job_id, {}).get("job_tmp_dir")
         if not job_tmp_dir: raise Exception("Job temporary directory not found.")
-        update_job_status(job_id, "processing", "Downloading audio...")
+        update_job_status(job_id, "processing", message="Downloading audio...")
         
         output_template = os.path.join(job_tmp_dir, '%(title)s.%(ext)s')
         args = [YTDLP_PATH, '-x', '--audio-format', 'mp3', '--no-playlist', '--ffmpeg-location', FFMPEG_PATH, '-o', output_template]
@@ -94,9 +95,10 @@ def _process_single_mp3_task(job_id, url, cookie_data):
         
         mp3_file = next((f for f in os.listdir(job_tmp_dir) if f.lower().endswith('.mp3')), None)
         if process.returncode != 0 or not mp3_file:
-            raise Exception(f"yt-dlp failed to produce an MP3 file. Stderr: {process.stderr[:500]}")
+            # FIX: Raise a more informative error.
+            raise Exception(f"yt-dlp failed. Exit Code: {process.returncode}. Details: {process.stderr[:500]}")
         
-        update_job_status(job_id, "completed", f"Completed: {mp3_file}", filename=mp3_file, filepath=os.path.join(job_tmp_dir, mp3_file))
+        update_job_status(job_id, "completed", message=f"Completed: {mp3_file}", filename=mp3_file, filepath=os.path.join(job_tmp_dir, mp3_file))
     except Exception as e:
         handle_job_exception(job_id, e, "single MP3 task")
 
@@ -105,7 +107,7 @@ def _process_playlist_zip_task(job_id, playlist_url, cookie_data):
     try:
         job_tmp_dir = jobs.get(job_id, {}).get("job_tmp_dir")
         if not job_tmp_dir: raise Exception("Job temporary directory not found.")
-        update_job_status(job_id, "processing", "Downloading playlist...")
+        update_job_status(job_id, "processing", message="Downloading playlist...")
 
         output_template = os.path.join(job_tmp_dir, '%(playlist_index)03d - %(title)s.%(ext)s')
         args = [YTDLP_PATH, '-x', '--audio-format', 'mp3', '--yes-playlist', '--ignore-errors', '--ffmpeg-location', FFMPEG_PATH, '-o', output_template]
@@ -119,16 +121,17 @@ def _process_playlist_zip_task(job_id, playlist_url, cookie_data):
         
         mp3_files = sorted([f for f in os.listdir(job_tmp_dir) if f.lower().endswith('.mp3')])
         if not mp3_files:
-            raise Exception("yt-dlp did not produce any MP3 files.")
+            # FIX: Raise a more informative error.
+            raise Exception("yt-dlp process finished, but no MP3 files were created.")
 
-        update_job_status(job_id, "processing", f"Zipping {len(mp3_files)} files...")
+        update_job_status(job_id, "processing", message=f"Zipping {len(mp3_files)} files...")
         zip_filename = f"playlist_{job_id}.zip"
         zip_path = os.path.join(job_tmp_dir, zip_filename)
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for file in mp3_files:
                 zipf.write(os.path.join(job_tmp_dir, file), arcname=file)
 
-        update_job_status(job_id, "completed", f"Completed: {zip_filename}", filename=zip_filename, filepath=zip_path)
+        update_job_status(job_id, "completed", message=f"Completed: {zip_filename}", filename=zip_filename, filepath=zip_path)
     except Exception as e:
         handle_job_exception(job_id, e, "playlist zip task")
 
@@ -159,7 +162,7 @@ def start_playlist_zip_job_route():
 def get_job_status_route(job_id):
     with jobs_lock:
         job = jobs.get(job_id)
-        return jsonify(job.copy() if job else {"status": "not_found", "error": "Job not found"})
+        return jsonify(job.copy() if job else {"status": "not_found", "message": "Job not found"})
 
 @app.route('/download-file/<job_id>/<filename>')
 def download_file_route(job_id, filename):
