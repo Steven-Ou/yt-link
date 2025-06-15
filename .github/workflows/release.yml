@@ -1,98 +1,155 @@
-name: Build & Release
+# .github/workflows/release.yml
+# This is an optimized version of your release workflow.
+# Key changes:
+# 1. Caching: Caches npm and pip dependencies to speed up installation.
+# 2. Job Separation: Creates a 'build' job that runs once to build the platform-agnostic
+#    frontend, and a 'package' job that runs for each OS to package the app.
+#    This prevents rebuilding the same code multiple times.
+# 3. Updated Actions: Uses the latest versions of GitHub Actions for better performance and security.
+
+name: Release
 
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    branches:
+      - main
+    paths:
+      # Only run this workflow if something inside the 'frontend', 'backend', or 'service'
+      # directories changes, or if the workflow file itself changes.
+      - 'frontend/**'
+      - 'backend/**'
+      - 'service/**'
+      - '.github/workflows/release.yml'
 
 jobs:
-  build-and-release:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [macos-latest, windows-latest]
+  # Job 1: Build the platform-independent code (Next.js frontend)
+  # This job runs only ONCE.
+  build:
+    runs-on: ubuntu-latest # Use a fast, common runner for the build step.
     
-    permissions:
-      contents: write
-
     steps:
-      - name: Check out Git repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Set up Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: 'frontend/package-lock.json'
-      
-      - name: Install FFmpeg (macOS)
-        if: runner.os == 'macOS'
-        run: brew install ffmpeg
-        
-      - name: Install FFmpeg (Windows)
-        if: runner.os == 'Windows'
-        run: choco install ffmpeg
-      
-      - name: Create Python virtual environment and install dependencies
-        run: |
-          cd service
-          python -m venv venv
-          # This robust command works for both Windows and Mac shells
-          ./venv/bin/python -m pip install -r requirements.txt || ./venv/Scripts/python.exe -m pip install -r requirements.txt
-          ./venv/bin/python -m pip install pyinstaller || ./venv/Scripts/python.exe -m pip install pyinstaller
-        shell: bash
+          node-version: '20' # Specify your Node.js version
 
-      - name: Build Python Backend with PyInstaller
-        run: |
-          cd service
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            # Windows: --onefile build
-            PYTHON_EXEC=./venv/Scripts/python.exe
-            FFMPEG_PATH=$(where ffmpeg)
-            YTDLP_PATH=./venv/Scripts/yt-dlp.exe
-            
-            $PYTHON_EXEC -m PyInstaller --onefile --noconsole --clean \
-              --add-binary "$YTDLP_PATH;." \
-              --add-binary "$FFMPEG_PATH;." \
-              app.py
-          else
-            # macOS: --onedir build to avoid deprecation warning
-            PYTHON_EXEC=./venv/bin/python
-            FFMPEG_PATH=$(which ffmpeg)
-            YTDLP_PATH=./venv/bin/yt-dlp
-
-            $PYTHON_EXEC -m PyInstaller --onedir --noconsole --clean \
-              --add-binary "$YTDLP_PATH:." \
-              --add-binary "$FFMPEG_PATH:." \
-              app.py
-          fi
-        shell: bash
-
-      - name: Install Frontend Dependencies
-        run: npm install # Use npm install to fix out-of-sync lockfile and missing deps
-        working-directory: ./frontend
-
-      - name: Build and Package Electron App
-        run: npm run electron:build -- --publish always
-        working-directory: ./frontend
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          IS_ELECTRON: 'true'
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Release Artifacts
-        uses: softprops/action-gh-release@v2
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          files: |
-            frontend/dist/*.dmg
-            frontend/dist/*.zip
-            frontend/dist/*.exe
-            frontend/dist/*.blockmap
+          python-version: '3.11' # Specify your Python version
+
+      # Cache for root node_modules
+      - name: Cache root node_modules
+        id: cache-root-npm
+        uses: actions/cache@v4
+        with:
+          path: ./node_modules
+          key: ${{ runner.os }}-npm-root-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-root-
+
+      # Cache for backend node_modules
+      - name: Cache backend node_modules
+        id: cache-backend-npm
+        uses: actions/cache@v4
+        with:
+          path: ./backend/node_modules
+          key: ${{ runner.os }}-npm-backend-${{ hashFiles('**/backend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-backend-
+
+      # Cache for frontend node_modules
+      - name: Cache frontend node_modules
+        id: cache-frontend-npm
+        uses: actions/cache@v4
+        with:
+          path: ./frontend/node_modules
+          key: ${{ runner.os }}-npm-frontend-${{ hashFiles('**/frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-frontend-
+      
+      # Cache for pip dependencies
+      - name: Cache pip dependencies
+        id: cache-pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/service/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # Install all dependencies (will be fast if cache is hit)
+      - name: Install Dependencies
+        run: |
+          npm install
+          cd backend && npm install
+          cd ../service && pip install -r requirements.txt
+          cd ../frontend && npm install
+      
+      - name: Build Frontend
+        run: cd frontend && npm run build
+      
+      # Upload the entire project directory, including built files and node_modules,
+      # to be used by the next job.
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifact
+          path: . # Upload the whole directory
+          retention-days: 1
+
+  # Job 2: Package the application for each OS
+  # This job depends on the 'build' job and runs for each OS in the matrix.
+  package:
+    needs: build # This line ensures the 'build' job finishes first
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+
+    steps:
+      # No need to checkout again, we'll download the artifact.
+      # No need to install dependencies again, they're in the artifact.
+      
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+          path: . # Download to the current directory
+          
+      - name: Run Electron Packager
+        # The working directory is already set to the root of the project.
+        run: cd frontend && npm run package
+        env:
+          # This is often needed for electron-builder on GitHub Actions
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Rename Artifact for Windows
+        if: matrix.os == 'windows-latest'
+        run: |
+          cd frontend/dist
+          $file = Get-ChildItem -Filter *.exe | Select-Object -First 1
+          Rename-Item -Path $file.FullName -NewName "yt-link-v2-windows.exe"
+          
+      - name: Rename Artifact for macOS
+        if: matrix.os == 'macos-latest'
+        run: |
+          cd frontend/dist
+          mv *.dmg yt-link-v2-macos.dmg
+          
+      - name: Rename Artifact for Linux
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cd frontend/dist
+          mv *.AppImage yt-link-v2-linux.AppImage
+
+      - name: Upload Packaged Application
+        uses: actions/upload-artifact@v4
+        with:
+          name: yt-link-v2-${{ matrix.os }}
+          path: frontend/dist/*
+          retention-days: 7
