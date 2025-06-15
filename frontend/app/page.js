@@ -33,8 +33,8 @@ const customTheme = createTheme({
 });
 
 function DownloadSection() {
-    const macDownloadUrl = "https://github.com/Steven-Ou/yt-link/releases/download/v0.0.0/YT.Link.Final-1.2.0-arm64.dmg";
-    const windowsDownloadUrl = "https://github.com/Steven-Ou/yt-link/releases/download/v0.0.0/YT.Link.Final-1.2.0-win.zip";
+    const macDownloadUrl = "https://github.com/Steven-Ou/yt-link/releases/latest/download/YT.Link.Final.dmg";
+    const windowsDownloadUrl = "https://github.com/Steven-Ou/yt-link/releases/latest/download/YT.Link.Final-win.zip";
 
     return (
         <Paper elevation={3} sx={{ mt: 8, p: { xs: 2, sm: 4 }, borderRadius: 4 }}>
@@ -133,7 +133,9 @@ export default function Home() {
             <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
                 <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', color }}>
                     {icon}
-                    <Box component="span" sx={{ ml: 1 }}>{jobInfo.message || jobInfo.error || `Status: ${jobInfo.status}`}</Box>
+                    <Box component="span" sx={{ ml: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {jobInfo.error_detail ? `Error Detail: ${jobInfo.error_detail}` : (jobInfo.message || `Status: ${jobInfo.status}`)}
+                    </Box>
                 </Typography>
                 {showProgressBar && <LinearProgress color="info" sx={{ mt: 1 }} />}
                 {downloadUrl && <Button variant="contained" color="success" href={downloadUrl} sx={{ mt: 1 }}>Download File</Button>}
@@ -176,7 +178,7 @@ export default function Home() {
                     <Button sx={{mt: 2}} variant='contained' color='secondary' fullWidth onClick={() => startJob('playlistZip', 'start-playlist-zip-job', { playlistUrl, cookieData })} disabled={isLoading('playlistZip') || (anyLoading && !isLoading('playlistZip'))}>
                         {isLoading('playlistZip') ? <CircularProgress size={24} color="inherit"/> : 'Download Playlist as Zip'}
                     </Button>
-                    <JobStatusDisplay jobType="playlistZip" />
+                    <JobStatusDisplay jobType="zip" />
                 </Container>
             );
             default: return <DownloadSection />;
