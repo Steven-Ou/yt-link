@@ -24,6 +24,7 @@
     "react-dom": "^18"
   },
   "devDependencies": {
+    "autoprefixer": "^10.4.19",
     "electron": "^31.2.1",
     "electron-builder": "^24.13.3",
     "eslint": "^8",
