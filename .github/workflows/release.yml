@@ -49,7 +49,6 @@ jobs:
           npm install
 
       - name: Build Frontend
-        working-directory: ./frontend
         run: npm run build
       
       - name: Package Application
