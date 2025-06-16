@@ -1,17 +1,23 @@
 {
   "name": "yt-link",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "description": "YT Link allows you to download YouTube videos as MP3s, or entire playlists as a ZIP file.",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "next dev",
-    "build": "next build",
-    "lint": "next lint",
-    "package": "electron-builder"
+    "dev": "concurrently \"npm:dev:next\" \"npm:dev:electron\"",
+    "dev:next": "next dev ./frontend",
+    "dev:electron": "electron .",
+    "build": "next build ./frontend",
+    "package": "npm run build && electron-builder"
   },
-  "keywords": [],
+  "keywords": [
+    "youtube",
+    "downloader",
+    "electron",
+    "nextjs"
+  ],
   "author": "Steven Ou",
   "license": "ISC",
   "dependencies": {
@@ -19,21 +25,21 @@
     "@emotion/styled": "^11.11.5",
     "@mui/icons-material": "^5.15.21",
     "@mui/material": "^5.16.4",
-    "autoprefixer": "^10.4.19",
     "axios": "^1.7.2",
-    "next": "^15.3.1",
-    "node-fetch": "^2.7.0",
-    "postcss": "^8",
-    "react": "^18",
-    "react-dom": "^18",
-    "tailwindcss": "^3.4.4"
+    "electron-is-dev": "^3.0.1",
+    "next": "14.2.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "electron": "^31.2.1",
+    "autoprefixer": "^10.4.19",
+    "concurrently": "^8.2.2",
+    "electron": "^31.0.2",
     "electron-builder": "^24.13.3",
-    "electron-reloader": "^1.2.3",
-    "eslint": "^8",
-    "eslint-config-next": "15.3.1"
+    "eslint": "^8.57.0",
+    "eslint-config-next": "14.2.3",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.3"
   },
   "build": {
     "appId": "com.steven-ou.yt-link",
@@ -42,10 +48,9 @@
       "output": "dist"
     },
     "files": [
-      "out/**/*",
       "main.js",
       "preload.js",
-      "package.json"
+      "frontend/**/*"
     ],
     "win": {
       "target": "zip"
