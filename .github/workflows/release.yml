@@ -1,8 +1,6 @@
 # .github/workflows/release.yml
-# This is the definitive workflow that combines all previous solutions.
-# It uses `working-directory` on all frontend steps to guarantee that
-# commands are executed in the correct context, which is the most robust
-# solution for CI/CD pathing issues.
+# This is the definitive workflow. It builds only for macOS and Windows,
+# and uses the robust `working-directory` approach to prevent pathing errors.
 
 name: Release
 
@@ -21,7 +19,8 @@ jobs:
     
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        # We now only build for macOS and Windows, as requested.
+        os: [macos-latest, windows-latest]
 
     steps:
       - name: Checkout repository
@@ -42,15 +41,10 @@ jobs:
       - name: Install Python Dependencies
         run: pip install -r ./service/requirements.txt
 
-      # --- THE COMBINED AND DEFINITIVE FIX ---
-      # Each of the following steps explicitly sets the working directory to './frontend'.
-      # This is the most reliable way to ensure the commands run in the correct place.
-      
       - name: Install Frontend Dependencies
         working-directory: ./frontend
-        shell: bash # Use bash for cross-platform compatibility of 'rm'
+        shell: bash
         run: |
-          # Removing the lock file ensures a clean install, avoiding cache issues.
           rm -f package-lock.json
           npm install
 
@@ -62,10 +56,8 @@ jobs:
         working-directory: ./frontend
         run: npm run package
         env:
-          # The GH_TOKEN is required by electron-builder.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
-      # The remaining steps rename the packaged application files for clarity.
       - name: Rename Artifact for Windows
         if: matrix.os == 'windows-latest'
         run: |
@@ -78,12 +70,6 @@ jobs:
         run: |
           cd frontend/dist
           mv *.dmg yt-link-macos.dmg
-          
-      - name: Rename Artifact for Linux
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          cd frontend/dist
-          mv *.AppImage yt-link-linux.AppImage
 
       - name: Upload Packaged Application
         uses: actions/upload-artifact@v4
