@@ -1,5 +1,6 @@
 # .github/workflows/release.yml
-# This workflow is corrected to properly handle an npm workspace setup.
+# This workflow is corrected to install and build directly inside the frontend directory,
+# which is a more robust approach for CI/CD environments and avoids workspace pathing issues.
 
 name: Release
 
@@ -9,17 +10,21 @@ on:
       - main
     paths:
       - 'frontend/**'
-      - 'backend/**'
       - 'service/**'
       - '.github/workflows/release.yml'
       - 'package.json'
       - 'package-lock.json'
 
 jobs:
-  # Job 1: Build the platform-independent code
-  build:
-    runs-on: ubuntu-latest
+  # Job 1: Build and Package the application for each OS
+  # We are combining the build and package steps to simplify the workflow.
+  build_and_package:
+    runs-on: ${{ matrix.os }}
     
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -34,17 +39,7 @@ jobs:
         with:
           python-version: '3.11'
       
-      # For a workspace, we cache the single root node_modules directory
-      - name: Cache root node_modules
-        id: cache-root-npm
-        uses: actions/cache@v4
-        with:
-          path: ./node_modules
-          key: ${{ runner.os }}-npm-root-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-root-
-
-      # Cache for pip dependencies remains the same
+      # Cache for pip dependencies
       - name: Cache pip dependencies
         id: cache-pip
         uses: actions/cache@v4
@@ -54,45 +49,28 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      # *** THE KEY FIX IS HERE ***
-      # In an npm workspace, you only need to run npm install from the root.
-      # It will automatically install dependencies for all workspaces (frontend, backend).
-      - name: Install All Dependencies
+      # Cache for frontend node_modules
+      - name: Cache frontend node_modules
+        id: cache-frontend-npm
+        uses: actions/cache@v4
+        with:
+          path: ./frontend/node_modules
+          key: ${{ runner.os }}-npm-frontend-${{ hashFiles('**/frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-frontend-
+      
+      # --- THE KEY FIX IS HERE ---
+      # We now run all node commands from within the 'frontend' directory.
+      - name: Install Dependencies and Build Frontend
         run: |
-          npm install
           cd service && pip install -r requirements.txt
+          cd ..
+          cd frontend && npm install && npm run build
       
-      # Build the frontend from within its workspace context
-      - name: Build Frontend
-        run: npm run build --workspace=frontend
-      
-      # Upload the entire built project to be used by the packaging job
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifact
-          path: .
-          retention-days: 1
-
-  # Job 2: Package the application for each OS
-  package:
-    needs: build
-    runs-on: ${{ matrix.os }}
-    
-    strategy:
-      matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
-
-    steps:
-      - name: Download Build Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifact
-          path: .
-          
-      # Run the package script from the frontend workspace context
+      # Run the package script from within the frontend directory
       - name: Run Electron Packager
-        run: npm run package --workspace=frontend
+        working-directory: ./frontend
+        run: npm run package
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
