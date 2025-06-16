@@ -1,7 +1,6 @@
 # .github/workflows/release.yml
-# This workflow is corrected to use the `working-directory` option on each npm step,
-# which is the most robust way to resolve CI pathing issues by forcing the
-# commands to execute in the correct folder context.
+# This workflow is corrected to combine all frontend build commands into a single,
+# robust step. This resolves all pathing and shell issues in the CI environment.
 
 name: Release
 
@@ -59,28 +58,36 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-npm-frontend-
       
-      # --- THE DEFINITIVE FIX v3 ---
-      # Each npm step is now run in its own block with an explicit working-directory.
-
-      - name: Install Python Dependencies
-        run: pip install -r ./service/requirements.txt
-
-      - name: Install Node.js Dependencies
-        working-directory: ./frontend
+      # --- THE DEFINITIVE FINAL FIX ---
+      # All frontend commands are combined into a single step with a specified shell
+      # and working directory to guarantee correct execution on all platforms.
+      - name: Install All Dependencies and Build
+        shell: bash
         run: |
+          echo "Installing Python dependencies..."
+          pip install -r ./service/requirements.txt
+          
+          echo "Setting up frontend..."
+          cd frontend
+          
+          echo "Removing lockfile for a clean install..."
           rm -f package-lock.json
+          
+          echo "Installing Node.js dependencies..."
           npm install
+          
+          echo "Building the frontend..."
+          npm run build
 
-      - name: Build Frontend
-        working-directory: ./frontend
-        run: npm run build
-      
+      # Run the package script from within the frontend directory
       - name: Run Electron Packager
         working-directory: ./frontend
         run: npm run package
         env:
+          # This token is required by electron-builder to fetch dependencies.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
+      # The rest of the steps rename the artifacts for clarity.
       - name: Rename Artifact for Windows
         if: matrix.os == 'windows-latest'
         run: |
