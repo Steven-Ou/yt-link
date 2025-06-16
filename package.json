@@ -1,17 +1,21 @@
 {
   "name": "yt-link-monorepo",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "A monorepo for the YT Link application.",
-  "scripts": {
-    "dev": "npm run dev --workspace=frontend",
-    "build": "npm run build --workspace=frontend"
-  },
-  "keywords": [],
-  "author": "Steven Ou",
-  "license": "ISC",
+  "description": "Monorepo for the YT Link Electron and Next.js application.",
   "workspaces": [
     "frontend",
-    "backend"
-  ]
+    "electron-app"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm:dev:frontend\" \"npm:dev:electron\"",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:electron": "wait-on http://localhost:3000 && npm start --workspace=electron-app",
+    "build": "npm run build --workspace=frontend",
+    "package": "npm run package --workspace=electron-app"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "wait-on": "^7.2.0"
+  }
 }
