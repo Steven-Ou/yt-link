@@ -1,6 +1,7 @@
 # .github/workflows/release.yml
-# This workflow is corrected to use the --prefix flag for all npm commands,
-# which explicitly tells npm where to run and avoids pathing issues in the CI environment.
+# This workflow is corrected to use the `working-directory` option on each npm step,
+# which is the most robust way to resolve CI pathing issues by forcing the
+# commands to execute in the correct folder context.
 
 name: Release
 
@@ -17,7 +18,6 @@ on:
 
 jobs:
   # Job 1: Build and Package the application for each OS
-  # We are combining the build and package steps to simplify the workflow.
   build_and_package:
     runs-on: ${{ matrix.os }}
     
@@ -59,18 +59,22 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-npm-frontend-
       
-      # --- THE DEFINITIVE FIX V2 ---
-      # We use --prefix ./frontend to force npm to run all commands in the correct directory context.
-      # We also still remove the lockfile to ensure a clean install.
-      - name: Install Dependencies and Build Frontend
-        shell: bash
+      # --- THE DEFINITIVE FIX v3 ---
+      # Each npm step is now run in its own block with an explicit working-directory.
+
+      - name: Install Python Dependencies
+        run: pip install -r ./service/requirements.txt
+
+      - name: Install Node.js Dependencies
+        working-directory: ./frontend
         run: |
-          pip install -r ./service/requirements.txt
-          rm -f ./frontend/package-lock.json
-          npm install --prefix ./frontend
-          npm run build --prefix ./frontend
+          rm -f package-lock.json
+          npm install
+
+      - name: Build Frontend
+        working-directory: ./frontend
+        run: npm run build
       
-      # Run the package script from within the frontend directory
       - name: Run Electron Packager
         working-directory: ./frontend
         run: npm run package
