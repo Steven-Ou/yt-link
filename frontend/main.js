@@ -3,23 +3,32 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
-const fetch = require('node-fetch'); // Make sure to `npm install node-fetch@2` in your /frontend directory
+const fetch = require('node-fetch');
 
 const isDev = process.env.NODE_ENV !== 'production';
 
-// Keep a reference to the python process
+// --- HOT RELOADING ---
+// This will automatically reload the app when you make changes in development
+if (isDev) {
+    try {
+        // This line enables hot-reloading
+        require('electron-reloader')(module);
+    } catch (_) {
+        // This catch block prevents crashes if the reloader is not found
+    }
+}
+
+// Keep a reference to the python process to ensure it's killed when the app closes
 let pythonProcess = null;
 
 function startPythonBackend() {
-    // In production, the Python executable will be packaged. 
-    // In development, we run the script directly.
-    // This path needs to be adjusted based on your final packaging structure.
+    // Correctly locate the python script relative to the main.js file
     const scriptPath = path.join(__dirname, '..', 'service', 'app.py');
-
-    // Use 'python' or 'python3' depending on your system setup.
-    // Or point to a venv python executable.
+    
+    // Use 'python3'. If this fails on some systems, it might need to be 'python'.
     pythonProcess = spawn('python3', [scriptPath]);
 
+    // Log output from the Python backend for debugging
     pythonProcess.stdout.on('data', (data) => {
         console.log(`Python Backend: ${data}`);
     });
@@ -33,36 +42,32 @@ function startPythonBackend() {
     });
 }
 
-
 function createWindow() {
     const mainWindow = new BrowserWindow({
-        width: 800,
-        height: 600,
+        width: 1100, // A good size for the sidebar layout
+        height: 750,
         webPreferences: {
-            // The preload script is essential for secure communication between main and renderer processes
+            // The preload script is the secure bridge between the UI and this main process
             preload: path.join(__dirname, 'preload.js'),
-            contextIsolation: true, // Recommended for security
-            nodeIntegration: false, // Recommended for security
+            contextIsolation: true,
+            nodeIntegration: false,
         },
     });
 
-    // Load the Next.js app
+    // Load the Next.js URL in development or the static files in production
     if (isDev) {
         mainWindow.loadURL('http://localhost:3000');
         mainWindow.webContents.openDevTools();
     } else {
-        // In production, load the exported static files
         mainWindow.loadFile(path.join(__dirname, 'out', 'index.html'));
     }
 }
 
 // --- IPC Handlers ---
-// This is where the UI sends requests to. We use ipcMain.handle for async operations.
-// It allows us to return a promise and properly catch errors.
-
+// This async function is a reusable handler for all requests to the Python backend.
 async function handleJobRequest(endpoint, body) {
     try {
-        // We forward the request from the UI to the Python backend
+        // Forward the request from the UI to the local Python/Flask server
         const response = await fetch(`http://127.0.0.1:5001/${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -71,56 +76,57 @@ async function handleJobRequest(endpoint, body) {
 
         const result = await response.json();
 
+        // If the python server returns an error, pass it back to the UI
         if (!response.ok) {
-            // If the server responded with an error status, throw an error
-            // with the message from the backend.
             throw new Error(result.error || 'An unknown backend error occurred.');
         }
 
         return result;
 
     } catch (error) {
-        // This is the CRITICAL part for error handling.
-        // 1. Log the full error to the Electron main console (your terminal)
+        // Log the full error in the main process console (your terminal)
         console.error(`[Main Process Error] Failed to call ${endpoint}:`, error);
-        
-        // 2. Re-throw the error. ipcMain.handle will automatically pass this
-        //    rejection to the renderer process, where it can be caught.
+        // And re-throw it so the UI's `catch` block can display it to the user
         throw new Error(error.message);
     }
 }
 
+// --- App Lifecycle Events ---
 
-// --- App Lifecycle ---
-
+// This method will be called when Electron has finished initialization
 app.on('ready', () => {
+    // Start the python backend service
     startPythonBackend();
 
-    // Setup IPC handlers
+    // Define all the API endpoints that the UI can call
     ipcMain.handle('start-single-mp3-job', (event, args) => handleJobRequest('start-single-mp3-job', args));
     ipcMain.handle('start-playlist-zip-job', (event, args) => handleJobRequest('start-playlist-zip-job', args));
-    // Add other handlers here if needed, e.g., for job status
+    ipcMain.handle('start-combine-mp3-job', (event, args) => handleJobRequest('start-combine-playlist-mp3-job', args));
     ipcMain.handle('get-job-status', (event, args) => handleJobRequest('job-status', args));
 
+    // Create the main application window
     createWindow();
 });
 
+// Quit when all windows are closed, except on macOS
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
         app.quit();
     }
 });
 
-app.on('will-quit', () => {
-    // Ensure the python process is killed when the app quits
-    if (pythonProcess) {
-        console.log('Killing Python backend process.');
-        pythonProcess.kill();
-    }
-});
-
+// On macOS, it's common to re-create a window in the app when the
+// dock icon is clicked and there are no other windows open.
 app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
         createWindow();
+    }
+});
+
+// Make sure to kill the python backend process when the Electron app quits
+app.on('will-quit', () => {
+    if (pythonProcess) {
+        console.log('Killing Python backend process.');
+        pythonProcess.kill();
     }
 });
