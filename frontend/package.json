@@ -1,6 +1,7 @@
 {
   "name": "yt-link",
   "version": "0.0.1",
+  "private": true,
   "description": "YT Link allows you to download YouTube videos as MP3s, or entire playlists as a ZIP file.",
   "main": "main.js",
   "scripts": {
@@ -27,7 +28,6 @@
     "tailwindcss": "^3.4.1"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^2.2.19",
     "electron": "^31.2.1",
     "electron-builder": "^24.13.3",
     "electron-reloader": "^1.2.3",
@@ -47,13 +47,10 @@
       "package.json"
     ],
     "win": {
-      "target": "nsis"
+      "target": "zip"
     },
     "mac": {
       "target": "dmg"
-    },
-    "linux": {
-      "target": "AppImage"
     }
   }
 }
