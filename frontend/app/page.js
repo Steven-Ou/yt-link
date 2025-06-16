@@ -56,7 +56,7 @@ export default function HomePage() {
     // State for form inputs
     const [videoUrl, setVideoUrl] = useState('');
     const [playlistUrl, setPlaylistUrl] = useState('');
-    const [cookies, setCookies] = useState('');
+    const [cookies, setCookies] = useState(''); // Added cookies state back
     const [playlistJobId, setPlaylistJobId] = useState('');
     
     // State for app status
@@ -80,6 +80,7 @@ export default function HomePage() {
         setJobStatus({ type: 'loading', message: loadingMessage });
 
         try {
+            // The `cookies` are now included in the params object passed to the backend
             const result = await jobFunction(params);
             let successMessage = result.message || 'Job started successfully!';
             if (result.jobId) {
@@ -97,12 +98,14 @@ export default function HomePage() {
     const handleSingleMP3Submit = (e) => {
         e.preventDefault();
         if (!videoUrl) return setJobStatus({ type: 'error', message: 'Please enter a YouTube Video URL.' });
+        // Pass the cookies along with the videoUrl
         handleJobSubmit(window.api.startSingleMp3Job, { videoUrl, cookies }, 'Starting download...');
     };
 
     const handlePlaylistZipSubmit = (e) => {
         e.preventDefault();
         if (!playlistUrl) return setJobStatus({ type: 'error', message: 'Please enter a YouTube Playlist URL.' });
+        // Pass the cookies along with the playlistUrl
         handleJobSubmit(window.api.startPlaylistZipJob, { playlistUrl, cookies }, 'Starting playlist download...');
     };
 
@@ -120,14 +123,13 @@ export default function HomePage() {
                 return (
                     <form onSubmit={handleSingleMP3Submit}>
                         <h2 className="text-2xl font-semibold mb-4">Convert Single Video to MP3</h2>
-                        {/* Form fields */}
                         <div className="mb-4">
                             <label htmlFor="video-url" className="block text-sm font-medium text-gray-700 mb-1">YouTube Video URL</label>
                             <input id="video-url" type="text" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
                         </div>
                         <div className="mb-4">
                             <label htmlFor="cookies-single" className="block text-sm font-medium text-gray-700 mb-1">Cookies (Optional)</label>
-                            <textarea id="cookies-single" value={cookies} onChange={(e) => setCookies(e.target.value)} rows="4" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                            <textarea id="cookies-single" value={cookies} onChange={(e) => setCookies(e.target.value)} rows="4" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Paste your Netscape cookie file content here..."></textarea>
                         </div>
                         <button type="submit" disabled={isLoading} className="w-full bg-red-600 text-white font-bold py-2 px-4 rounded-md hover:bg-red-700 disabled:bg-gray-400">
                             {isLoading ? 'Processing...' : 'DOWNLOAD MP3'}
@@ -138,14 +140,13 @@ export default function HomePage() {
                 return (
                     <form onSubmit={handlePlaylistZipSubmit}>
                         <h2 className="text-2xl font-semibold mb-4">Download Playlist as Zip</h2>
-                        {/* Form fields */}
                         <div className="mb-4">
                             <label htmlFor="playlist-url" className="block text-sm font-medium text-gray-700 mb-1">YouTube Playlist URL</label>
                             <input id="playlist-url" type="text" value={playlistUrl} onChange={(e) => setPlaylistUrl(e.target.value)} placeholder="https://www.youtube.com/playlist?list=..." className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
                         </div>
                         <div className="mb-4">
                             <label htmlFor="cookies-playlist" className="block text-sm font-medium text-gray-700 mb-1">Cookies (Optional)</label>
-                            <textarea id="cookies-playlist" value={cookies} onChange={(e) => setCookies(e.target.value)} rows="4" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                            <textarea id="cookies-playlist" value={cookies} onChange={(e) => setCookies(e.target.value)} rows="4" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Paste your Netscape cookie file content here..."></textarea>
                         </div>
                         <button type="submit" disabled={isLoading} className="w-full bg-gray-800 text-white font-bold py-2 px-4 rounded-md hover:bg-gray-900 disabled:bg-gray-400">
                             {isLoading ? 'Processing...' : 'DOWNLOAD PLAYLIST AS ZIP'}
@@ -186,9 +187,9 @@ export default function HomePage() {
     return (
         <div className="flex h-screen bg-gray-100 font-sans">
             {/* Sidebar */}
-            <aside className="w-64 bg-gray-800 text-white flex flex-col">
+            <aside className="w-64 bg-gray-800 text-white flex flex-col flex-shrink-0">
                 <div className="h-16 flex items-center justify-center border-b border-gray-700">
-                    <h1 className="text-xl font-bold">YT Link V2</h1>
+                    <h1 className="text-xl font-bold">YT Link</h1>
                 </div>
                 <nav className="flex-1 px-2 py-4 space-y-2">
                     <NavItem view="single" label="Single MP3" />
@@ -198,7 +199,7 @@ export default function HomePage() {
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 flex flex-col">
+            <main className="flex-1 flex flex-col overflow-y-auto">
                 {isWebApp && <WebAppWarning />}
                 <div className="flex-1 p-6 bg-white">
                     {renderActiveView()}
