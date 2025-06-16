@@ -29,6 +29,7 @@
   "devDependencies": {
     "electron": "^31.2.1",
     "electron-builder": "^24.13.3",
+    "electron-reloader": "^1.2.3",
     "eslint": "^8",
     "eslint-config-next": "14.2.5"
   },
