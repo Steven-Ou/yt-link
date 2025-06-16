@@ -60,9 +60,10 @@ jobs:
             ${{ runner.os }}-npm-frontend-
       
       # --- THE DEFINITIVE FIX ---
-      # The installation is performed inside the frontend directory to ensure all paths are correct.
-      # We also remove the lock file to guarantee a clean install within the CI environment.
+      # This step now specifies 'shell: bash' to ensure the 'rm -f' command works on all
+      # operating systems (Windows, macOS, and Linux) without ambiguity.
       - name: Install Dependencies and Build Frontend
+        shell: bash
         run: |
           cd service && pip install -r requirements.txt
           cd ..
