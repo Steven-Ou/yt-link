@@ -17,8 +17,7 @@ import { // Importing Material-UI icons
     CheckCircleOutline as CheckCircleOutlineIcon,
     ErrorOutline as ErrorOutlineIcon,
     HourglassEmpty as HourglassEmptyIcon,
-    Window as WindowsIcon, Apple as AppleIcon,
-    DesktopWindows as LinuxIcon // Added Linux Icon
+    Window as WindowsIcon, Apple as AppleIcon
  } from '@mui/icons-material';
 
 const drawerWidth = 240;// Define the width of the drawer
@@ -84,9 +83,6 @@ function WelcomePage({ isElectron }) {
                     </Button>
                     <Button variant="contained" color="primary" size="large" startIcon={<WindowsIcon />} href={latestReleaseUrl} sx={{ textTransform: 'none', fontWeight: 'bold' }}>
                         Download for Windows
-                    </Button>
-                    <Button variant="contained" style={{ backgroundColor: '#E65100', color: 'white' }} size="large" startIcon={<LinuxIcon />} href={latestReleaseUrl} sx={{ textTransform: 'none', fontWeight: 'bold' }}>
-                        Download for Linux
                     </Button>
                 </Stack>
             </Paper>
@@ -199,10 +195,9 @@ export default function Home() {
     const [expandedDownloads, setExpandedDownloads] = useState(true);
 
     const renderContent = () => {
-        // The only change is here, in the 'welcome' case.
         switch (currentView) {
             case 'welcome':
-                 return <WelcomePage isElectron={isElectron} />; // Use the new WelcomePage component
+                 return <WelcomePage isElectron={isElectron} />;
             case 'single': return ( <Container maxWidth="sm" sx={{ mt: 4 }}><Typography variant='h6' gutterBottom>Convert Single Video to MP3</Typography><TextField label="YouTube Video URL" variant='outlined' fullWidth value={url} onChange={(e)=> setUrl(e.target.value)} style={{marginBottom: 16}} disabled={isAnyJobLoading()} /><CookieInputField /><Button variant='contained' color='primary' fullWidth onClick={downloadMP3} disabled={isLoading('singleMp3') || (isAnyJobLoading() && !isLoading('singleMp3'))}>{isLoading('singleMp3') && <CircularProgress size={24} sx={{mr:1}} />} {isLoading('singleMp3') ? 'Processing...' : 'Download MP3'}</Button><JobStatusDisplay jobInfo={activeJobs['singleMp3']} /></Container> );
             case 'zip': return ( <Container maxWidth="sm" sx={{ mt: 4 }}><Typography variant='h6' gutterBottom>Download Playlist as Zip</Typography><TextField label="YouTube Playlist URL (for Zip)" variant='outlined' fullWidth value={playlistUrl} onChange={(e)=> setPlaylistUrl(e.target.value)} style={{marginBottom: 16}} disabled={isAnyJobLoading()} /><CookieInputField /><Button variant='contained' color='secondary' onClick={downloadPlaylistZip} fullWidth style={{marginBottom: 16}} disabled={isLoading('playlistZip') || (isAnyJobLoading() && !isLoading('playlistZip'))}>{isLoading('playlistZip') && <CircularProgress size={24} sx={{mr:1}} />} {isLoading('playlistZip') ? 'Processing...' : 'Download Playlist As Zip'}</Button><JobStatusDisplay jobInfo={activeJobs['playlistZip']} /></Container> );
             case 'combine': return ( <Container maxWidth="sm" sx={{ mt: 4 }}><Typography variant='h6' gutterBottom>Convert Playlist to Single MP3</Typography><TextField label="YouTube Playlist URL (for Single MP3)" variant='outlined' fullWidth value={combineVideoUrl} onChange={(e)=> setCombineVideoUrl(e.target.value)} style={{marginBottom: 16}} disabled={isAnyJobLoading()} /><CookieInputField /><Button variant='contained' color='warning' onClick={downloadCombinedPlaylistMp3} fullWidth style={{marginBottom: 16}} disabled={isLoading('combineMp3') || (isAnyJobLoading() && !isLoading('combineMp3'))}>{isLoading('combineMp3') && <CircularProgress size={24} sx={{mr:1}} />} {isLoading('combineMp3') ? 'Processing...' : 'Download Playlist As Single MP3'}</Button><JobStatusDisplay jobInfo={activeJobs['combineMp3']} /></Container> );
@@ -238,7 +233,6 @@ export default function Home() {
                         </List>
                     </Box>
                 </Drawer>
-                {/* The main content area is now simpler */}
                 <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
                     <Toolbar />
                     {renderContent()}
