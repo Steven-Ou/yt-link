@@ -3,63 +3,75 @@
 
 import { useState, useEffect } from 'react';
 
-// --- Helper & UI Components ---
+// --- Reusable SVG Icons ---
+const AppleIcon = () => (
+  <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+    <path d="M10.333 1.833a2.313 2.313 0 00-2.015.999A2.25 2.25 0 006.333 1.833c-1.306 0-2.368.992-2.368 2.22 0 .93.633 1.733 1.517 2.033a2.38 2.38 0 01-1.233 2.11C2.933 9.125 2 10.883 2 12.917c0 3.35 2.492 4.25 4.883 4.25.775 0 1.5-.15 2.2-.4.667-.25 1.15-.367 1.917-.367s1.25.117 1.917.367c.7.25 1.425.4 2.2.4 2.392 0 4.883-.9 4.883-4.25 0-2.034-.933-3.792-2.25-4.717a2.38 2.38 0 01-1.233-2.11c.884-.3 1.517-1.102 1.517-2.033 0-1.228-1.062-2.22-2.368-2.22z" />
+  </svg>
+);
 
-// A simple component to show job status messages
+const WindowsIcon = () => (
+  <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+    <path d="M0 3h9.5v6.5H0V3zm0 7.5h9.5V17H0v-6.5zm10.5-7.5H20v6.5h-9.5V3zm0 7.5H20V17h-9.5v-6.5z" />
+  </svg>
+);
+
+// --- UI Components ---
 function StatusDisplay({ status }) {
     if (!status.message) return null;
-
     const baseClasses = "text-center p-3 mt-4 rounded-md text-sm";
     const successClasses = "bg-green-100 text-green-800";
     const errorClasses = "bg-red-100 text-red-800";
     const loadingClasses = "bg-blue-100 text-blue-800 animate-pulse";
-    
     let statusClasses = "";
     if (status.type === 'error') statusClasses = errorClasses;
     else if (status.type === 'success') statusClasses = successClasses;
     else if (status.type === 'loading') statusClasses = loadingClasses;
-
     return (
         <div className="px-6 pb-6">
-            <div className={`${baseClasses} ${statusClasses}`}>
-                <p>{status.message}</p>
+            <div className={`${baseClasses} ${statusClasses}`}><p>{status.message}</p></div>
+        </div>
+    );
+}
+
+// This is the new Welcome/Download page component.
+function WelcomePage() {
+    return (
+        <div className="text-center">
+            <h2 className="text-3xl font-bold mb-2">YT Link V2</h2>
+            <p className="text-lg text-gray-600 mb-6">Welcome!</p>
+            <p className="max-w-md mx-auto text-gray-500 mb-8">
+                Select an option from the menu. Downloads will be processed in the background.
+                Or, download the desktop app for a better experience.
+            </p>
+            <div className="bg-gray-50 p-6 rounded-lg shadow-inner">
+                <h3 className="text-xl font-semibold mb-4">Download the Desktop App</h3>
+                <p className="text-sm text-gray-500 mb-6">
+                    Get the full-featured desktop application for a seamless, local experience. Includes background processing and all updates.
+                </p>
+                <div className="flex justify-center space-x-4">
+                    <a href="https://github.com/Steven-Ou/yt-link/releases" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center bg-gray-800 text-white font-semibold py-2 px-4 rounded-md hover:bg-gray-900 transition-colors duration-300">
+                        <AppleIcon />
+                        Download for macOS
+                    </a>
+                    <a href="https://github.com/Steven-Ou/yt-link/releases" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700 transition-colors duration-300">
+                        <WindowsIcon />
+                        Download for Windows
+                    </a>
+                </div>
             </div>
         </div>
     );
 }
 
-// Warning banner for users on the web
-function WebAppWarning() {
-    return (
-        <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 m-4 rounded-md" role="alert">
-            <p className="font-bold">Web Version Notice</p>
-            <p>This web interface is for demonstration only. The features below will not work.</p>
-            <p className="mt-2">For full functionality, please download the desktop application.</p>
-            <a 
-                href="https://github.com/steven-ou/yt-link/releases"
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="font-bold underline hover:text-yellow-800"
-            >
-                Download for Windows, macOS, or Linux
-            </a>
-        </div>
-    );
-}
 
 // --- Main Page Component ---
-
 export default function HomePage() {
-    // State for which view is active
-    const [activeView, setActiveView] = useState('single'); // 'single', 'playlist', 'combine'
-    
-    // State for form inputs
+    const [activeView, setActiveView] = useState('welcome');
     const [videoUrl, setVideoUrl] = useState('');
     const [playlistUrl, setPlaylistUrl] = useState('');
-    const [cookies, setCookies] = useState(''); // Added cookies state back
+    const [cookies, setCookies] = useState('');
     const [playlistJobId, setPlaylistJobId] = useState('');
-    
-    // State for app status
     const [jobStatus, setJobStatus] = useState({ type: '', message: '' });
     const [isLoading, setIsLoading] = useState(false);
     const [isWebApp, setIsWebApp] = useState(false);
@@ -70,7 +82,6 @@ export default function HomePage() {
         }
     }, []);
 
-    // --- Job Submission Logic ---
     const handleJobSubmit = async (jobFunction, params, loadingMessage) => {
         if (isWebApp) {
             setJobStatus({ type: 'error', message: 'This feature is only available in the downloaded desktop app.' });
@@ -78,17 +89,12 @@ export default function HomePage() {
         }
         setIsLoading(true);
         setJobStatus({ type: 'loading', message: loadingMessage });
-
         try {
-            // The `cookies` are now included in the params object passed to the backend
             const result = await jobFunction(params);
             let successMessage = result.message || 'Job started successfully!';
-            if (result.jobId) {
-                successMessage += ` Job ID: ${result.jobId}`;
-            }
+            if (result.jobId) successMessage += ` Job ID: ${result.jobId}`;
             setJobStatus({ type: 'success', message: successMessage });
         } catch (error) {
-            console.error("Error received in renderer:", error);
             setJobStatus({ type: 'error', message: `Error: ${error.message}` });
         } finally {
             setIsLoading(false);
@@ -98,14 +104,12 @@ export default function HomePage() {
     const handleSingleMP3Submit = (e) => {
         e.preventDefault();
         if (!videoUrl) return setJobStatus({ type: 'error', message: 'Please enter a YouTube Video URL.' });
-        // Pass the cookies along with the videoUrl
         handleJobSubmit(window.api.startSingleMp3Job, { videoUrl, cookies }, 'Starting download...');
     };
 
     const handlePlaylistZipSubmit = (e) => {
         e.preventDefault();
         if (!playlistUrl) return setJobStatus({ type: 'error', message: 'Please enter a YouTube Playlist URL.' });
-        // Pass the cookies along with the playlistUrl
         handleJobSubmit(window.api.startPlaylistZipJob, { playlistUrl, cookies }, 'Starting playlist download...');
     };
 
@@ -115,10 +119,16 @@ export default function HomePage() {
         handleJobSubmit(window.api.startCombineMp3Job, { jobId: playlistJobId }, 'Starting combination job...');
     };
 
-    // --- Component Rendering ---
-
     const renderActiveView = () => {
+        // In a web browser, ONLY show the welcome/download page.
+        if (isWebApp) {
+            return <WelcomePage />;
+        }
+
+        // In the Electron app, switch between views.
         switch (activeView) {
+            case 'welcome':
+                return <WelcomePage />;
             case 'single':
                 return (
                     <form onSubmit={handleSingleMP3Submit}>
@@ -139,7 +149,7 @@ export default function HomePage() {
             case 'playlist':
                 return (
                     <form onSubmit={handlePlaylistZipSubmit}>
-                        <h2 className="text-2xl font-semibold mb-4">Download Playlist as Zip</h2>
+                         <h2 className="text-2xl font-semibold mb-4">Download Playlist as Zip</h2>
                         <div className="mb-4">
                             <label htmlFor="playlist-url" className="block text-sm font-medium text-gray-700 mb-1">YouTube Playlist URL</label>
                             <input id="playlist-url" type="text" value={playlistUrl} onChange={(e) => setPlaylistUrl(e.target.value)} placeholder="https://www.youtube.com/playlist?list=..." className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -168,7 +178,7 @@ export default function HomePage() {
                     </form>
                 );
             default:
-                return null;
+                return <WelcomePage />;
         }
     };
 
@@ -186,25 +196,27 @@ export default function HomePage() {
 
     return (
         <div className="flex h-screen bg-gray-100 font-sans">
-            {/* Sidebar */}
-            <aside className="w-64 bg-gray-800 text-white flex flex-col flex-shrink-0">
-                <div className="h-16 flex items-center justify-center border-b border-gray-700">
-                    <h1 className="text-xl font-bold">YT Link</h1>
-                </div>
-                <nav className="flex-1 px-2 py-4 space-y-2">
-                    <NavItem view="single" label="Single MP3" />
-                    <NavItem view="playlist" label="Playlist Zip" />
-                    <NavItem view="combine" label="Combine MP3s" />
-                </nav>
-            </aside>
+            {/* Sidebar is hidden on web, but shown in Electron */}
+            {!isWebApp && (
+                <aside className="w-64 bg-gray-800 text-white flex flex-col flex-shrink-0">
+                    <div className="h-16 flex items-center justify-center border-b border-gray-700">
+                        <h1 className="text-xl font-bold">YT Link</h1>
+                    </div>
+                    <nav className="flex-1 px-2 py-4 space-y-2">
+                        <NavItem view="welcome" label="Welcome" />
+                        <NavItem view="single" label="Single MP3" />
+                        <NavItem view="playlist" label="Playlist Zip" />
+                        <NavItem view="combine" label="Combine MP3s" />
+                    </nav>
+                </aside>
+            )}
 
             {/* Main Content */}
             <main className="flex-1 flex flex-col overflow-y-auto">
-                {isWebApp && <WebAppWarning />}
-                <div className="flex-1 p-6 bg-white">
+                 <div className="flex-1 p-6 bg-white flex items-center justify-center">
                     {renderActiveView()}
                 </div>
-                <StatusDisplay status={jobStatus} />
+                {!isWebApp && <StatusDisplay status={jobStatus} />}
             </main>
         </div>
     );
