@@ -17,7 +17,8 @@ import { // Importing Material-UI icons
     CheckCircleOutline as CheckCircleOutlineIcon,
     ErrorOutline as ErrorOutlineIcon,
     HourglassEmpty as HourglassEmptyIcon,
-    Window as WindowsIcon, Apple as AppleIcon 
+    Window as WindowsIcon, Apple as AppleIcon,
+    DesktopWindows as LinuxIcon // Added Linux Icon
  } from '@mui/icons-material';
 
 const drawerWidth = 240;// Define the width of the drawer
@@ -43,11 +44,9 @@ const customTheme = createTheme({
     },
 });
 
-// --- NEW WELCOME PAGE COMPONENT ---
-// This combines your DownloadSection with the warning for web users.
+// --- UPDATED WELCOME PAGE COMPONENT ---
 function WelcomePage({ isElectron }) {
-    const macDownloadUrl = "https://github.com/Steven-Ou/yt-link/releases/latest"; // Link to latest release
-    const windowsDownloadUrl = "https://github.com/Steven-Ou/yt-link/releases/latest"; // Link to latest release
+    const latestReleaseUrl = "https://github.com/Steven-Ou/yt-link/releases/latest"; 
 
     return (
         <Container maxWidth="md" sx={{ textAlign: 'center' }}>
@@ -61,31 +60,33 @@ function WelcomePage({ isElectron }) {
             )}
 
             <Typography variant="h3" component="h1" gutterBottom fontWeight="bold">
-                YT Link V2
+                YT Link Converter!
             </Typography>
-            <Typography variant="h6" color="text.secondary" sx={{ mb: 4 }}>
-                Welcome!
+            <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
+                Welcome!!
             </Typography>
-
-            {isElectron && (
-                 <Typography variant="body1" color="text.secondary" sx={{mt: 2, mb: 4, maxWidth: '600px', mx: 'auto'}}>
-                    Select an option from the menu to get started. Downloads will be processed in the background. When a download finishes, a green button will appear to save your file.
-                 </Typography>
-            )}
+            
+            {/* The user-provided directions */}
+            <Typography variant="body1" color="text.secondary" sx={{ mt: 2, mb: 4, maxWidth: '600px', mx: 'auto' }}>
+                Please download the apps if you're on the Website! Website won't work. Please trust the app when you download it. Select a Download Option. Follow the direction. Downloads will be processed in the background. When the download finishes, make sure to click on the green button to download the file! That's it!
+            </Typography>
             
             <Paper elevation={0} variant="outlined" sx={{ mt: 4, p: { xs: 2, sm: 4 }, borderRadius: 4, backgroundColor: '#fafafa' }}>
                 <Typography variant="h5" component="h2" gutterBottom align="center" fontWeight="bold">
                     Download the Desktop App
                 </Typography>
                 <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 4, maxWidth: '500px', mx: 'auto' }}>
-                    Get the full-featured desktop application for a seamless, local experience.
+                    Get the full-featured desktop application for a seamless, local experience. Includes background processing and auto-updates. (For Windows users, make sure to extract the zip after downloading.)
                 </Typography>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center">
-                    <Button variant="contained" color="secondary" size="large" startIcon={<AppleIcon />} href={macDownloadUrl} sx={{ textTransform: 'none', fontWeight: 'bold' }}>
+                    <Button variant="contained" color="secondary" size="large" startIcon={<AppleIcon />} href={latestReleaseUrl} sx={{ textTransform: 'none', fontWeight: 'bold' }}>
                         Download for macOS
                     </Button>
-                    <Button variant="contained" color="primary" size="large" startIcon={<WindowsIcon />} href={windowsDownloadUrl} sx={{ textTransform: 'none', fontWeight: 'bold' }}>
+                    <Button variant="contained" color="primary" size="large" startIcon={<WindowsIcon />} href={latestReleaseUrl} sx={{ textTransform: 'none', fontWeight: 'bold' }}>
                         Download for Windows
+                    </Button>
+                    <Button variant="contained" style={{ backgroundColor: '#E65100', color: 'white' }} size="large" startIcon={<LinuxIcon />} href={latestReleaseUrl} sx={{ textTransform: 'none', fontWeight: 'bold' }}>
+                        Download for Linux
                     </Button>
                 </Stack>
             </Paper>
