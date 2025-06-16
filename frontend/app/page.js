@@ -1,223 +1,248 @@
-// frontend/app/page.js
-'use client'; // Required for Next.js 13+ App Router to use hooks
+'use client';
+import { useState, useEffect, useRef } from 'react'; // Importing React hooks
+import { // Importing Material-UI components
+    Box, Button, Container, Divider, Drawer, List, ListItem,
+    ListItemButton, ListItemIcon, ListItemText, TextField, Toolbar,
+    Typography, CssBaseline,
+    Accordion, AccordionSummary, AccordionDetails,
+    createTheme, ThemeProvider,
+    CircularProgress, LinearProgress,
+    Paper, Stack, Alert, AlertTitle // Added Alert for the warning
+} from '@mui/material';
+import { // Importing Material-UI icons
+    Home as HomeIcon, Download as DownloadIcon, QueueMusic as QueueMusicIcon,
+    VideoLibrary as VideoLibraryIcon, Coffee as CoffeeIcon,
+    Cookie as CookieIcon,
+    ExpandMore as ExpandMoreIcon,
+    CheckCircleOutline as CheckCircleOutlineIcon,
+    ErrorOutline as ErrorOutlineIcon,
+    HourglassEmpty as HourglassEmptyIcon,
+    Window as WindowsIcon, Apple as AppleIcon 
+ } from '@mui/icons-material';
 
-import { useState, useEffect } from 'react';
+const drawerWidth = 240;// Define the width of the drawer
 
-// --- Reusable SVG Icons ---
-const AppleIcon = () => (
-  <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-    <path d="M10.333 1.833a2.313 2.313 0 00-2.015.999A2.25 2.25 0 006.333 1.833c-1.306 0-2.368.992-2.368 2.22 0 .93.633 1.733 1.517 2.033a2.38 2.38 0 01-1.233 2.11C2.933 9.125 2 10.883 2 12.917c0 3.35 2.492 4.25 4.883 4.25.775 0 1.5-.15 2.2-.4.667-.25 1.15-.367 1.917-.367s1.25.117 1.917.367c.7.25 1.425.4 2.2.4 2.392 0 4.883-.9 4.883-4.25 0-2.034-.933-3.792-2.25-4.717a2.38 2.38 0 01-1.233-2.11c.884-.3 1.517-1.102 1.517-2.033 0-1.228-1.062-2.22-2.368-2.22z" />
-  </svg>
-);
+// Your existing custom theme - no changes needed here.
+const customTheme = createTheme({
+    palette: {
+        mode: 'light',
+        primary: { main: '#E53935', contrastText: '#FFFFFF', },
+        secondary: { main: '#1A1A1A', contrastText: '#FFFFFF', },
+        warning: { main: '#FFB300', contrastText: '#1A1A1A', },
+        background: { default: '#F5F5F5', paper: '#FFFFFF', },
+        text: { primary: '#1A1A1A', secondary: '#616161', disabled: '#BDBDBD', },
+    },
+    components: {
+        MuiCssBaseline: { styleOverrides: { body: { backgroundColor: '#F5F5F5', }, }, },
+        MuiDrawer: { styleOverrides: { paper: { backgroundColor: '#1A1A1A', color: '#F5F5F5', }, }, },
+        MuiListItemButton: { styleOverrides: { root: { '&.Mui-selected': { backgroundColor: 'rgba(229, 57, 53, 0.2)', '&:hover': { backgroundColor: 'rgba(229, 57, 53, 0.3)', }, }, '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.08)', }, }, }, },
+        MuiTextField: { styleOverrides: { root: { '& .MuiInputBase-input': { color: '#1A1A1A', }, '& .MuiInputLabel-root': { color: '#616161', }, '& .MuiOutlinedInput-notchedOutline': { borderColor: '#BDBDBD', }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#E53935', }, '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#E53935', }, }, }, },
+        MuiAccordion: { styleOverrides: { root: { backgroundColor: '#1A1A1A', color: '#F5F5F5', boxShadow: 'none', '&:before': { display: 'none' }, }, }, },
+        MuiAccordionSummary: { styleOverrides: { root: { '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.08)', }, }, } },
+        MuiDivider: { styleOverrides: { root: { backgroundColor: 'rgba(255, 255, 255, 0.12)', } } }
+    },
+});
 
-const WindowsIcon = () => (
-  <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-    <path d="M0 3h9.5v6.5H0V3zm0 7.5h9.5V17H0v-6.5zm10.5-7.5H20v6.5h-9.5V3zm0 7.5H20V17h-9.5v-6.5z" />
-  </svg>
-);
-
-// --- UI Components ---
-function StatusDisplay({ status }) {
-    if (!status.message) return null;
-    const baseClasses = "text-center p-3 mt-4 rounded-md text-sm";
-    const successClasses = "bg-green-100 text-green-800";
-    const errorClasses = "bg-red-100 text-red-800";
-    const loadingClasses = "bg-blue-100 text-blue-800 animate-pulse";
-    let statusClasses = "";
-    if (status.type === 'error') statusClasses = errorClasses;
-    else if (status.type === 'success') statusClasses = successClasses;
-    else if (status.type === 'loading') statusClasses = loadingClasses;
-    return (
-        <div className="px-6 pb-6">
-            <div className={`${baseClasses} ${statusClasses}`}><p>{status.message}</p></div>
-        </div>
-    );
-}
-
-// This is the new Welcome/Download page component.
-function WelcomePage() {
-    return (
-        <div className="text-center">
-            <h2 className="text-3xl font-bold mb-2">YT Link V2</h2>
-            <p className="text-lg text-gray-600 mb-6">Welcome!</p>
-            <p className="max-w-md mx-auto text-gray-500 mb-8">
-                Select an option from the menu. Downloads will be processed in the background.
-                Or, download the desktop app for a better experience.
-            </p>
-            <div className="bg-gray-50 p-6 rounded-lg shadow-inner">
-                <h3 className="text-xl font-semibold mb-4">Download the Desktop App</h3>
-                <p className="text-sm text-gray-500 mb-6">
-                    Get the full-featured desktop application for a seamless, local experience. Includes background processing and all updates.
-                </p>
-                <div className="flex justify-center space-x-4">
-                    <a href="https://github.com/Steven-Ou/yt-link/releases" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center bg-gray-800 text-white font-semibold py-2 px-4 rounded-md hover:bg-gray-900 transition-colors duration-300">
-                        <AppleIcon />
-                        Download for macOS
-                    </a>
-                    <a href="https://github.com/Steven-Ou/yt-link/releases" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center bg-red-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-red-700 transition-colors duration-300">
-                        <WindowsIcon />
-                        Download for Windows
-                    </a>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-
-// --- Main Page Component ---
-export default function HomePage() {
-    const [activeView, setActiveView] = useState('welcome');
-    const [videoUrl, setVideoUrl] = useState('');
-    const [playlistUrl, setPlaylistUrl] = useState('');
-    const [cookies, setCookies] = useState('');
-    const [playlistJobId, setPlaylistJobId] = useState('');
-    const [jobStatus, setJobStatus] = useState({ type: '', message: '' });
-    const [isLoading, setIsLoading] = useState(false);
-    const [isWebApp, setIsWebApp] = useState(false);
-
-    useEffect(() => {
-        if (typeof window.api === 'undefined') {
-            setIsWebApp(true);
-        }
-    }, []);
-
-    const handleJobSubmit = async (jobFunction, params, loadingMessage) => {
-        if (isWebApp) {
-            setJobStatus({ type: 'error', message: 'This feature is only available in the downloaded desktop app.' });
-            return;
-        }
-        setIsLoading(true);
-        setJobStatus({ type: 'loading', message: loadingMessage });
-        try {
-            const result = await jobFunction(params);
-            let successMessage = result.message || 'Job started successfully!';
-            if (result.jobId) successMessage += ` Job ID: ${result.jobId}`;
-            setJobStatus({ type: 'success', message: successMessage });
-        } catch (error) {
-            setJobStatus({ type: 'error', message: `Error: ${error.message}` });
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleSingleMP3Submit = (e) => {
-        e.preventDefault();
-        if (!videoUrl) return setJobStatus({ type: 'error', message: 'Please enter a YouTube Video URL.' });
-        handleJobSubmit(window.api.startSingleMp3Job, { videoUrl, cookies }, 'Starting download...');
-    };
-
-    const handlePlaylistZipSubmit = (e) => {
-        e.preventDefault();
-        if (!playlistUrl) return setJobStatus({ type: 'error', message: 'Please enter a YouTube Playlist URL.' });
-        handleJobSubmit(window.api.startPlaylistZipJob, { playlistUrl, cookies }, 'Starting playlist download...');
-    };
-
-    const handleCombineMp3Submit = (e) => {
-        e.preventDefault();
-        if (!playlistJobId) return setJobStatus({ type: 'error', message: 'Please enter a Playlist Job ID.' });
-        handleJobSubmit(window.api.startCombineMp3Job, { jobId: playlistJobId }, 'Starting combination job...');
-    };
-
-    const renderActiveView = () => {
-        // In a web browser, ONLY show the welcome/download page.
-        if (isWebApp) {
-            return <WelcomePage />;
-        }
-
-        // In the Electron app, switch between views.
-        switch (activeView) {
-            case 'welcome':
-                return <WelcomePage />;
-            case 'single':
-                return (
-                    <form onSubmit={handleSingleMP3Submit}>
-                        <h2 className="text-2xl font-semibold mb-4">Convert Single Video to MP3</h2>
-                        <div className="mb-4">
-                            <label htmlFor="video-url" className="block text-sm font-medium text-gray-700 mb-1">YouTube Video URL</label>
-                            <input id="video-url" type="text" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        </div>
-                        <div className="mb-4">
-                            <label htmlFor="cookies-single" className="block text-sm font-medium text-gray-700 mb-1">Cookies (Optional)</label>
-                            <textarea id="cookies-single" value={cookies} onChange={(e) => setCookies(e.target.value)} rows="4" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Paste your Netscape cookie file content here..."></textarea>
-                        </div>
-                        <button type="submit" disabled={isLoading} className="w-full bg-red-600 text-white font-bold py-2 px-4 rounded-md hover:bg-red-700 disabled:bg-gray-400">
-                            {isLoading ? 'Processing...' : 'DOWNLOAD MP3'}
-                        </button>
-                    </form>
-                );
-            case 'playlist':
-                return (
-                    <form onSubmit={handlePlaylistZipSubmit}>
-                         <h2 className="text-2xl font-semibold mb-4">Download Playlist as Zip</h2>
-                        <div className="mb-4">
-                            <label htmlFor="playlist-url" className="block text-sm font-medium text-gray-700 mb-1">YouTube Playlist URL</label>
-                            <input id="playlist-url" type="text" value={playlistUrl} onChange={(e) => setPlaylistUrl(e.target.value)} placeholder="https://www.youtube.com/playlist?list=..." className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        </div>
-                        <div className="mb-4">
-                            <label htmlFor="cookies-playlist" className="block text-sm font-medium text-gray-700 mb-1">Cookies (Optional)</label>
-                            <textarea id="cookies-playlist" value={cookies} onChange={(e) => setCookies(e.target.value)} rows="4" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Paste your Netscape cookie file content here..."></textarea>
-                        </div>
-                        <button type="submit" disabled={isLoading} className="w-full bg-gray-800 text-white font-bold py-2 px-4 rounded-md hover:bg-gray-900 disabled:bg-gray-400">
-                            {isLoading ? 'Processing...' : 'DOWNLOAD PLAYLIST AS ZIP'}
-                        </button>
-                    </form>
-                );
-            case 'combine':
-                return (
-                    <form onSubmit={handleCombineMp3Submit}>
-                        <h2 className="text-2xl font-semibold mb-4">Combine Playlist MP3s</h2>
-                        <div className="mb-4">
-                            <label htmlFor="playlist-job-id" className="block text-sm font-medium text-gray-700 mb-1">Playlist Job ID</label>
-                            <input id="playlist-job-id" type="text" value={playlistJobId} onChange={(e) => setPlaylistJobId(e.target.value)} placeholder="Enter Job ID from a completed download" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        </div>
-                        <p className="text-xs text-gray-500 mb-4">After downloading a playlist, you will get a Job ID. Enter it here to combine the downloaded MP3s into a single file.</p>
-                        <button type="submit" disabled={isLoading} className="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-md hover:bg-green-700 disabled:bg-gray-400">
-                            {isLoading ? 'Processing...' : 'COMBINE MP3s'}
-                        </button>
-                    </form>
-                );
-            default:
-                return <WelcomePage />;
-        }
-    };
-
-    const NavItem = ({ view, label }) => {
-        const isActive = activeView === view;
-        return (
-            <button
-                onClick={() => setActiveView(view)}
-                className={`w-full text-left px-4 py-2 rounded-md text-sm font-medium ${isActive ? 'bg-gray-900 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}
-            >
-                {label}
-            </button>
-        );
-    };
+// --- NEW WELCOME PAGE COMPONENT ---
+// This combines your DownloadSection with the warning for web users.
+function WelcomePage({ isElectron }) {
+    const macDownloadUrl = "https://github.com/Steven-Ou/yt-link/releases/latest"; // Link to latest release
+    const windowsDownloadUrl = "https://github.com/Steven-Ou/yt-link/releases/latest"; // Link to latest release
 
     return (
-        <div className="flex h-screen bg-gray-100 font-sans">
-            {/* Sidebar is hidden on web, but shown in Electron */}
-            {!isWebApp && (
-                <aside className="w-64 bg-gray-800 text-white flex flex-col flex-shrink-0">
-                    <div className="h-16 flex items-center justify-center border-b border-gray-700">
-                        <h1 className="text-xl font-bold">YT Link</h1>
-                    </div>
-                    <nav className="flex-1 px-2 py-4 space-y-2">
-                        <NavItem view="welcome" label="Welcome" />
-                        <NavItem view="single" label="Single MP3" />
-                        <NavItem view="playlist" label="Playlist Zip" />
-                        <NavItem view="combine" label="Combine MP3s" />
-                    </nav>
-                </aside>
+        <Container maxWidth="md" sx={{ textAlign: 'center' }}>
+            {/* The "yellow box" warning, shown only to web users */}
+            {!isElectron && (
+                <Alert severity="warning" sx={{ mb: 4, textAlign: 'left' }}>
+                    <AlertTitle>Web Version Notice</AlertTitle>
+                    This web interface is for demonstration only. The features in the sidebar will not work.
+                    For full functionality, please <strong>download the desktop application below.</strong>
+                </Alert>
             )}
 
-            {/* Main Content */}
-            <main className="flex-1 flex flex-col overflow-y-auto">
-                 <div className="flex-1 p-6 bg-white flex items-center justify-center">
-                    {renderActiveView()}
-                </div>
-                {!isWebApp && <StatusDisplay status={jobStatus} />}
-            </main>
-        </div>
+            <Typography variant="h3" component="h1" gutterBottom fontWeight="bold">
+                YT Link V2
+            </Typography>
+            <Typography variant="h6" color="text.secondary" sx={{ mb: 4 }}>
+                Welcome!
+            </Typography>
+
+            {isElectron && (
+                 <Typography variant="body1" color="text.secondary" sx={{mt: 2, mb: 4, maxWidth: '600px', mx: 'auto'}}>
+                    Select an option from the menu to get started. Downloads will be processed in the background. When a download finishes, a green button will appear to save your file.
+                 </Typography>
+            )}
+            
+            <Paper elevation={0} variant="outlined" sx={{ mt: 4, p: { xs: 2, sm: 4 }, borderRadius: 4, backgroundColor: '#fafafa' }}>
+                <Typography variant="h5" component="h2" gutterBottom align="center" fontWeight="bold">
+                    Download the Desktop App
+                </Typography>
+                <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 4, maxWidth: '500px', mx: 'auto' }}>
+                    Get the full-featured desktop application for a seamless, local experience.
+                </Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center">
+                    <Button variant="contained" color="secondary" size="large" startIcon={<AppleIcon />} href={macDownloadUrl} sx={{ textTransform: 'none', fontWeight: 'bold' }}>
+                        Download for macOS
+                    </Button>
+                    <Button variant="contained" color="primary" size="large" startIcon={<WindowsIcon />} href={windowsDownloadUrl} sx={{ textTransform: 'none', fontWeight: 'bold' }}>
+                        Download for Windows
+                    </Button>
+                </Stack>
+            </Paper>
+        </Container>
     );
 }
+
+
+// This is your main component, now with the updated Welcome view.
+export default function Home() {
+    // All your existing state variables - no changes needed.
+    const [currentView, setCurrentView] = useState('welcome');
+    const [url, setUrl] = useState('');
+    const [playlistUrl, setPlaylistUrl] = useState('');
+    const [combineVideoUrl, setCombineVideoUrl] = useState('');
+    const [cookieData, setCookieData] = useState('');
+    const [activeJobs, setActiveJobs] = useState({});
+    const pollingIntervals = useRef({});
+    const [isElectron, setIsElectron] = useState(false);
+
+    useEffect(() => {
+        const runningInElectron = !!window.electronAPI;
+        setIsElectron(runningInElectron);
+    }, []);
+    
+    // All your existing functions - no changes needed.
+    const PYTHON_SERVICE_BASE_URL = 'http://127.0.0.1:8080';
+    const getJobStatus = (jobType) => activeJobs[jobType]?.status;
+    const isLoading = (jobType) => {
+        const status = getJobStatus(jobType);
+        return status === 'queued' || status?.startsWith('processing');
+    };
+    const isAnyJobLoading = () => Object.values(activeJobs).some(job => job.status === 'queued' || job.status?.startsWith('processing'));
+
+    const startJob = async (jobType, endpoint, payload, operationName) => {
+        const fullEndpoint = isElectron ? `${PYTHON_SERVICE_BASE_URL}/${endpoint}` : `/api/${endpoint}`;
+        setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...`, type: jobType } }));
+        try {
+            const res = await fetch(fullEndpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            if (!res.ok) {
+                let errorData;
+                try { errorData = await res.json(); } catch (parseError) { throw new Error(`Server responded with ${res.status}.`); }
+                throw new Error(errorData.error || `Failed to start ${operationName} (status ${res.status})`);
+            }
+            const data = await res.json();
+            if (data.jobId) {
+                setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], id: data.jobId, status: 'queued', message: data.message || 'Job started...' } }));
+                pollJobStatus(data.jobId, jobType);
+            } else { throw new Error(data.error || "Failed to get Job ID from server."); }
+        } catch (error) {
+            setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], status: 'failed', message: `Error: ${error.message}` } }));
+        }
+    };
+
+    const pollJobStatus = (jobId, jobType) => {
+        if (pollingIntervals.current[jobId]) { clearInterval(pollingIntervals.current[jobId]); }
+        pollingIntervals.current[jobId] = setInterval(async () => {
+            const jobStatusEndpoint = isElectron ? `${PYTHON_SERVICE_BASE_URL}/job-status/${jobId}` : `/api/job-status?jobId=${jobId}`;
+            try {
+                const res = await fetch(jobStatusEndpoint);
+                if (!res.ok) {
+                    let errorData;
+                    try { errorData = await res.json(); } catch (parseError) { throw new Error(`Status check failed with ${res.status}.`); }
+                    throw new Error(errorData.error || `Status check failed with ${res.status}`);
+                }
+                const data = await res.json();
+                setActiveJobs(prev => {
+                    const currentJob = prev[jobType];
+                    if (currentJob && currentJob.id === jobId) { return { ...prev, [jobType]: { ...currentJob, ...data } }; }
+                    return prev;
+                });
+                if (data.status === 'completed' || data.status === 'failed' || data.status === 'not_found') {
+                    clearInterval(pollingIntervals.current[jobId]);
+                    delete pollingIntervals.current[jobId];
+                }
+            } catch (error) {
+                setActiveJobs(prev => {
+                     const currentJob = prev[jobType];
+                     if (currentJob && currentJob.id === jobId) { return { ...prev, [jobType]: { ...currentJob, status: 'failed', message: `Error checking status: ${error.message}` } }; }
+                     return prev;
+                });
+                clearInterval(pollingIntervals.current[jobId]);
+                delete pollingIntervals.current[jobId];
+            }
+        }, 5000);
+    };
+
+    useEffect(() => {
+        const intervals = pollingIntervals.current;
+        return () => { Object.values(intervals).forEach(clearInterval); };
+    }, []);
+
+    const downloadMP3 = () => { if (!url) { alert('Please enter a YouTube video URL.'); return; } startJob('singleMp3', 'start-single-mp3-job', { url, cookieData: cookieData.trim() || null }, 'single MP3 download'); };
+    const downloadPlaylistZip = () => { if (!playlistUrl) { alert('Please enter a YouTube playlist URL for Zip download.'); return; } startJob('playlistZip', 'start-playlist-zip-job', { playlistUrl, cookieData: cookieData.trim() || null }, 'playlist zip'); };
+    const downloadCombinedPlaylistMp3 = () => { if (!combineVideoUrl) { alert('Please enter a YouTube playlist URL to combine into a single MP3.'); return; } startJob('combineMp3', 'start-combine-playlist-mp3-job', { playlistUrl: combineVideoUrl, cookieData: cookieData.trim() || null }, 'combine playlist to MP3'); };
+    const CookieInputField = () => ( <TextField label="Paste YouTube Cookies Here (Optional)" helperText="Needed for age-restricted/private videos." variant='outlined' fullWidth multiline rows={4} value={cookieData} onChange={(e) => setCookieData(e.target.value)} style={{marginBottom: 16}} placeholder="Starts with # Netscape HTTP Cookie File..." disabled={isAnyJobLoading()} InputProps={{ startAdornment: ( <ListItemIcon sx={{minWidth: '40px', color: 'action.active', mr: 1}}><CookieIcon /></ListItemIcon> ), }} /> );
+    const JobStatusDisplay = ({ jobInfo }) => {
+        if (!jobInfo || !jobInfo.status || jobInfo.status === 'idle') return null;
+        let icon = <HourglassEmptyIcon />; let color = "text.secondary"; let showProgressBar = false;
+        if (jobInfo.status === 'completed') { icon = <CheckCircleOutlineIcon color="success" />; color = "success.main"; }
+        else if (jobInfo.status === 'failed') { icon = <ErrorOutlineIcon color="error" />; color = "error.main"; }
+        else if (jobInfo.status === 'queued' || jobInfo.status?.startsWith('processing')) { icon = <CircularProgress size={20} sx={{ mr: 1}} color="inherit" />; color = "info.main"; showProgressBar = true; }
+        const fullDownloadUrl = jobInfo.downloadUrl ? `${PYTHON_SERVICE_BASE_URL}${jobInfo.downloadUrl}` : null;
+        return ( <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}><Typography variant="subtitle1" sx={{display: 'flex', alignItems: 'center', color: color}}>{icon} <Box component="span" sx={{ml:1}}>{jobInfo.message || `Status: ${jobInfo.status}`}</Box></Typography>{showProgressBar && <LinearProgress color="info" sx={{mt:1, mb:1}}/>} {jobInfo.status === 'completed' && fullDownloadUrl && (<Button variant="contained" color="success" href={fullDownloadUrl} download={jobInfo.filename} sx={{ mt: 1 }}>Download: {jobInfo.filename}</Button>)}</Box> );
+    };
+    const [expandedDownloads, setExpandedDownloads] = useState(true);
+
+    const renderContent = () => {
+        // The only change is here, in the 'welcome' case.
+        switch (currentView) {
+            case 'welcome':
+                 return <WelcomePage isElectron={isElectron} />; // Use the new WelcomePage component
+            case 'single': return ( <Container maxWidth="sm" sx={{ mt: 4 }}><Typography variant='h6' gutterBottom>Convert Single Video to MP3</Typography><TextField label="YouTube Video URL" variant='outlined' fullWidth value={url} onChange={(e)=> setUrl(e.target.value)} style={{marginBottom: 16}} disabled={isAnyJobLoading()} /><CookieInputField /><Button variant='contained' color='primary' fullWidth onClick={downloadMP3} disabled={isLoading('singleMp3') || (isAnyJobLoading() && !isLoading('singleMp3'))}>{isLoading('singleMp3') && <CircularProgress size={24} sx={{mr:1}} />} {isLoading('singleMp3') ? 'Processing...' : 'Download MP3'}</Button><JobStatusDisplay jobInfo={activeJobs['singleMp3']} /></Container> );
+            case 'zip': return ( <Container maxWidth="sm" sx={{ mt: 4 }}><Typography variant='h6' gutterBottom>Download Playlist as Zip</Typography><TextField label="YouTube Playlist URL (for Zip)" variant='outlined' fullWidth value={playlistUrl} onChange={(e)=> setPlaylistUrl(e.target.value)} style={{marginBottom: 16}} disabled={isAnyJobLoading()} /><CookieInputField /><Button variant='contained' color='secondary' onClick={downloadPlaylistZip} fullWidth style={{marginBottom: 16}} disabled={isLoading('playlistZip') || (isAnyJobLoading() && !isLoading('playlistZip'))}>{isLoading('playlistZip') && <CircularProgress size={24} sx={{mr:1}} />} {isLoading('playlistZip') ? 'Processing...' : 'Download Playlist As Zip'}</Button><JobStatusDisplay jobInfo={activeJobs['playlistZip']} /></Container> );
+            case 'combine': return ( <Container maxWidth="sm" sx={{ mt: 4 }}><Typography variant='h6' gutterBottom>Convert Playlist to Single MP3</Typography><TextField label="YouTube Playlist URL (for Single MP3)" variant='outlined' fullWidth value={combineVideoUrl} onChange={(e)=> setCombineVideoUrl(e.target.value)} style={{marginBottom: 16}} disabled={isAnyJobLoading()} /><CookieInputField /><Button variant='contained' color='warning' onClick={downloadCombinedPlaylistMp3} fullWidth style={{marginBottom: 16}} disabled={isLoading('combineMp3') || (isAnyJobLoading() && !isLoading('combineMp3'))}>{isLoading('combineMp3') && <CircularProgress size={24} sx={{mr:1}} />} {isLoading('combineMp3') ? 'Processing...' : 'Download Playlist As Single MP3'}</Button><JobStatusDisplay jobInfo={activeJobs['combineMp3']} /></Container> );
+            default: return <Typography>Select an option</Typography>;
+        }
+    };
+
+    return (
+        <ThemeProvider theme={customTheme}>
+            <Box sx={{ display: 'flex' }}>
+                <CssBaseline />
+                <Drawer variant="permanent" sx={{ width: drawerWidth, flexShrink: 0, [`& .MuiDrawer-paper`]: { width: drawerWidth, boxSizing: 'border-box' }, }}>
+                    <Toolbar />
+                    <Box sx={{ overflow: 'auto' }}>
+                        <List>
+                            <ListItem disablePadding> <ListItemButton selected={currentView === 'welcome'} onClick={() => setCurrentView('welcome')}> <ListItemIcon><HomeIcon /></ListItemIcon><ListItemText primary="Welcome" /> </ListItemButton> </ListItem>
+                            <Divider sx={{ my: 1 }} />
+                            <Accordion expanded={expandedDownloads} onChange={(event, isExpanded) => setExpandedDownloads(isExpanded)} sx={{ boxShadow: 'none', '&:before': { display: 'none' } }}>
+                                <AccordionSummary expandIcon={<ExpandMoreIcon />} aria-controls="panel1a-content" id="panel1a-header" sx={{ minHeight: '48px', '& .MuiAccordionSummary-content': { my: '12px' } }}>
+                                    <ListItemIcon sx={{ minWidth: '40px' }}><DownloadIcon /></ListItemIcon>
+                                    <ListItemText primary="Download Options" primaryTypographyProps={{ fontWeight: 'medium' }} />
+                                </AccordionSummary>
+                                <AccordionDetails sx={{ p: 0 }}>
+                                    <List component="div" disablePadding>
+                                        <ListItem disablePadding sx={{ pl: 4 }}> <ListItemButton selected={currentView === 'single'} onClick={() => setCurrentView('single')}> <ListItemIcon><DownloadIcon /></ListItemIcon><ListItemText primary="Single MP3" /> </ListItemButton> </ListItem>
+                                        <ListItem disablePadding sx={{ pl: 4 }}> <ListItemButton selected={currentView === 'zip'} onClick={() => setCurrentView('zip')}> <ListItemIcon><QueueMusicIcon /></ListItemIcon><ListItemText primary="Playlist Zip" /> </ListItemButton> </ListItem>
+                                        <ListItem disablePadding sx={{ pl: 4 }}> <ListItemButton selected={currentView === 'combine'} onClick={() => setCurrentView('combine')}> <ListItemIcon><VideoLibraryIcon /></ListItemIcon><ListItemText primary="Combine Playlist MP3" /> </ListItemButton> </ListItem>
+                                    </List>
+                                </AccordionDetails>
+                            </Accordion>
+                            <Divider sx={{ my: 1 }} />
+                            <ListItem disablePadding sx={{ mt: 2 }}> <ListItemButton component="a" href="https://www.buymeacoffee.com/yourlink" target="_blank" rel="noopener noreferrer"> <ListItemIcon><CoffeeIcon /></ListItemIcon><ListItemText primary="Buy Me A Coffee" /> </ListItemButton> </ListItem>
+                        </List>
+                    </Box>
+                </Drawer>
+                {/* The main content area is now simpler */}
+                <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+                    <Toolbar />
+                    {renderContent()}
+                </Box>
+            </Box>
+        </ThemeProvider>
+    );
+};
