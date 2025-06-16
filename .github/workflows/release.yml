@@ -1,11 +1,5 @@
 # .github/workflows/release.yml
-# This is an optimized version of your release workflow.
-# Key changes:
-# 1. Caching: Caches npm and pip dependencies to speed up installation.
-# 2. Job Separation: Creates a 'build' job that runs once to build the platform-agnostic
-#    frontend, and a 'package' job that runs for each OS to package the app.
-#    This prevents rebuilding the same code multiple times.
-# 3. Updated Actions: Uses the latest versions of GitHub Actions for better performance and security.
+# This workflow is corrected to properly handle an npm workspace setup.
 
 name: Release
 
@@ -14,18 +8,17 @@ on:
     branches:
       - main
     paths:
-      # Only run this workflow if something inside the 'frontend', 'backend', or 'service'
-      # directories changes, or if the workflow file itself changes.
       - 'frontend/**'
       - 'backend/**'
       - 'service/**'
       - '.github/workflows/release.yml'
+      - 'package.json'
+      - 'package-lock.json'
 
 jobs:
-  # Job 1: Build the platform-independent code (Next.js frontend)
-  # This job runs only ONCE.
+  # Job 1: Build the platform-independent code
   build:
-    runs-on: ubuntu-latest # Use a fast, common runner for the build step.
+    runs-on: ubuntu-latest
     
     steps:
       - name: Checkout repository
@@ -34,14 +27,14 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20' # Specify your Node.js version
+          node-version: '20'
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11' # Specify your Python version
-
-      # Cache for root node_modules
+          python-version: '3.11'
+      
+      # For a workspace, we cache the single root node_modules directory
       - name: Cache root node_modules
         id: cache-root-npm
         uses: actions/cache@v4
@@ -51,27 +44,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-npm-root-
 
-      # Cache for backend node_modules
-      - name: Cache backend node_modules
-        id: cache-backend-npm
-        uses: actions/cache@v4
-        with:
-          path: ./backend/node_modules
-          key: ${{ runner.os }}-npm-backend-${{ hashFiles('**/backend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-backend-
-
-      # Cache for frontend node_modules
-      - name: Cache frontend node_modules
-        id: cache-frontend-npm
-        uses: actions/cache@v4
-        with:
-          path: ./frontend/node_modules
-          key: ${{ runner.os }}-npm-frontend-${{ hashFiles('**/frontend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-frontend-
-      
-      # Cache for pip dependencies
+      # Cache for pip dependencies remains the same
       - name: Cache pip dependencies
         id: cache-pip
         uses: actions/cache@v4
@@ -81,30 +54,29 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      # Install all dependencies (will be fast if cache is hit)
-      - name: Install Dependencies
+      # *** THE KEY FIX IS HERE ***
+      # In an npm workspace, you only need to run npm install from the root.
+      # It will automatically install dependencies for all workspaces (frontend, backend).
+      - name: Install All Dependencies
         run: |
           npm install
-          cd backend && npm install
-          cd ../service && pip install -r requirements.txt
-          cd ../frontend && npm install
+          cd service && pip install -r requirements.txt
       
+      # Build the frontend from within its workspace context
       - name: Build Frontend
-        run: cd frontend && npm run build
+        run: npm run build --workspace=frontend
       
-      # Upload the entire project directory, including built files and node_modules,
-      # to be used by the next job.
+      # Upload the entire built project to be used by the packaging job
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: build-artifact
-          path: . # Upload the whole directory
+          path: .
           retention-days: 1
 
   # Job 2: Package the application for each OS
-  # This job depends on the 'build' job and runs for each OS in the matrix.
   package:
-    needs: build # This line ensures the 'build' job finishes first
+    needs: build
     runs-on: ${{ matrix.os }}
     
     strategy:
@@ -112,20 +84,16 @@ jobs:
         os: [macos-latest, ubuntu-latest, windows-latest]
 
     steps:
-      # No need to checkout again, we'll download the artifact.
-      # No need to install dependencies again, they're in the artifact.
-      
       - name: Download Build Artifact
         uses: actions/download-artifact@v4
         with:
           name: build-artifact
-          path: . # Download to the current directory
+          path: .
           
+      # Run the package script from the frontend workspace context
       - name: Run Electron Packager
-        # The working directory is already set to the root of the project.
-        run: cd frontend && npm run package
+        run: npm run package --workspace=frontend
         env:
-          # This is often needed for electron-builder on GitHub Actions
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Rename Artifact for Windows
@@ -133,23 +101,23 @@ jobs:
         run: |
           cd frontend/dist
           $file = Get-ChildItem -Filter *.exe | Select-Object -First 1
-          Rename-Item -Path $file.FullName -NewName "yt-link-v2-windows.exe"
+          Rename-Item -Path $file.FullName -NewName "yt-link-windows.exe"
           
       - name: Rename Artifact for macOS
         if: matrix.os == 'macos-latest'
         run: |
           cd frontend/dist
-          mv *.dmg yt-link-v2-macos.dmg
+          mv *.dmg yt-link-macos.dmg
           
       - name: Rename Artifact for Linux
         if: matrix.os == 'ubuntu-latest'
         run: |
           cd frontend/dist
-          mv *.AppImage yt-link-v2-linux.AppImage
+          mv *.AppImage yt-link-linux.AppImage
 
       - name: Upload Packaged Application
         uses: actions/upload-artifact@v4
         with:
-          name: yt-link-v2-${{ matrix.os }}
+          name: yt-link-${{ matrix.os }}
           path: frontend/dist/*
           retention-days: 7
