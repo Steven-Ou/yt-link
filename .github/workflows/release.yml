@@ -1,6 +1,6 @@
 # .github/workflows/release.yml
-# This workflow is corrected to install and build directly inside the frontend directory,
-# which is a more robust approach for CI/CD environments and avoids workspace pathing issues.
+# This workflow is corrected to use the --prefix flag for all npm commands,
+# which explicitly tells npm where to run and avoids pathing issues in the CI environment.
 
 name: Release
 
@@ -49,7 +49,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      # Cache for frontend node_modules
+      # Cache for frontend node_modules - the path must be explicit.
       - name: Cache frontend node_modules
         id: cache-frontend-npm
         uses: actions/cache@v4
@@ -59,18 +59,16 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-npm-frontend-
       
-      # --- THE DEFINITIVE FIX ---
-      # This step now specifies 'shell: bash' to ensure the 'rm -f' command works on all
-      # operating systems (Windows, macOS, and Linux) without ambiguity.
+      # --- THE DEFINITIVE FIX V2 ---
+      # We use --prefix ./frontend to force npm to run all commands in the correct directory context.
+      # We also still remove the lockfile to ensure a clean install.
       - name: Install Dependencies and Build Frontend
         shell: bash
         run: |
-          cd service && pip install -r requirements.txt
-          cd ..
-          cd frontend
-          rm -f package-lock.json
-          npm install
-          npm run build
+          pip install -r ./service/requirements.txt
+          rm -f ./frontend/package-lock.json
+          npm install --prefix ./frontend
+          npm run build --prefix ./frontend
       
       # Run the package script from within the frontend directory
       - name: Run Electron Packager
