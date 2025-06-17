@@ -1,14 +1,9 @@
-/* globals.css */
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-body {
-  /* Overall pure black background */
-  background-color: #000000;
-  /* Default text color will be handled by Material-UI theme */
-  font-family: Arial, Helvetica, sans-serif;
-  margin: 0; /* Remove default body margin */
-  padding: 0; /* Remove default body padding */
-}
-.font-sans {
-  font-family: "Geist Sans", sans-serif;
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
 }
