@@ -11,7 +11,11 @@
   "dependencies": {
     "next": "14.2.3",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "@mui/material": "^5.15.20",
+    "@mui/icons-material": "^5.15.20",
+    "@emotion/react": "^11.11.4",
+    "@emotion/styled": "^11.11.5"
   },
   "devDependencies": {
     "eslint": "^8",
