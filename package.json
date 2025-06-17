@@ -1,21 +1,53 @@
 {
-  "name": "yt-link-monorepo",
-  "version": "1.0.0",
+  "name": "yt-link",
+  "version": "0.1.0",
   "private": true,
-  "description": "Monorepo for the YT Link Electron and Next.js application.",
-  "workspaces": [
-    "frontend",
-    "electron-app"
-  ],
+  "description": "YT Link allows you to download YouTube videos as MP3s, or entire playlists as a ZIP file.",
+  "main": "main.js",
   "scripts": {
-    "dev": "concurrently \"npm:dev:frontend\" \"npm:dev:electron\"",
-    "dev:frontend": "npm run dev --workspace=frontend",
-    "dev:electron": "wait-on http://localhost:3000 && npm start --workspace=electron-app",
-    "build": "npm run build --workspace=frontend",
-    "package": "npm run package --workspace=electron-app"
+    "start": "electron .",
+    "dev": "concurrently \"npm:dev:next\" \"npm:dev:electron\"",
+    "dev:next": "cd frontend && next dev",
+    "dev:electron": "wait-on http://localhost:3000 && electron .",
+    "build": "cd frontend && next build",
+    "package": "npm run build && electron-builder"
+  },
+  "keywords": [
+    "youtube",
+    "downloader",
+    "electron",
+    "nextjs"
+  ],
+  "author": "Steven Ou",
+  "license": "ISC",
+  "dependencies": {
+    "electron-is-dev": "^3.0.1"
   },
   "devDependencies": {
+    "autoprefixer": "^10.4.19",
     "concurrently": "^8.2.2",
+    "electron": "^31.2.1",
+    "electron-builder": "^24.13.3",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.3",
     "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.steven-ou.yt-link",
+    "productName": "YT Link",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "frontend/.next/**/*"
+    ],
+    "win": {
+      "target": "zip"
+    },
+    "mac": {
+      "target": "dmg"
+    }
   }
 }
