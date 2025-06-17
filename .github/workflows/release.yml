@@ -51,13 +51,19 @@ jobs:
 
       - name: Rename Artifact for macOS
         if: runner.os == 'macOS'
-        run: mv dist/*.dmg yt-link-macos.dmg
+        # This now correctly renames the file inside the dist directory.
+        run: mv dist/*.dmg dist/yt-link-macos.dmg
 
-      - name: Upload Packaged Application
+      - name: Upload Windows Artifact
+        if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: yt-link-${{ runner.os }}
-          path: |
-            dist/yt-link-windows.zip
-            dist/yt-link-macos.dmg
-          if-no-files-found: error
+          name: yt-link-windows
+          path: dist/yt-link-windows.zip
+
+      - name: Upload macOS Artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: yt-link-macos
+          path: dist/yt-link-macos.dmg
