@@ -13,6 +13,10 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest]
 
+    # This section grants the workflow permission to create a release.
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -43,7 +47,7 @@ jobs:
 
       - name: Rename Artifact for Windows
         if: runner.os == 'Windows'
-        run: ren dist\*.exe yt-link-windows.exe
+        run: ren dist\*.zip yt-link-windows.zip
 
       - name: Rename Artifact for macOS
         if: runner.os == 'macOS'
@@ -54,6 +58,6 @@ jobs:
         with:
           name: yt-link-${{ runner.os }}
           path: |
-            dist/yt-link-windows.exe
+            dist/yt-link-windows.zip
             dist/yt-link-macos.dmg
           if-no-files-found: error
