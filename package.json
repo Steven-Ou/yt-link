@@ -5,11 +5,12 @@
   "description": "YT Link allows you to download YouTube videos as MP3s, or entire playlists as a ZIP file.",
   "main": "main.js",
   "scripts": {
+    "postinstall": "npm install --prefix frontend",
     "start": "electron .",
     "dev": "concurrently \"npm:dev:next\" \"npm:dev:electron\"",
-    "dev:next": "cd frontend && next dev",
+    "dev:next": "npm run dev --prefix frontend",
     "dev:electron": "wait-on http://localhost:3000 && electron .",
-    "build": "cd frontend && next build",
+    "build": "npm run build --prefix frontend",
     "package": "npm run build && electron-builder"
   },
   "keywords": [
@@ -20,16 +21,10 @@
   ],
   "author": "Steven Ou",
   "license": "ISC",
-  "dependencies": {
-    "electron-is-dev": "^3.0.1"
-  },
   "devDependencies": {
-    "autoprefixer": "^10.4.19",
     "concurrently": "^8.2.2",
     "electron": "^31.2.1",
     "electron-builder": "^24.13.3",
-    "postcss": "^8.4.38",
-    "tailwindcss": "^3.4.3",
     "wait-on": "^7.2.0"
   },
   "build": {
