@@ -2,11 +2,11 @@
   "name": "yt-link",
   "version": "0.1.0",
   "description": "Cross-platform application to download and manage your favorite videos.",
-  "main": "electron-app/main.js",
+  "main": "frontend/main.js",
   "homepage": "./",
   "scripts": {
-    "start": "(cd frontend && npm install && npm run build) && electron .",
-    "build": "(cd frontend && npm install && npm run build) && electron-builder",
+    "start": "npm run build:frontend && electron .",
+    "build": "npm run build:frontend && npm run dist",
     "build:backend": "npm install --prefix backend",
     "build:frontend": "npm install --prefix frontend && npm run build --prefix frontend",
     "dist": "electron-builder"
@@ -34,8 +34,10 @@
       "output": "dist"
     },
     "files": [
-      "electron-app/**/*",
       "frontend/out/**/*",
+      "frontend/main.js",
+      "frontend/preload.js",
+      "service/**/*",
       "package.json"
     ],
     "win": {
