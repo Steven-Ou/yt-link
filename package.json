@@ -5,8 +5,8 @@
   "main": "electron-app/main.js",
   "homepage": "./",
   "scripts": {
-    "start": "npm run build --prefix frontend && electron .",
-    "build": "npm run build --prefix frontend && electron-builder",
+    "start": "(cd frontend && npm install && npm run build) && electron .",
+    "build": "(cd frontend && npm install && npm run build) && electron-builder",
     "build:backend": "npm install --prefix backend",
     "build:frontend": "npm install --prefix frontend && npm run build --prefix frontend",
     "dist": "electron-builder"
