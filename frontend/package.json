@@ -9,9 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "next": "14.2.3",
-    "react": "^18",
-    "react-dom": "^18",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
     "@mui/material": "^5.15.20",
     "@mui/icons-material": "^5.15.20",
     "@emotion/react": "^11.11.4",
