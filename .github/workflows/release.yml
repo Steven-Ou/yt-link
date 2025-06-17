@@ -2,11 +2,11 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
 
 jobs:
-  build:
+  release:
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -21,7 +21,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
+          cache: 'npm'
+      
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -32,30 +33,27 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r service/requirements.txt
 
-      - name: Install Frontend Dependencies
-        run: npm install
+      - name: Install Root and Frontend Dependencies
+        run: npm install && npm install --prefix frontend
 
-      - name: Build Frontend
-        # This command is now run from the root directory, so 'next build ./frontend' will work correctly.
+      - name: Build and Package Application
         run: npm run build
-
-      - name: Package Application
-        run: npm run package
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Rename Artifact for Windows
-        if: matrix.os == 'windows-latest'
-        run: ren dist/*.zip yt-link-windows.zip
-        shell: cmd
+        if: runner.os == 'Windows'
+        run: ren dist\*.exe yt-link-windows.exe
 
       - name: Rename Artifact for macOS
-        if: matrix.os == 'macos-latest'
+        if: runner.os == 'macOS'
         run: mv dist/*.dmg yt-link-macos.dmg
 
       - name: Upload Packaged Application
         uses: actions/upload-artifact@v4
         with:
-          name: yt-link-${{ matrix.os }}
+          name: yt-link-${{ runner.os }}
           path: |
-            yt-link-windows.zip
-            yt-link-macos.dmg
+            dist/yt-link-windows.exe
+            dist/yt-link-macos.dmg
           if-no-files-found: error
