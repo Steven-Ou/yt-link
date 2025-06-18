@@ -112,8 +112,8 @@ function createWindow() {
 
     if (isDev) {
         // In development, load the Next.js development server URL.
-        // The port (3001) must match the port your Next.js server is running on.
-        mainWindow.loadURL('http://localhost:3001');
+        // ** FIX: Changed port back to the default of 3000. **
+        mainWindow.loadURL('http://localhost:3000');
         // Automatically open the Chrome DevTools for debugging.
         mainWindow.webContents.openDevTools();
     } else {
