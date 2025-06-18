@@ -98,7 +98,7 @@ function createWindow() {
 async function handleJobRequest(endpoint, body) {
     try {
         // Use 'fetch' to send a POST request to the local Python/Flask server on its specific port.
-        const response = await fetch(`http://127.0.0.1:5001/${endpoint}`, {
+        const response = await fetch(`http://127.0.0.1:8080/${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body), // Convert the JavaScript object to a JSON string.
