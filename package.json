@@ -41,6 +41,9 @@
       "service/**/*",
       "package.json"
     ],
+    "asarUnpack": [
+      "service/**/*"
+    ],
     "win": {
       "target": "zip"
     },
