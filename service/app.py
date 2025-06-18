@@ -5,10 +5,31 @@ import logging
 from flask import Flask, request, jsonify, send_from_directory
 from threading import Thread
 from yt_dlp import YoutubeDL
-from utils.utils import find_executable
+import shutil # <--- IMPORT SHUTIL
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s [%(levelname)s] [%(threadName)s] %(message)s')
+
+# --- Helper to find bundled executables ---
+def find_executable(name):
+    """Finds an executable, accounting for being bundled by PyInstaller."""
+    # This function is now self-contained and does not need external files.
+    if getattr(sys, 'frozen', False):
+        base_path = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+        exe_name = f"{name}.exe" if sys.platform == "win32" else name
+        exe_path = os.path.join(base_path, exe_name)
+        if os.path.exists(exe_path):
+            logging.info(f"Found bundled executable '{name}' at: {exe_path}")
+            return exe_path
+        logging.error(f"Could not find bundled '{name}' at expected path: {exe_path}")
+        return None
+    
+    # Use the standard library 'shutil.which' to find the executable in the system's PATH.
+    fallback_path = shutil.which(name)
+    if fallback_path:
+        logging.info(f"Found executable '{name}' in system PATH: {fallback_path}")
+    return fallback_path
+
 
 # Find required executables
 YTDLP_PATH = find_executable('yt-dlp')
