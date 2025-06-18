@@ -100,7 +100,7 @@ export default function Home() {
     const pollingIntervals = useRef({});
     const [isElectron, setIsElectron] = useState(false);
 
-    // FIX: Check for `window.electron` which is what the preload script provides.
+    // This hook checks if the app is running in Electron by looking for the `window.electron` object.
     useEffect(() => {
         const runningInElectron = !!window.electron;
         setIsElectron(runningInElectron);
@@ -114,51 +114,60 @@ export default function Home() {
     };
     const isAnyJobLoading = () => Object.values(activeJobs).some(job => job.status === 'queued' || job.status?.startsWith('processing'));
 
-    // FIX: Re-implemented startJob to use the Electron IPC bridge
+    // This function starts a download job by sending a message to the Electron main process.
     const startJob = async (jobType, endpoint, payload, operationName) => {
+        // First, check if we're in the Electron environment.
         if (!isElectron) {
             alert("This feature is only available in the desktop application. Please download it from the Welcome page.");
             return;
         }
         
+        // Set the initial job status in the UI to "queued".
         setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...`, type: jobType } }));
         
         try {
+            // Send the job request to the main process via the 'start-job' IPC channel.
             const result = await window.electron.startJob(endpoint, payload);
             
             if (result.error) { throw new Error(result.error); }
 
             if (result.jobId) {
+                // If we get a job ID back, update the UI and start polling for status updates.
                 setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], id: result.jobId, status: 'queued', message: 'Job started...' } }));
                 pollJobStatus(result.jobId, jobType);
             } else { throw new Error("Failed to get Job ID from server."); }
         } catch (error) {
+            // If anything goes wrong, update the job status to "failed".
             setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], status: 'failed', message: `Error: ${error.message}` } }));
         }
     };
 
-    // FIX: Re-implemented pollJobStatus to use the Electron IPC bridge
+    // This function periodically checks the status of an active job.
     const pollJobStatus = (jobId, jobType) => {
         if (pollingIntervals.current[jobId]) { clearInterval(pollingIntervals.current[jobId]); }
         
         pollingIntervals.current[jobId] = setInterval(async () => {
             if (!isElectron) { clearInterval(pollingIntervals.current[jobId]); return; }
             try {
+                // Send the status request to the main process via the 'check-status' IPC channel.
                 const data = await window.electron.checkStatus(jobId);
                 
                 if (data.error) { throw new Error(data.error); }
 
+                // Update the job's status in the UI.
                 setActiveJobs(prev => {
                     const currentJob = prev[jobType];
                     if (currentJob && currentJob.id === jobId) { return { ...prev, [jobType]: { ...currentJob, ...data } }; }
                     return prev;
                 });
 
+                // If the job is finished, stop polling.
                 if (data.status === 'completed' || data.status === 'failed' || data.status === 'not_found') {
                     clearInterval(pollingIntervals.current[jobId]);
                     delete pollingIntervals.current[jobId];
                 }
             } catch (error) {
+                // If the status check fails, mark the job as failed and stop polling.
                 setActiveJobs(prev => {
                      const currentJob = prev[jobType];
                      if (currentJob && currentJob.id === jobId) { return { ...prev, [jobType]: { ...currentJob, status: 'failed', message: `Error checking status: ${error.message}` } }; }
@@ -170,7 +179,7 @@ export default function Home() {
         }, 2000); // Poll every 2 seconds for faster updates
     };
 
-    // Cleanup intervals on component unmount
+    // Cleanup intervals on component unmount to prevent memory leaks.
     useEffect(() => {
         const intervals = pollingIntervals.current;
         return () => { Object.values(intervals).forEach(clearInterval); };
@@ -178,7 +187,6 @@ export default function Home() {
 
     // --- Button Click Handlers ---
     // These now correctly call the rewritten startJob function.
-    // The payload keys (e.g., 'url', 'playlistUrl') match what the full Python backend expects.
     const downloadMP3 = () => { if (!url) { alert('Please enter a YouTube video URL.'); return; } startJob('singleMp3', 'start-single-mp3-job', { url, cookieFileContent: cookieData.trim() || null }, 'single MP3 download'); };
     const downloadPlaylistZip = () => { if (!playlistUrl) { alert('Please enter a YouTube playlist URL for Zip download.'); return; } startJob('playlistZip', 'start-playlist-zip-job', { playlistUrl, cookieFileContent: cookieData.trim() || null }, 'playlist zip'); };
     const downloadCombinedPlaylistMp3 = () => { if (!combineVideoUrl) { alert('Please enter a YouTube playlist URL to combine into a single MP3.'); return; } startJob('combineMp3', 'start-combine-playlist-mp3-job', { playlistUrl: combineVideoUrl, cookieFileContent: cookieData.trim() || null }, 'combine playlist to MP3'); };
@@ -193,7 +201,7 @@ export default function Home() {
         else if (jobInfo.status === 'failed') { icon = <ErrorOutlineIcon color="error" />; color = "error.main"; }
         else if (jobInfo.status === 'queued' || jobInfo.status?.startsWith('processing')) { icon = <CircularProgress size={20} sx={{ mr: 1}} color="inherit" />; color = "info.main"; showProgressBar = true; }
         
-        // The backend returns a relative path, so we prepend the service URL for the download link.
+        // Construct the full download URL for the completed file.
         const fullDownloadUrl = jobInfo.filepath ? `http://127.0.0.1:8080/download-file/${jobInfo.jobId}/${jobInfo.filename}` : null;
 
         return ( <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}><Typography variant="subtitle1" sx={{display: 'flex', alignItems: 'center', color: color}}>{icon} <Box component="span" sx={{ml:1}}>{jobInfo.message || `Status: ${jobInfo.status}`}</Box></Typography>{showProgressBar && <LinearProgress color="info" sx={{mt:1, mb:1}}/>} {jobInfo.status === 'completed' && fullDownloadUrl && (<Button variant="contained" color="success" href={fullDownloadUrl} download={jobInfo.filename} sx={{ mt: 1 }}>Download: {jobInfo.filename}</Button>)}</Box> );
@@ -201,7 +209,7 @@ export default function Home() {
 
     const [expandedDownloads, setExpandedDownloads] = useState(true);
 
-    // Main render logic to display the correct view
+    // Main render logic to display the correct view based on the user's selection in the sidebar.
     const renderContent = () => {
         switch (currentView) {
             case 'welcome': return <WelcomePage isElectron={isElectron} />;
@@ -212,7 +220,7 @@ export default function Home() {
         }
     };
 
-    // The main JSX structure of your app
+    // The main JSX structure of your app, with the sidebar and main content area.
     return (
         <ThemeProvider theme={customTheme}>
             <Box sx={{ display: 'flex' }}>
