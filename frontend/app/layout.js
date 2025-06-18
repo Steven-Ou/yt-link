@@ -1,11 +1,9 @@
-// frontend/app/layout.js
-
 import "./globals.css";
 import UpdateStatus from "./components/UpdateStatus";
 
 // You can update this metadata as you see fit
 export const metadata = {
-  title: "YT Link V2",
+  title: "YT Link",
   description: "Download audio from your favorite videos.",
 };
 
