@@ -23,7 +23,9 @@
     "electron": "^28.2.3",
     "electron-builder": "^24.13.3"
   },
-  "dependencies": {},
+  "dependencies": {
+    "electron-updater": "^6.6.2"
+  },
   "build": {
     "appId": "com.steven.ytlink",
     "productName": "YT Link",
