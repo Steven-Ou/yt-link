@@ -45,7 +45,7 @@ const customTheme = createTheme({
 
 // --- UPDATED WELCOME PAGE COMPONENT ---
 function WelcomePage({ isElectron }) {
-    const MacUtube = "https://github.com/Steven-Ou/yt-link/releases/latest"; 
+    const MacUtube = "https://github.com/Steven-Ou/yt-link/releases/download/v0.1.0/YT-Link-0.1.0-arm64.dmg"; 
     const WindUtube = "";
     return (
         <Container maxWidth="md" sx={{ textAlign: 'center' }}>
