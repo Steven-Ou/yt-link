@@ -45,8 +45,8 @@ const customTheme = createTheme({
 
 // --- UPDATED WELCOME PAGE COMPONENT ---
 function WelcomePage({ isElectron }) {
-    const latestReleaseUrl = "https://github.com/Steven-Ou/yt-link/releases/latest"; 
-
+    const MacUtube = "https://github.com/Steven-Ou/yt-link/releases/latest"; 
+    const WindUtube = "";
     return (
         <Container maxWidth="md" sx={{ textAlign: 'center' }}>
             {/* The "yellow box" warning, shown only to web users */}
