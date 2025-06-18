@@ -78,10 +78,10 @@ function WelcomePage({ isElectron }) {
                     Get the full-featured desktop application for a seamless, local experience. Includes background processing and auto-updates. (For Windows users, make sure to extract the zip after downloading.)
                 </Typography>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center">
-                    <Button variant="contained" color="secondary" size="large" startIcon={<AppleIcon />} href={latestReleaseUrl} sx={{ textTransform: 'none', fontWeight: 'bold' }}>
+                    <Button variant="contained" color="secondary" size="large" startIcon={<AppleIcon />} href={MacUtube} sx={{ textTransform: 'none', fontWeight: 'bold' }}>
                         Download for macOS
                     </Button>
-                    <Button variant="contained" color="primary" size="large" startIcon={<WindowsIcon />} href={latestReleaseUrl} sx={{ textTransform: 'none', fontWeight: 'bold' }}>
+                    <Button variant="contained" color="primary" size="large" startIcon={<WindowsIcon />} href={WindUtube} sx={{ textTransform: 'none', fontWeight: 'bold' }}>
                         Download for Windows
                     </Button>
                 </Stack>
