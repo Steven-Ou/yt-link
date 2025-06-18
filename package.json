@@ -20,15 +20,13 @@
   "license": "MIT",
   "devDependencies": {
     "electron": "^28.2.3",
-    "electron-builder": "^24.13.3",
-    "next": "14.2.3",
-    "react": "^18",
-    "react-dom": "^18"
+    "electron-builder": "^24.13.3"
   },
   "dependencies": {
     "axios": "^1.6.8",
     "electron-updater": "^6.1.8",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "node-fetch": "^2.6.7"
   },
   "build": {
     "appId": "com.steven.ytlink",
