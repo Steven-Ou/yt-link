@@ -4,17 +4,17 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron'); // Core Ele
 const path = require('path'); // Node.js module for handling file paths
 const { spawn } = require('child_process'); // Node.js module for creating child processes (to run Python)
 const { autoUpdater } = require('electron-updater'); // Handles automatic updates
-const reloader = require('electron-reloader'); // Enables hot-reloading for development
+// const reloader = require('electron-reloader'); // Temporarily disabled to prevent lag from error loops.
 const fetch = require('node-fetch'); // Used to make HTTP requests from the main process to the Python backend
 
 // --- DEVELOPMENT SETTINGS ---
 // Enable hot-reloading in the development environment.
 // This will automatically restart the Electron app when files change.
-try {
-    reloader(module);
-} catch (_) {
-    // Fails in production, which is expected. We can safely ignore the error.
-}
+// try {
+//     reloader(module); // Temporarily disabled
+// } catch (_) {
+//     // Fails in production, which is expected. We can safely ignore the error.
+// }
 
 // --- GLOBAL VARIABLES ---
 let mainWindow; // Holds the main application window object.
