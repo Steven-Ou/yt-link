@@ -8,8 +8,7 @@ const { autoUpdater } = require('electron-updater'); // Handles automatic update
 const fetch = require('node-fetch'); // Used to make HTTP requests from the main process to the Python backend
 
 // --- DEVELOPMENT SETTINGS ---
-// Enable hot-reloading in the development environment.
-// This will automatically restart the Electron app when files change.
+// The reloader is disabled to prevent the app from lagging due to repeated errors in the UI.
 // try {
 //     reloader(module); // Temporarily disabled
 // } catch (_) {

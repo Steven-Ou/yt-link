@@ -7,7 +7,7 @@ import { // Importing Material-UI components
     Accordion, AccordionSummary, AccordionDetails,
     createTheme, ThemeProvider,
     CircularProgress, LinearProgress,
-    Paper, Stack, Alert, AlertTitle // Added Alert for the warning
+    Paper, Stack, Alert, AlertTitle
 } from '@mui/material';
 import { // Importing Material-UI icons
     Home as HomeIcon, Download as DownloadIcon, QueueMusic as QueueMusicIcon,
@@ -22,7 +22,7 @@ import { // Importing Material-UI icons
 
 const drawerWidth = 240;// Define the width of the drawer
 
-// Your existing custom theme - no changes needed here.
+// Your custom theme
 const customTheme = createTheme({
     palette: {
         mode: 'light',
@@ -43,13 +43,13 @@ const customTheme = createTheme({
     },
 });
 
-// --- UPDATED WELCOME PAGE COMPONENT ---
+// --- WELCOME PAGE COMPONENT ---
 function WelcomePage({ isElectron }) {
     const MacUtube = "https://github.com/Steven-Ou/yt-link/releases/download/v0.1.0/YT-Link-0.1.0-arm64.dmg"; 
     const WindUtube = "https://github.com/Steven-Ou/yt-link/releases/download/v0.1.0/YT-Link-0.1.0-win.zip";
     return (
         <Container maxWidth="md" sx={{ textAlign: 'center' }}>
-            {/* The "yellow box" warning, shown only to web users */}
+            {/* The warning is shown only if the app is NOT running in Electron */}
             {!isElectron && (
                 <Alert severity="warning" sx={{ mb: 4, textAlign: 'left' }}>
                     <AlertTitle>Web Version Notice</AlertTitle>
@@ -65,7 +65,6 @@ function WelcomePage({ isElectron }) {
                 Welcome!!
             </Typography>
             
-            {/* The user-provided directions */}
             <Typography variant="body1" color="text.secondary" sx={{ mt: 2, mb: 4, maxWidth: '600px', mx: 'auto' }}>
                 Please download the apps if you're on the Website! Website won't work. Please trust the app when you download it. Select a Download Option. Follow the direction. Downloads will be processed in the background. When the download finishes, make sure to click on the green button to download the file! That's it!
             </Typography>
@@ -90,10 +89,8 @@ function WelcomePage({ isElectron }) {
     );
 }
 
-
-// This is your main component, now with the updated Welcome view.
+// --- MAIN HOME COMPONENT ---
 export default function Home() {
-    // All your existing state variables - no changes needed.
     const [currentView, setCurrentView] = useState('welcome');
     const [url, setUrl] = useState('');
     const [playlistUrl, setPlaylistUrl] = useState('');
@@ -103,13 +100,13 @@ export default function Home() {
     const pollingIntervals = useRef({});
     const [isElectron, setIsElectron] = useState(false);
 
+    // FIX: Check for `window.electron` which is what the preload script provides.
     useEffect(() => {
-        const runningInElectron = !!window.electronAPI;
+        const runningInElectron = !!window.electron;
         setIsElectron(runningInElectron);
     }, []);
     
-    // All your existing functions - no changes needed.
-    const PYTHON_SERVICE_BASE_URL = 'http://127.0.0.1:8080';
+    // Helper functions to check job status
     const getJobStatus = (jobType) => activeJobs[jobType]?.status;
     const isLoading = (jobType) => {
         const status = getJobStatus(jobType);
@@ -117,47 +114,46 @@ export default function Home() {
     };
     const isAnyJobLoading = () => Object.values(activeJobs).some(job => job.status === 'queued' || job.status?.startsWith('processing'));
 
+    // FIX: Re-implemented startJob to use the Electron IPC bridge
     const startJob = async (jobType, endpoint, payload, operationName) => {
-        const fullEndpoint = isElectron ? `${PYTHON_SERVICE_BASE_URL}/${endpoint}` : `/api/${endpoint}`;
+        if (!isElectron) {
+            alert("This feature is only available in the desktop application. Please download it from the Welcome page.");
+            return;
+        }
+        
         setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...`, type: jobType } }));
+        
         try {
-            const res = await fetch(fullEndpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            });
-            if (!res.ok) {
-                let errorData;
-                try { errorData = await res.json(); } catch (parseError) { throw new Error(`Server responded with ${res.status}.`); }
-                throw new Error(errorData.error || `Failed to start ${operationName} (status ${res.status})`);
-            }
-            const data = await res.json();
-            if (data.jobId) {
-                setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], id: data.jobId, status: 'queued', message: data.message || 'Job started...' } }));
-                pollJobStatus(data.jobId, jobType);
-            } else { throw new Error(data.error || "Failed to get Job ID from server."); }
+            const result = await window.electron.startJob(endpoint, payload);
+            
+            if (result.error) { throw new Error(result.error); }
+
+            if (result.jobId) {
+                setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], id: result.jobId, status: 'queued', message: 'Job started...' } }));
+                pollJobStatus(result.jobId, jobType);
+            } else { throw new Error("Failed to get Job ID from server."); }
         } catch (error) {
             setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], status: 'failed', message: `Error: ${error.message}` } }));
         }
     };
 
+    // FIX: Re-implemented pollJobStatus to use the Electron IPC bridge
     const pollJobStatus = (jobId, jobType) => {
         if (pollingIntervals.current[jobId]) { clearInterval(pollingIntervals.current[jobId]); }
+        
         pollingIntervals.current[jobId] = setInterval(async () => {
-            const jobStatusEndpoint = isElectron ? `${PYTHON_SERVICE_BASE_URL}/job-status/${jobId}` : `/api/job-status?jobId=${jobId}`;
+            if (!isElectron) { clearInterval(pollingIntervals.current[jobId]); return; }
             try {
-                const res = await fetch(jobStatusEndpoint);
-                if (!res.ok) {
-                    let errorData;
-                    try { errorData = await res.json(); } catch (parseError) { throw new Error(`Status check failed with ${res.status}.`); }
-                    throw new Error(errorData.error || `Status check failed with ${res.status}`);
-                }
-                const data = await res.json();
+                const data = await window.electron.checkStatus(jobId);
+                
+                if (data.error) { throw new Error(data.error); }
+
                 setActiveJobs(prev => {
                     const currentJob = prev[jobType];
                     if (currentJob && currentJob.id === jobId) { return { ...prev, [jobType]: { ...currentJob, ...data } }; }
                     return prev;
                 });
+
                 if (data.status === 'completed' || data.status === 'failed' || data.status === 'not_found') {
                     clearInterval(pollingIntervals.current[jobId]);
                     delete pollingIntervals.current[jobId];
@@ -171,33 +167,44 @@ export default function Home() {
                 clearInterval(pollingIntervals.current[jobId]);
                 delete pollingIntervals.current[jobId];
             }
-        }, 5000);
+        }, 2000); // Poll every 2 seconds for faster updates
     };
 
+    // Cleanup intervals on component unmount
     useEffect(() => {
         const intervals = pollingIntervals.current;
         return () => { Object.values(intervals).forEach(clearInterval); };
     }, []);
 
-    const downloadMP3 = () => { if (!url) { alert('Please enter a YouTube video URL.'); return; } startJob('singleMp3', 'start-single-mp3-job', { url, cookieData: cookieData.trim() || null }, 'single MP3 download'); };
-    const downloadPlaylistZip = () => { if (!playlistUrl) { alert('Please enter a YouTube playlist URL for Zip download.'); return; } startJob('playlistZip', 'start-playlist-zip-job', { playlistUrl, cookieData: cookieData.trim() || null }, 'playlist zip'); };
-    const downloadCombinedPlaylistMp3 = () => { if (!combineVideoUrl) { alert('Please enter a YouTube playlist URL to combine into a single MP3.'); return; } startJob('combineMp3', 'start-combine-playlist-mp3-job', { playlistUrl: combineVideoUrl, cookieData: cookieData.trim() || null }, 'combine playlist to MP3'); };
+    // --- Button Click Handlers ---
+    // These now correctly call the rewritten startJob function.
+    // The payload keys (e.g., 'url', 'playlistUrl') match what the full Python backend expects.
+    const downloadMP3 = () => { if (!url) { alert('Please enter a YouTube video URL.'); return; } startJob('singleMp3', 'start-single-mp3-job', { url, cookieFileContent: cookieData.trim() || null }, 'single MP3 download'); };
+    const downloadPlaylistZip = () => { if (!playlistUrl) { alert('Please enter a YouTube playlist URL for Zip download.'); return; } startJob('playlistZip', 'start-playlist-zip-job', { playlistUrl, cookieFileContent: cookieData.trim() || null }, 'playlist zip'); };
+    const downloadCombinedPlaylistMp3 = () => { if (!combineVideoUrl) { alert('Please enter a YouTube playlist URL to combine into a single MP3.'); return; } startJob('combineMp3', 'start-combine-playlist-mp3-job', { playlistUrl: combineVideoUrl, cookieFileContent: cookieData.trim() || null }, 'combine playlist to MP3'); };
+    
+    // --- UI Sub-components ---
     const CookieInputField = () => ( <TextField label="Paste YouTube Cookies Here (Optional)" helperText="Needed for age-restricted/private videos." variant='outlined' fullWidth multiline rows={4} value={cookieData} onChange={(e) => setCookieData(e.target.value)} style={{marginBottom: 16}} placeholder="Starts with # Netscape HTTP Cookie File..." disabled={isAnyJobLoading()} InputProps={{ startAdornment: ( <ListItemIcon sx={{minWidth: '40px', color: 'action.active', mr: 1}}><CookieIcon /></ListItemIcon> ), }} /> );
+    
     const JobStatusDisplay = ({ jobInfo }) => {
         if (!jobInfo || !jobInfo.status || jobInfo.status === 'idle') return null;
         let icon = <HourglassEmptyIcon />; let color = "text.secondary"; let showProgressBar = false;
         if (jobInfo.status === 'completed') { icon = <CheckCircleOutlineIcon color="success" />; color = "success.main"; }
         else if (jobInfo.status === 'failed') { icon = <ErrorOutlineIcon color="error" />; color = "error.main"; }
         else if (jobInfo.status === 'queued' || jobInfo.status?.startsWith('processing')) { icon = <CircularProgress size={20} sx={{ mr: 1}} color="inherit" />; color = "info.main"; showProgressBar = true; }
-        const fullDownloadUrl = jobInfo.downloadUrl ? `${PYTHON_SERVICE_BASE_URL}${jobInfo.downloadUrl}` : null;
+        
+        // The backend returns a relative path, so we prepend the service URL for the download link.
+        const fullDownloadUrl = jobInfo.filepath ? `http://127.0.0.1:8080/download-file/${jobInfo.jobId}/${jobInfo.filename}` : null;
+
         return ( <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}><Typography variant="subtitle1" sx={{display: 'flex', alignItems: 'center', color: color}}>{icon} <Box component="span" sx={{ml:1}}>{jobInfo.message || `Status: ${jobInfo.status}`}</Box></Typography>{showProgressBar && <LinearProgress color="info" sx={{mt:1, mb:1}}/>} {jobInfo.status === 'completed' && fullDownloadUrl && (<Button variant="contained" color="success" href={fullDownloadUrl} download={jobInfo.filename} sx={{ mt: 1 }}>Download: {jobInfo.filename}</Button>)}</Box> );
     };
+
     const [expandedDownloads, setExpandedDownloads] = useState(true);
 
+    // Main render logic to display the correct view
     const renderContent = () => {
         switch (currentView) {
-            case 'welcome':
-                 return <WelcomePage isElectron={isElectron} />;
+            case 'welcome': return <WelcomePage isElectron={isElectron} />;
             case 'single': return ( <Container maxWidth="sm" sx={{ mt: 4 }}><Typography variant='h6' gutterBottom>Convert Single Video to MP3</Typography><TextField label="YouTube Video URL" variant='outlined' fullWidth value={url} onChange={(e)=> setUrl(e.target.value)} style={{marginBottom: 16}} disabled={isAnyJobLoading()} /><CookieInputField /><Button variant='contained' color='primary' fullWidth onClick={downloadMP3} disabled={isLoading('singleMp3') || (isAnyJobLoading() && !isLoading('singleMp3'))}>{isLoading('singleMp3') && <CircularProgress size={24} sx={{mr:1}} />} {isLoading('singleMp3') ? 'Processing...' : 'Download MP3'}</Button><JobStatusDisplay jobInfo={activeJobs['singleMp3']} /></Container> );
             case 'zip': return ( <Container maxWidth="sm" sx={{ mt: 4 }}><Typography variant='h6' gutterBottom>Download Playlist as Zip</Typography><TextField label="YouTube Playlist URL (for Zip)" variant='outlined' fullWidth value={playlistUrl} onChange={(e)=> setPlaylistUrl(e.target.value)} style={{marginBottom: 16}} disabled={isAnyJobLoading()} /><CookieInputField /><Button variant='contained' color='secondary' onClick={downloadPlaylistZip} fullWidth style={{marginBottom: 16}} disabled={isLoading('playlistZip') || (isAnyJobLoading() && !isLoading('playlistZip'))}>{isLoading('playlistZip') && <CircularProgress size={24} sx={{mr:1}} />} {isLoading('playlistZip') ? 'Processing...' : 'Download Playlist As Zip'}</Button><JobStatusDisplay jobInfo={activeJobs['playlistZip']} /></Container> );
             case 'combine': return ( <Container maxWidth="sm" sx={{ mt: 4 }}><Typography variant='h6' gutterBottom>Convert Playlist to Single MP3</Typography><TextField label="YouTube Playlist URL (for Single MP3)" variant='outlined' fullWidth value={combineVideoUrl} onChange={(e)=> setCombineVideoUrl(e.target.value)} style={{marginBottom: 16}} disabled={isAnyJobLoading()} /><CookieInputField /><Button variant='contained' color='warning' onClick={downloadCombinedPlaylistMp3} fullWidth style={{marginBottom: 16}} disabled={isLoading('combineMp3') || (isAnyJobLoading() && !isLoading('combineMp3'))}>{isLoading('combineMp3') && <CircularProgress size={24} sx={{mr:1}} />} {isLoading('combineMp3') ? 'Processing...' : 'Download Playlist As Single MP3'}</Button><JobStatusDisplay jobInfo={activeJobs['combineMp3']} /></Container> );
@@ -205,6 +212,7 @@ export default function Home() {
         }
     };
 
+    // The main JSX structure of your app
     return (
         <ThemeProvider theme={customTheme}>
             <Box sx={{ display: 'flex' }}>
