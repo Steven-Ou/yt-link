@@ -23,12 +23,7 @@
     "electron": "^28.2.3",
     "electron-builder": "^24.13.3"
   },
-  "dependencies": {
-    "axios": "^1.6.8",
-    "electron-updater": "^6.1.8",
-    "express": "^4.19.2",
-    "node-fetch": "^2.6.7"
-  },
+  "dependencies": {},
   "build": {
     "appId": "com.steven.ytlink",
     "productName": "YT Link",
