@@ -1,199 +1,180 @@
-// --- IMPORTS ---
-// Import necessary modules from the Electron library.
-const { app, BrowserWindow, ipcMain } = require('electron'); // app, BrowserWindow, and ipcMain for app lifecycle, window creation, and inter-process communication.
-const { autoUpdater } = require('electron-updater'); // The module for handling automatic updates.
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const path = require('path');
+const { spawn } = require('child_process');
+const { autoUpdater } = require('electron-updater');
+const reloader = require('electron-reloader');
+const fetch = require('node-fetch');
 
-// Import core Node.js modules.
-const path = require('path'); // For working with file and directory paths in a cross-platform way.
-const { spawn } = require('child_process'); // For running external processes, like our Python script.
+// Enable hot-reloading in development.
+try {
+    reloader(module);
+} catch (_) {}
 
-// Import third-party libraries.
-const fetch = require('node-fetch'); // For making HTTP requests from the main process to the Python backend.
-
-// --- CONSTANTS AND FLAGS ---
-// Check if the application is packaged or running in development.
-// app.isPackaged is the most reliable way to determine this, as it's a boolean set by Electron itself.
-const isDev = !app.isPackaged;
-
-// --- HOT RELOADING (DEVELOPMENT ONLY) ---
-// This block sets up automatic reloading of the app during development for a better developer experience.
-if (isDev) {
-    try {
-        // Require the 'electron-reloader' module and pass it the current module object.
-        // This will watch for file changes and reload the Electron app automatically.
-        require('electron-reloader')(module);
-    } catch (_) {
-        // If 'electron-reloader' is not found (e.g., in production), this block catches the error and does nothing, preventing a crash.
-    }
-}
-
-// --- GLOBAL VARIABLES ---
-// Declare a variable to hold the main window instance, so we can access it from different parts of the app (like the auto-updater).
 let mainWindow;
-// Declare a variable to hold a reference to the Python child process.
-// This allows us to manage it, specifically to kill it when the app closes.
 let pythonProcess = null;
 
-// --- BACKEND SERVICE MANAGEMENT ---
-// This function starts the Python backend service as a separate process.
-function startPythonBackend() {
-    // Correctly determine the path to the Python script for both dev and production environments.
-    const scriptPath = isDev 
-        ? path.join(__dirname, '..', 'service', 'app.py') // In dev, the script is relative to the current file.
-        : path.join(process.resourcesPath, 'service', 'app.py'); // In production, it's inside the 'resources' folder of the packaged app.
+const PYTHON_COMMAND = 'python3'; 
+const SCRIPT_PATH = path.join(__dirname, '..', 'service', 'app.py');
 
-    // Determine the correct python command to use based on the operating system.
-    const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
+function startPythonBackend() {
+    // Resolve the python command and script path
+    const pythonCommand = process.platform === 'win32' ? 'python' : PYTHON_COMMAND;
+    const scriptPath = path.resolve(SCRIPT_PATH);
     
-    // Use 'spawn' to execute the Python script. This is non-blocking.
+    console.log(`Starting Python backend with command: ${pythonCommand} ${scriptPath}`);
+
+    // Spawn the python process
     pythonProcess = spawn(pythonCommand, [scriptPath]);
 
-    // Listen for data coming from the Python process's standard output (e.g., print statements).
     pythonProcess.stdout.on('data', (data) => {
-        console.log(`Python Backend: ${data}`); // Log the output for debugging.
+        console.log(`Python Backend: ${data}`);
     });
 
-    // Listen for data coming from the Python process's standard error.
     pythonProcess.stderr.on('data', (data) => {
-        console.error(`Python Backend Error: ${data}`); // Log errors for debugging.
+        console.error(`Python Backend Error: ${data}`);
     });
 
-    // Listen for the 'close' event, which is emitted when the Python process exits.
     pythonProcess.on('close', (code) => {
-        console.log(`Python Backend exited with code ${code}`); // Log the exit code.
+        console.log(`Python Backend exited with code ${code}`);
+        // Optionally, handle process exit (e.g., restart it)
     });
 }
 
-// --- WINDOW CREATION ---
-// This function creates the main application window where the UI will be displayed.
+
 function createWindow() {
-    // Create a new browser window instance with specified dimensions and web preferences.
     mainWindow = new BrowserWindow({
-        width: 1100, // Set the initial width of the window.
-        height: 750, // Set the initial height of the window.
+        width: 1200,
+        height: 800,
         webPreferences: {
-            // Specify the 'preload' script. This script runs in a privileged environment before the web page is loaded.
             preload: path.join(__dirname, 'preload.js'),
-            // 'contextIsolation' is a security feature that ensures the preload script and the renderer's scripts run in different contexts.
             contextIsolation: true,
-            // 'nodeIntegration' is disabled for security, preventing the renderer process from having direct access to Node.js APIs.
             nodeIntegration: false,
         },
+        icon: path.join(__dirname, '..', 'assets', 'icon.png'),
+    });
+    
+    // Auto-updater configuration
+    autoUpdater.setFeedURL({
+        provider: 'github',
+        owner: 'steven-ou',
+        repo: 'yt-link',
+    });
+    
+    // Check for updates
+    autoUpdater.checkForUpdatesAndNotify();
+    
+    // Handle update events
+    autoUpdater.on('update-available', () => {
+        mainWindow.webContents.send('update-available');
+    });
+    
+    autoUpdater.on('update-downloaded', () => {
+        mainWindow.webContents.send('update-downloaded');
+    });
+    
+    ipcMain.on('restart-app', () => {
+        autoUpdater.quitAndInstall();
     });
 
-    // Load content based on whether the app is in development or production.
+    const isDev = process.env.NODE_ENV !== 'production';
+
     if (isDev) {
-        // In development, load the URL provided by the Next.js development server.
-        mainWindow.loadURL('http://localhost:3000');
-        // Automatically open the Chrome DevTools for easy debugging.
+        // In development, load the Next.js development server.
+        // Make sure the port matches what `npm run start:frontend` is using.
+        mainWindow.loadURL('http://localhost:3001');
         mainWindow.webContents.openDevTools();
     } else {
-        // In production, load the static 'index.html' file that was generated by the 'next build' command.
-        mainWindow.loadFile(path.join(__dirname, 'out', 'index.html'));
+        // In production, load the static HTML file that was generated by the 'next build' command.
+        const indexPath = path.join(__dirname, 'out', 'index.html');
+        mainWindow.loadFile(indexPath);
     }
-}
 
-// --- IPC (INTER-PROCESS COMMUNICATION) ---
-// This single, reusable async function handles all API requests from the UI (renderer process) to the Python backend.
-async function handleJobRequest(endpoint, body) {
-    try {
-        // Use 'fetch' to send a POST request to the local Python/Flask server on its specific port.
-        const response = await fetch(`http://127.0.0.1:8080/${endpoint}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body), // Convert the JavaScript object to a JSON string.
-        });
-        // Parse the JSON response from the Python server.
-        const result = await response.json();
-        // Check if the HTTP response status indicates an error.
-        if (!response.ok) {
-            // If the response is not ok, throw a new error with the message from the backend.
-            throw new Error(result.error || 'An unknown backend error occurred.');
-        }
-        // If the request was successful, return the result to the UI.
-        return result;
-    } catch (error) {
-        // If an error occurred (e.g., network error or backend error), log it to the main process console.
-        console.error(`[Main Process Error] Failed to call ${endpoint}:`, error);
-        // Re-throw the error so it can be caught by the UI and shown to the user.
-        throw new Error(error.message);
-    }
-}
-
-// --- APP LIFECYCLE EVENTS ---
-
-// The 'ready' event is fired when Electron has finished initialization. This is the main entry point of the app.
-app.on('ready', () => {
-    // Start the Python backend service first.
-    startPythonBackend();
-
-    // Set up all the handlers for IPC messages from the renderer process.
-    // 'ipcMain.handle' is used for two-way, asynchronous communication (request/response).
-    ipcMain.handle('start-single-mp3-job', (event, args) => handleJobRequest('start-single-mp3-job', args));
-    ipcMain.handle('start-playlist-zip-job', (event, args) => handleJobRequest('start-playlist-zip-job', args));
-    ipcMain.handle('start-combine-mp3-job', (event, args) => handleJobRequest('start-combine-playlist-mp3-job', args));
-    ipcMain.handle('get-job-status', (event, args) => handleJobRequest('job-status', args));
-    
-    // 'ipcMain.on' is used for one-way communication, like receiving a command from the UI.
-    ipcMain.on('restart-and-install', () => {
-        autoUpdater.quitAndInstall(); // This command quits the app and installs the downloaded update.
+    mainWindow.on('closed', function () {
+        mainWindow = null;
     });
+}
 
-    // Now that everything is set up, create the main application window.
-    createWindow();
+// IPC COMMUNICATION -- Handles all API requests from the UI (renderer process) to the Python backend.
+async function handleJobRequest(endpoint, body) {
+    const url = `http://127.0.0.1:8080/${endpoint}`;
+    console.log(`[main.js] Attempting to POST to: ${url}`);
+    console.log(`[main.js] With body: ${JSON.stringify(body)}`);
 
-    // Check for updates, but only when the app is packaged (not in development).
-    if (!isDev) {
-      autoUpdater.checkForUpdates();
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+        });
+
+        console.log(`[main.js] Received response status: ${response.status}`);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[main.js] HTTP error! Status: ${response.status}, Body: ${errorText}`);
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('[main.js] Successfully got JSON response from Python:', data);
+        return data;
+    } catch (error) {
+        console.error('[main.js] CRITICAL: Failed to communicate with Python backend. Full error:');
+        console.error(error);
+        return { error: 'Failed to get Job ID from server.' };
     }
+}
+
+
+app.on('ready', () => {
+    startPythonBackend();
+    createWindow();
 });
 
-// The 'window-all-closed' event is fired when all application windows have been closed.
-app.on('window-all-closed', () => {
-    // On Windows and Linux, quitting the app is the standard behavior when all windows are closed.
-    // 'process.platform' is 'darwin' for macOS, where apps usually stay running in the dock.
+app.on('window-all-closed', function () {
     if (process.platform !== 'darwin') {
         app.quit();
     }
 });
 
-// The 'activate' event is fired on macOS when the dock icon is clicked and there are no other windows open.
-app.on('activate', () => {
-    // If the app is active but has no windows open, create a new one. This is standard macOS behavior.
-    if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
-    }
-});
-
-// The 'will-quit' event is fired just before the application starts closing its windows.
-app.on('will-quit', () => {
-    // Check if the 'pythonProcess' variable is holding a running process.
+app.on('before-quit', () => {
     if (pythonProcess) {
-        // Log that we are killing the process for cleanup.
-        console.log('Killing Python backend process.');
-        // Terminate the Python child process to prevent it from becoming a "zombie" process.
+        console.log('Killing Python backend process...');
         pythonProcess.kill();
     }
 });
 
-// --- AUTO-UPDATER EVENT HANDLERS ---
-// Listen for various events from the auto-updater and forward the status to the UI via 'update-status' channel.
-autoUpdater.on('update-available', (info) => {
-    mainWindow.webContents.send('update-status', { status: 'available', info });
+
+app.on('activate', function () {
+    if (mainWindow === null) {
+        createWindow();
+    }
 });
 
-autoUpdater.on('update-not-available', (info) => {
-    mainWindow.webContents.send('update-status', { status: 'not-available', info });
+// IPC handler for starting a job
+ipcMain.handle('start-job', async (event, endpoint, body) => {
+    console.log(`[main.js] Received 'start-job' IPC call for endpoint: ${endpoint}`);
+    return await handleJobRequest(endpoint, body);
 });
 
-autoUpdater.on('download-progress', (progressObj) => {
-    mainWindow.webContents.send('update-status', { status: 'downloading', progress: progressObj });
+// IPC handler for checking job status
+ipcMain.handle('check-status', async (event, jobId) => {
+    try {
+        const response = await fetch(`http://127.0.0.1:8080/job-status/${jobId}`);
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        console.error(`Error checking status for job ${jobId}:`, error);
+        return { error: 'Failed to get job status.' };
+    }
 });
 
-autoUpdater.on('update-downloaded', (info) => {
-    mainWindow.webContents.send('update-status', { status: 'downloaded', info });
-});
-
-autoUpdater.on('error', (err) => {
-    mainWindow.webContents.send('update-status', { status: 'error', error: err });
+// IPC handler for opening a file dialog
+ipcMain.handle('open-file-dialog', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory']
+    });
+    return result.filePaths[0];
 });
