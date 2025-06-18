@@ -16,7 +16,7 @@
     "downloader",
     "electron"
   ],
-  "author": "Your Name",
+  "author": "Steven Ou",
   "license": "MIT",
   "devDependencies": {
     "electron": "^28.2.3",
