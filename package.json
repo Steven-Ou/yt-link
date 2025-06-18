@@ -24,7 +24,8 @@
     "electron-builder": "^24.13.3"
   },
   "dependencies": {
-    "electron-updater": "^6.6.2"
+    "electron-updater": "^6.6.2",
+    "node-fetch": "^2.7.0"
   },
   "build": {
     "appId": "com.steven.ytlink",
