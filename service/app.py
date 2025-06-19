@@ -1,65 +1,87 @@
 import sys
 import os
-import json
-import logging
 import shutil
-import tempfile
+import logging
+import threading
+import uuid
 import zipfile
-from flask import Flask, request, jsonify, send_from_directory
+from queue import Queue, Empty
+from flask import Flask, request, jsonify, send_file, after_this_request
+from flask_cors import CORS
 from yt_dlp import YoutubeDL
-from concurrent.futures import ThreadPoolExecutor
-from threading import Lock
 
 # --- Basic Setup ---
+
+# Configure logging to see output in the console
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Get the port from an environment variable, with a fallback for local dev
+APP_PORT = int(os.environ.get('YT_LINK_BACKEND_PORT', 5001))
+
 app = Flask(__name__)
+# Allow requests from the Electron frontend
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-# Configure logging
-log_dir = os.path.join(os.path.expanduser("~"), ".yt-link-logs")
-os.makedirs(log_dir, exist_ok=True)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(os.path.join(log_dir, "backend.log")),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-
-# --- Global State ---
+# In-memory storage for job statuses and results
 jobs = {}
-jobs_lock = Lock()
-executor = ThreadPoolExecutor(max_workers=4)
+# Queue for managing file deletions after they are sent
+cleanup_queue = Queue()
 
-# --- Core Functions ---
+# --- Core Helper Functions ---
 
 def find_executable(name):
-    """Finds an executable, accounting for being bundled for production."""
-    if getattr(sys, 'frozen', False):
-        base_path = os.path.dirname(sys.executable)
-        bin_path = os.path.join(base_path, '..', 'bin')
+    """
+    Finds an executable, reliably accounting for being bundled in a packaged app.
+    
+    This is the key function to locate ffmpeg and ffprobe correctly.
+    """
+    # The Electron main process passes the path to the 'resources' directory via an env var.
+    resources_path = os.environ.get('YT_LINK_RESOURCES_PATH')
+    
+    if resources_path:
+        # This is the reliable method for a packaged application.
+        # Binaries are expected to be in a 'bin' subdirectory of the resources folder.
+        bin_dir = os.path.join(resources_path, 'bin')
         exe_name = f"{name}.exe" if sys.platform == "win32" else name
-        exe_path = os.path.join(bin_path, exe_name)
+        exe_path = os.path.join(bin_dir, exe_name)
+        
         if os.path.exists(exe_path):
             logging.info(f"Found bundled executable '{name}' at: {exe_path}")
+            # Ensure the binary is executable on macOS/Linux
+            if sys.platform != "win32":
+                try:
+                    os.chmod(exe_path, 0o755)
+                except Exception as e:
+                    logging.error(f"Failed to set executable permission for {exe_path}: {e}")
             return exe_path
-        logging.error(f"Could not find bundled '{name}' at expected path: {exe_path}")
-        return None
-    
+        else:
+            logging.error(f"Could not find bundled '{name}' at expected path: {exe_path}")
+            return None # Explicitly return None if not found
+            
+    # Fallback for local development (when not packaged and running from terminal)
     fallback_path = shutil.which(name)
     if fallback_path:
-        logging.info(f"Found executable '{name}' in system PATH: {fallback_path}")
+        logging.info(f"Found executable '{name}' in system PATH (dev mode): {fallback_path}")
+    else:
+        logging.warning(f"Could not find '{name}' in system PATH (dev mode).")
+        
     return fallback_path
 
-# --- FINAL CORRECTED FUNCTION ---
 def get_ydl_options(output_path, playlist=False):
-    """Gets the base options for yt-dlp, correctly specifying the ffmpeg path."""
-    # Find the full path to the ffmpeg executable.
-    ffmpeg_executable_path = find_executable('ffmpeg')
+    """
+    Gets the base options for yt-dlp, correctly specifying the ffmpeg path.
+    """
+    ffmpeg_exe_path = find_executable('ffmpeg')
+    ffmpeg_dir = None
 
-    if ffmpeg_executable_path:
-        logging.info(f"Found ffmpeg executable at: {ffmpeg_executable_path}")
+    if ffmpeg_exe_path:
+        # IMPORTANT: yt-dlp's 'ffmpeg_location' option expects the DIRECTORY 
+        # where both the ffmpeg and ffprobe executables are located.
+        ffmpeg_dir = os.path.dirname(ffmpeg_exe_path)
+        logging.info(f"Setting ffmpeg directory for yt-dlp to: {ffmpeg_dir}")
     else:
-        logging.error("FFmpeg executable not found! Post-processing will fail.")
+        # If ffmpeg is not found, post-processing will fail. Log this clearly.
+        logging.error("FFMPEG EXECUTABLE NOT FOUND! Post-processing will likely fail.")
 
     return {
         'format': 'bestaudio/best',
@@ -70,132 +92,136 @@ def get_ydl_options(output_path, playlist=False):
         }],
         'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
         'noplaylist': not playlist,
-        # --- CHANGE ---
-        # Pass the full path to the executable directly. This is another valid way
-        # and may be more reliable in the packaged environment.
-        'ffmpeg_location': ffmpeg_executable_path, 
-        'quiet': True,
+        # Pass the directory path. This allows yt-dlp to find both ffmpeg and ffprobe.
+        'ffmpeg_location': ffmpeg_dir, 
+        'quiet': False, # Set to False for more detailed logs from yt-dlp
         'progress_hooks': [],
         'nocheckcertificate': True,
     }
 
-def update_job_status(job_id, status, message=None, result_path=None, total_videos=0, completed_videos=0, current_video_title=""):
-    """Thread-safe way to update a job's status."""
-    with jobs_lock:
-        if job_id not in jobs:
-            jobs[job_id] = {}
-        jobs[job_id]['status'] = status
-        if message:
-            jobs[job_id]['message'] = message
-        if result_path:
-            jobs[job_id]['result_path'] = result_path
-        jobs[job_id]['total_videos'] = total_videos
-        jobs[job_id]['completed_videos'] = completed_videos
-        jobs[job_id]['current_video_title'] = current_video_title
-        logging.info(f"Job {job_id} status updated: {status}, Message: {message}")
+def create_job(target_function, *args):
+    """Creates and starts a background job."""
+    job_id = str(uuid.uuid4())
+    jobs[job_id] = {'status': 'pending', 'progress': 0, 'message': 'Job is queued.'}
+    
+    thread = threading.Thread(target=target_function, args=(job_id,) + args)
+    thread.daemon = True
+    thread.start()
+    
+    return job_id
 
-# --- Worker Functions ---
+# --- Target Functions for Background Jobs ---
 
-# --- UPDATED Worker Function ---
-def do_single_mp3_download(job_id, url, output_dir, cookie_content):
-    """Worker function to download a single video to MP3."""
-
-    # A progress hook for more detailed status updates
+def do_download_and_zip_playlist(job_id, url, download_path):
+    """Job: Downloads all videos in a playlist to MP3 and zips them."""
+    jobs[job_id]['status'] = 'running'
+    jobs[job_id]['message'] = 'Preparing to download playlist...'
+    
+    temp_dir = os.path.join(download_path, job_id)
+    os.makedirs(temp_dir, exist_ok=True)
+    
     def progress_hook(d):
-        if d['status'] == 'finished':
-            # This message will now appear right before the ffmpeg conversion starts.
-            update_job_status(job_id, 'processing', 'Download finished. Converting to MP3...')
-        elif d['status'] == 'downloading':
-            pass # More detailed progress can be added here if needed
+        if d['status'] == 'downloading':
+            jobs[job_id]['progress'] = int(d['_percent_str'].strip('% '))
+            jobs[job_id]['message'] = f"Downloading: {d['filename']}"
+        elif d['status'] == 'finished':
+            jobs[job_id]['message'] = f"Finished downloading, now converting..."
 
-    update_job_status(job_id, 'processing', 'Starting download...', total_videos=1)
-    
+    ydl_opts = get_ydl_options(temp_dir, playlist=True)
+    ydl_opts['progress_hooks'] = [progress_hook]
+
     try:
-        ydl_opts = get_ydl_options(output_dir)
-        # Assign the progress hook to the options
-        ydl_opts['progress_hooks'] = [progress_hook]
-        
-        # Handle cookie file
-        cookie_file = None
-        if cookie_content:
-            fd, cookie_file = tempfile.mkstemp(text=True)
-            with os.fdopen(fd, 'w') as tmp:
-                tmp.write(cookie_content)
-            ydl_opts['cookiefile'] = cookie_file
-
         with YoutubeDL(ydl_opts) as ydl:
-            # The download and conversion happens inside this call.
-            info = ydl.extract_info(url, download=True)
-            # If the above line throws an error, the code below won't run.
-            
-            filename = ydl.prepare_filename(info)
-            base, _ = os.path.splitext(filename)
-            mp3_file = base + '.mp3'
-            
-            if os.path.exists(mp3_file):
-                update_job_status(job_id, 'completed', 'Download successful!', result_path=mp3_file)
-            else:
-                update_job_status(job_id, 'failed', f"Conversion failed. The final MP3 file was not created.")
+            ydl.download([url])
+        
+        jobs[job_id]['message'] = 'Download complete. Zipping files...'
+        jobs[job_id]['progress'] = 100
+        
+        playlist_title = "playlist"
+        try:
+            info = YoutubeDL({'quiet': True, 'extract_flat': True}).extract_info(url, download=False)
+            playlist_title = info.get('title', 'playlist').replace(" ", "_")
+        except Exception:
+            pass # Use default title on failure
 
-        if cookie_file:
-            os.remove(cookie_file)
+        zip_filename = f"{playlist_title}.zip"
+        zip_filepath = os.path.join(download_path, zip_filename)
 
+        with zipfile.ZipFile(zip_filepath, 'w') as zipf:
+            for root, _, files in os.walk(temp_dir):
+                for file in files:
+                    if file.endswith('.mp3'):
+                        zipf.write(os.path.join(root, file), arcname=file)
+        
+        jobs[job_id]['status'] = 'completed'
+        jobs[job_id]['message'] = 'Playlist zipped successfully.'
+        jobs[job_id]['result'] = zip_filepath
     except Exception as e:
-        # This is where the ffmpeg error is being caught.
-        logging.error(f"Error in job {job_id}: {e}", exc_info=True)
-        update_job_status(job_id, 'failed', str(e))
+        logging.error(f"Error in job {job_id}: {e}")
+        jobs[job_id]['status'] = 'failed'
+        jobs[job_id]['message'] = str(e)
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-@app.route('/start-single-mp3-job', methods=['POST'])
-def start_single_mp3_job():
-    data = request.json
-    url = data.get('url')
-    output_dir = data.get('outputDir')
-    cookie_content = data.get('cookieFileContent')
-    if not url or not output_dir:
-        return jsonify({'error': 'URL and output directory are required.'}), 400
+# --- Flask API Endpoints ---
 
-    job_id = f"job-{os.urandom(4).hex()}"
-    update_job_status(job_id, 'queued', 'Download job has been queued.')
-    executor.submit(do_single_mp3_download, job_id, url, output_dir, cookie_content)
-    
-    return jsonify({'job_id': job_id})
-
-@app.route('/start-playlist-zip-job', methods=['POST'])
+@app.route('/api/start-playlist-zip-job', methods=['POST'])
 def start_playlist_zip_job():
-    # This function would need similar updates to handle outputDir and cookies
     data = request.json
     url = data.get('url')
-    output_dir = data.get('outputDir')
-    if not url or not output_dir:
-        return jsonify({'error': 'URL and output directory are required.'}), 400
-    return jsonify({'error': 'Not fully implemented'}), 501
+    download_path = data.get('downloadPath')
+    if not url or not download_path:
+        return jsonify({'error': 'Missing URL or downloadPath'}), 400
+    
+    job_id = create_job(do_download_and_zip_playlist, url, download_path)
+    return jsonify({'jobId': job_id})
 
-
-@app.route('/start-combine-playlist-mp3-job', methods=['POST'])
-def start_combine_playlist_mp3_job():
-    # This function would need similar updates to handle outputDir and cookies
-    data = request.json
-    url = data.get('url')
-    output_dir = data.get('outputDir')
-    if not url or not output_dir:
-        return jsonify({'error': 'URL and output directory are required.'}), 400
-    return jsonify({'error': 'Not fully implemented'}), 501
-
-
-@app.route('/job-status/<job_id>', methods=['GET'])
+@app.route('/api/job-status/<job_id>', methods=['GET'])
 def get_job_status(job_id):
-    with jobs_lock:
-        job = jobs.get(job_id)
-        if not job:
-            return jsonify({'error': 'Job not found', 'status': 'not_found'}), 404
-        return jsonify(job)
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    return jsonify(job)
 
-@app.route('/download/<job_id>', methods=['GET'])
-def download_file(job_id):
-    # This endpoint is no longer used, as main.js handles the file saving.
-    return jsonify({'error': 'This endpoint is deprecated.'}), 404
+@app.route('/api/download/<job_id>', methods=['GET'])
+def download_result(job_id):
+    job = jobs.get(job_id)
+    if not job or job['status'] != 'completed':
+        return jsonify({'error': 'Job not found or not completed'}), 404
+
+    file_path = job['result']
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'File not found on server'}), 404
+
+    @after_this_request
+    def cleanup(response):
+        cleanup_queue.put(file_path)
+        return response
+
+    return send_file(file_path, as_attachment=True)
+
+def cleanup_worker():
+    """Worker thread to delete files after they have been sent."""
+    while True:
+        try:
+            filepath = cleanup_queue.get()
+            os.remove(filepath)
+            logging.info(f"Cleaned up file: {filepath}")
+        except Empty:
+            continue
+        except Exception as e:
+            logging.error(f"Error during file cleanup: {e}")
+
+# --- Main Execution ---
 
 if __name__ == '__main__':
-    port = int(os.environ.get("YT_LINK_BACKEND_PORT", 5001))
-    app.run(host='127.0.0.1', port=port, debug=False)
+    # Start the cleanup worker in the background
+    cleanup_thread = threading.Thread(target=cleanup_worker)
+    cleanup_thread.daemon = True
+    cleanup_thread.start()
+    
+    # Run the Flask app
+    logging.info(f"Starting Flask server on port {APP_PORT}...")
+    app.run(port=APP_PORT)
+
