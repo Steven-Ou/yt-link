@@ -50,17 +50,14 @@ def find_executable(name):
         logging.info(f"Found executable '{name}' in system PATH: {fallback_path}")
     return fallback_path
 
-# --- CORRECTED FUNCTION ---
+# --- FINAL CORRECTED FUNCTION ---
 def get_ydl_options(output_path, playlist=False):
-    """Gets the base options for yt-dlp, correctly specifying the ffmpeg directory."""
+    """Gets the base options for yt-dlp, correctly specifying the ffmpeg path."""
     # Find the full path to the ffmpeg executable.
     ffmpeg_executable_path = find_executable('ffmpeg')
-    ffmpeg_directory = None
 
     if ffmpeg_executable_path:
-        # yt-dlp needs the path to the FOLDER containing ffmpeg, not the file itself.
-        ffmpeg_directory = os.path.dirname(ffmpeg_executable_path)
-        logging.info(f"Using ffmpeg directory: {ffmpeg_directory}")
+        logging.info(f"Found ffmpeg executable at: {ffmpeg_executable_path}")
     else:
         logging.error("FFmpeg executable not found! Post-processing will fail.")
 
@@ -73,7 +70,10 @@ def get_ydl_options(output_path, playlist=False):
         }],
         'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
         'noplaylist': not playlist,
-        'ffmpeg_location': ffmpeg_directory, # This is now the correct directory path.
+        # --- CHANGE ---
+        # Pass the full path to the executable directly. This is another valid way
+        # and may be more reliable in the packaged environment.
+        'ffmpeg_location': ffmpeg_executable_path, 
         'quiet': True,
         'progress_hooks': [],
         'nocheckcertificate': True,
@@ -95,14 +95,25 @@ def update_job_status(job_id, status, message=None, result_path=None, total_vide
         logging.info(f"Job {job_id} status updated: {status}, Message: {message}")
 
 # --- Worker Functions ---
-# Note: No changes are needed in the worker functions themselves.
 
+# --- UPDATED Worker Function ---
 def do_single_mp3_download(job_id, url, output_dir, cookie_content):
     """Worker function to download a single video to MP3."""
+
+    # A progress hook for more detailed status updates
+    def progress_hook(d):
+        if d['status'] == 'finished':
+            # This message will now appear right before the ffmpeg conversion starts.
+            update_job_status(job_id, 'processing', 'Download finished. Converting to MP3...')
+        elif d['status'] == 'downloading':
+            pass # More detailed progress can be added here if needed
+
     update_job_status(job_id, 'processing', 'Starting download...', total_videos=1)
     
     try:
         ydl_opts = get_ydl_options(output_dir)
+        # Assign the progress hook to the options
+        ydl_opts['progress_hooks'] = [progress_hook]
         
         # Handle cookie file
         cookie_file = None
@@ -113,7 +124,10 @@ def do_single_mp3_download(job_id, url, output_dir, cookie_content):
             ydl_opts['cookiefile'] = cookie_file
 
         with YoutubeDL(ydl_opts) as ydl:
+            # The download and conversion happens inside this call.
             info = ydl.extract_info(url, download=True)
+            # If the above line throws an error, the code below won't run.
+            
             filename = ydl.prepare_filename(info)
             base, _ = os.path.splitext(filename)
             mp3_file = base + '.mp3'
@@ -121,17 +135,16 @@ def do_single_mp3_download(job_id, url, output_dir, cookie_content):
             if os.path.exists(mp3_file):
                 update_job_status(job_id, 'completed', 'Download successful!', result_path=mp3_file)
             else:
-                update_job_status(job_id, 'failed', f"Conversion failed. Expected MP3 not found.")
+                update_job_status(job_id, 'failed', f"Conversion failed. The final MP3 file was not created.")
 
         if cookie_file:
             os.remove(cookie_file)
 
     except Exception as e:
+        # This is where the ffmpeg error is being caught.
         logging.error(f"Error in job {job_id}: {e}", exc_info=True)
         update_job_status(job_id, 'failed', str(e))
 
-# (The rest of the file remains the same - API Endpoints etc.)
-# ... The rest of your app.py file is omitted for brevity but should remain as is.
 
 @app.route('/start-single-mp3-job', methods=['POST'])
 def start_single_mp3_job():
@@ -148,16 +161,14 @@ def start_single_mp3_job():
     
     return jsonify({'job_id': job_id})
 
-# ... [rest of your Flask routes are unchanged]
 @app.route('/start-playlist-zip-job', methods=['POST'])
 def start_playlist_zip_job():
     # This function would need similar updates to handle outputDir and cookies
     data = request.json
-    url = data.get('url') # or 'playlistUrl'
+    url = data.get('url')
     output_dir = data.get('outputDir')
     if not url or not output_dir:
         return jsonify({'error': 'URL and output directory are required.'}), 400
-    # ... implementation details
     return jsonify({'error': 'Not fully implemented'}), 501
 
 
@@ -165,11 +176,10 @@ def start_playlist_zip_job():
 def start_combine_playlist_mp3_job():
     # This function would need similar updates to handle outputDir and cookies
     data = request.json
-    url = data.get('url') # or 'playlistUrl'
+    url = data.get('url')
     output_dir = data.get('outputDir')
     if not url or not output_dir:
         return jsonify({'error': 'URL and output directory are required.'}), 400
-    # ... implementation details
     return jsonify({'error': 'Not fully implemented'}), 501
 
 
