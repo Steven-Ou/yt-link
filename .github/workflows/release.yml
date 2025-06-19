@@ -34,15 +34,21 @@ jobs:
       - name: Create Binaries Directory
         run: mkdir -p bin
 
-      # ---- CORRECTED STEP for macOS ----
+      # ---- CORRECTED STEP for macOS using Homebrew ----
       - name: Download Dependencies (macOS)
         if: runner.os == 'macOS'
         working-directory: ./bin
         run: |
+          # Download yt-dlp directly as this link is stable
           curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o yt-dlp
-          curl -L "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-macos-x64.zip" -o ffmpeg.zip
-          unzip ffmpeg.zip
-          rm ffmpeg.zip
+          
+          # Install ffmpeg using Homebrew for reliability
+          brew install ffmpeg
+
+          # Copy the brew-installed ffmpeg executable to our local bin so it gets packaged
+          cp $(which ffmpeg) .
+          
+          # Make sure both binaries are executable
           chmod +x yt-dlp ffmpeg
       
       # ---- Windows step remains the same ----
