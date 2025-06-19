@@ -1,38 +1,23 @@
 // --- ELECTRON AND NODE.JS IMPORTS ---
-// 'contextBridge' is the module used to securely expose APIs from the preload script
-// to the renderer process (your Next.js app).
-// 'ipcRenderer' is used to send messages from the renderer process to the main process.
 const { contextBridge, ipcRenderer } = require('electron');
 
-// --- EXPOSE APIs TO THE RENDERER ---
-// We use 'contextBridge.exposeInMainWorld' to create a global object 'window.electron'
-// that the frontend code can access. This is the secure way to set up the IPC bridge.
-contextBridge.exposeInMainWorld('electron', {
-  // --- JOB STARTING FUNCTIONS ---
-  // These functions will be called from your React components. They take the necessary
-  // data (like the URL) and use 'ipcRenderer.invoke' to send a message to the main process.
-  // 'ipcRenderer.invoke' is asynchronous and returns a Promise with the result.
+// --- EXPOSE APIs TO THE RENDERER ON "window.electronAPI" ---
+// This now matches the object your page.js is trying to use.
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Exposes a function to start the single MP3 download job.
+  startSingleMp3Job: (payload) => ipcRenderer.invoke('start-single-mp3-job', payload),
   
-  startSingleMp3Job: (url, outputDir) => 
-    ipcRenderer.invoke('start-single-mp3-job', { url, outputDir }),
+  // Exposes a function to start the playlist zip job.
+  startPlaylistZipJob: (payload) => ipcRenderer.invoke('start-playlist-zip-job', payload),
   
-  startPlaylistZipJob: (url, outputDir, playlistTitle) => 
-    ipcRenderer.invoke('start-playlist-zip-job', { url, outputDir, playlistTitle }),
+  // Exposes a function to start the combined playlist job.
+  startCombinePlaylistMp3Job: (payload) => ipcRenderer.invoke('start-combine-playlist-mp3-job', payload),
 
-  // --- JOB STATUS AND DOWNLOAD FUNCTIONS ---
-  // These functions allow the frontend to check the status of a running job
-  // and to initiate the download of a completed file.
+  // Exposes a function to get the status of any running job.
+  getJobStatus: (jobId) => ipcRenderer.invoke('get-job-status', jobId),
   
-  getJobStatus: (jobId) => 
-    ipcRenderer.invoke('get-job-status', jobId),
-    
-  // Note: For file downloads, a different pattern is sometimes used, but invoking
-  // a download path or command is a common approach. The main process will handle it.
-  downloadFile: (jobId) => 
-    ipcRenderer.invoke('download-file', jobId),
-
-  // --- DIALOG FUNCTION ---
-  // Exposes a way for the renderer to ask the main process to open a file dialog.
-  // This is a secure way to let users select a directory.
-  selectDirectory: () => ipcRenderer.invoke('select-directory'),
+  // --- NEW ---
+  // Exposes a function that will be called when the user clicks the final "Download Ready" button.
+  // It tells the main process to handle saving the completed file.
+  saveCompletedFile: (jobId) => ipcRenderer.invoke('save-completed-file', jobId),
 });
