@@ -31,22 +31,21 @@ jobs:
         with:
           python-version: '3.11'
 
-      # ---- NEW STEP: Create bin directory ----
       - name: Create Binaries Directory
         run: mkdir -p bin
 
-      # ---- NEW STEP: Download yt-dlp and ffmpeg for macOS ----
+      # ---- CORRECTED STEP for macOS ----
       - name: Download Dependencies (macOS)
         if: runner.os == 'macOS'
         working-directory: ./bin
         run: |
           curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o yt-dlp
-          curl -L https://evermeet.cx/ffmpeg/ffmpeg-118897-g1344265435.zip -o ffmpeg.zip
+          curl -L "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-macos-x64.zip" -o ffmpeg.zip
           unzip ffmpeg.zip
           rm ffmpeg.zip
           chmod +x yt-dlp ffmpeg
       
-      # ---- NEW STEP: Download yt-dlp and ffmpeg for Windows ----
+      # ---- Windows step remains the same ----
       - name: Download Dependencies (Windows)
         if: runner.os == 'Windows'
         working-directory: ./bin
