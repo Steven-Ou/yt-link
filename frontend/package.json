@@ -43,7 +43,10 @@
       "preload.js"
     ],
     "extraResources": [
-      "../dist/yt-link-backend"
+      {
+        "from": "../dist/yt-link-backend",
+        "to": "backend/yt-link-backend"
+      }
     ],
     "directories": {
       "buildResources": "build"
