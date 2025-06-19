@@ -6,7 +6,7 @@
   "scripts": {
     "start": "electron .",
     "clean": "rimraf dist service/dist service/build",
-    "build:python": "pyinstaller service/app.py --name yt-link-backend --onefile --distpath service/dist --workpath service/build --noconfirm",
+    "build:python": "pip install -r service/requirements.txt && pyinstaller service/app.py --name yt-link-backend --onefile --distpath service/dist --workpath service/build --noconfirm",
     "start:frontend": "npm run dev --prefix frontend",
     "build": "npm install && npm run clean && npm run build:python && npm run build:frontend && npm run dist",
     "build:backend": "npm install --prefix backend",
@@ -36,7 +36,7 @@
     ],
     "extraResources": [
       {
-        "from": "service/dist/yt-link-backend",
+        "from": "service/dist",
         "to": "backend"
       }
     ],
