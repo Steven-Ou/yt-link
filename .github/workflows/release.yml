@@ -13,7 +13,6 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest]
 
-    # This section grants the workflow permission to create a release.
     permissions:
       contents: write
 
@@ -32,6 +31,33 @@ jobs:
         with:
           python-version: '3.11'
 
+      # ---- NEW STEP: Create bin directory ----
+      - name: Create Binaries Directory
+        run: mkdir -p bin
+
+      # ---- NEW STEP: Download yt-dlp and ffmpeg for macOS ----
+      - name: Download Dependencies (macOS)
+        if: runner.os == 'macOS'
+        working-directory: ./bin
+        run: |
+          curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o yt-dlp
+          curl -L https://evermeet.cx/ffmpeg/ffmpeg-118897-g1344265435.zip -o ffmpeg.zip
+          unzip ffmpeg.zip
+          rm ffmpeg.zip
+          chmod +x yt-dlp ffmpeg
+      
+      # ---- NEW STEP: Download yt-dlp and ffmpeg for Windows ----
+      - name: Download Dependencies (Windows)
+        if: runner.os == 'Windows'
+        working-directory: ./bin
+        run: |
+          curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -o yt-dlp.exe
+          curl -L https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip -o ffmpeg.zip
+          tar -xf ffmpeg.zip
+          mv ffmpeg-*/bin/ffmpeg.exe .
+          rm -r ffmpeg-*
+          rm ffmpeg.zip
+
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
@@ -44,26 +70,9 @@ jobs:
         run: npm run build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Rename Artifact for Windows
-        if: runner.os == 'Windows'
-        run: ren dist\*.zip yt-link-windows.zip
-
-      - name: Rename Artifact for macOS
-        if: runner.os == 'macOS'
-        # This now correctly renames the file inside the dist directory.
-        run: mv dist/*.dmg dist/yt-link-macos.dmg
-
-      - name: Upload Windows Artifact
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+      
+      - name: Upload Artifacts to Release
+        uses: ncipollo/release-action@v1
         with:
-          name: yt-link-windows
-          path: dist/yt-link-windows.zip
-
-      - name: Upload macOS Artifact
-        if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
-        with:
-          name: yt-link-macos
-          path: dist/yt-link-macos.dmg
+          artifacts: "dist/*"
+          token: ${{ secrets.GITHUB_TOKEN }}
