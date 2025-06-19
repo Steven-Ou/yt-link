@@ -1,155 +1,158 @@
-// --- ELECTRON AND NODE.JS IMPORTS ---
-// app: Manages the application's lifecycle.
-// BrowserWindow: Creates and controls application windows.
-// ipcMain: Handles asynchronous and synchronous messages sent from a renderer process (web page).
-// dialog: Allows you to display native system dialogs for opening and saving files, alerting, etc.
-const { app, BrowserWindow, ipcMain, dialog } = require('electron'); 
-// path: Provides utilities for working with file and directory paths in a cross-platform way.
-const path = require('path');
-// spawn: Used to launch child processes asynchronously, perfect for running our Python backend.
-const { spawn } = require('child_process');
-// axios: A promise-based HTTP client for making requests to our Python backend.
-const axios = require('axios');
-// fs: The Node.js File System module, used here for copying the final downloaded file.
-const fs = require('fs');
+// --- Electron and Node.js Modules ---
+// Import necessary modules from Electron and Node.js.
+const { app, BrowserWindow, ipcMain, dialog } = require('electron'); // Core Electron modules for app lifecycle, windows, IPC, and dialogs.
+const path = require('path'); // Node.js module for handling and transforming file paths.
+const { spawn } = require('child_process'); // Node.js module for spawning child processes (our Python backend).
+const isDev = require('electron-is-dev'); // Utility to check if the app is running in development mode.
 
-// --- GLOBAL VARIABLES ---
-// Will hold the reference to the main application window object.
-let mainWindow;
-// Will hold the reference to the spawned Python backend process.
-let backendProcess;
-// The port the Python/Flask backend will run on. This must match the port in app.py.
-const BACKEND_PORT = 5001; 
-// The base URL for making API requests to the Python backend.
-const BACKEND_URL = `http://127.0.0.1:${BACKEND_PORT}`;
-// A Map to temporarily store the path of a completed file, keyed by its job ID.
-const completedFilePaths = new Map();
+// --- Global Configuration ---
+// Define a constant port for the backend server to run on.
+const BACKEND_PORT = 8080;
+// Keep a global reference to the backend process object to manage its lifecycle.
+let backendProcess = null;
 
-// --- MAIN WINDOW CREATION ---
-// This function initializes the main application window.
+/**
+ * Starts the Python backend executable.
+ * This function handles the logic for both development and production environments.
+ */
+function startBackend() {
+  // In development, we assume the developer is running the Python backend manually.
+  // This allows for faster iteration and debugging of the backend service.
+  if (isDev) {
+    console.log('Development mode: Assuming Python backend is running independently.');
+    return;
+  }
+
+  // In a packaged (production) application, we must spawn the bundled backend executable.
+  // 'process.resourcesPath' gives the absolute path to the 'resources' directory,
+  // which is where packaged assets and executables are stored.
+  const resourcesPath = process.resourcesPath;
+  const backendDir = path.join(resourcesPath, 'backend');
+  
+  // Determine the correct executable name based on the operating system.
+  const backendExecutableName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
+  const backendPath = path.join(backendDir, backendExecutableName);
+
+  console.log(`Attempting to start backend at: ${backendPath}`);
+
+  // **CRITICAL STEP**: We create a new environment object for the backend process.
+  // We pass the 'resourcesPath' as an environment variable ('YT_LINK_RESOURCES_PATH').
+  // This allows the Python script to reliably find its dependencies (like ffmpeg)
+  // within the packaged application structure.
+  const backendEnv = {
+    ...process.env, // Inherit the current environment variables.
+    'YT_LINK_BACKEND_PORT': BACKEND_PORT.toString(),
+    'YT_LINK_RESOURCES_PATH': resourcesPath
+  };
+
+  // Spawn the Python executable as a child process with the specified environment.
+  backendProcess = spawn(backendPath, [], { env: backendEnv });
+
+  // --- Process Event Handling ---
+  // Listen for errors that prevent the process from starting.
+  backendProcess.on('error', (err) => {
+    console.error('Failed to start backend process:', err);
+    dialog.showErrorBox('Backend Error', `Failed to start the backend service: ${err.message}`);
+  });
+
+  // Log standard output from the backend for debugging.
+  backendProcess.stdout.on('data', (data) => {
+    console.log(`BACKEND_STDOUT: ${data.toString().trim()}`);
+  });
+
+  // Log standard error from the backend for debugging.
+  backendProcess.stderr.on('data', (data) => {
+    console.error(`BACKEND_STDERR: ${data.toString().trim()}`);
+  });
+
+  // Handle the backend process closing unexpectedly.
+  backendProcess.on('close', (code) => {
+    console.log(`Backend process exited with code ${code}`);
+    if (code !== 0) {
+      dialog.showErrorBox('Backend Stopped', `The backend service stopped unexpectedly with code ${code}.`);
+    }
+  });
+}
+
+/**
+ * Creates and configures the main application window.
+ */
 function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1024, // Set initial window width for the new UI.
-    height: 768, // Set initial window height for the new UI.
+  // Create a new browser window with specified dimensions and web preferences.
+  const win = new BrowserWindow({
+    width: 800,
+    height: 600,
     webPreferences: {
-      // The preload script is a bridge between Node.js and the renderer's web content.
+      // The 'preload' script runs in a privileged environment and acts as a bridge
+      // between the Node.js environment (main process) and the renderer process (web page).
       preload: path.join(__dirname, 'preload.js'),
-      // For security, contextIsolation is enabled, ensuring preload scripts and renderer content have separate contexts.
+      // 'contextIsolation' is a security feature that ensures the preload script and the
+      // renderer's JavaScript run in separate contexts.
       contextIsolation: true,
-      // nodeIntegration is disabled to prevent the renderer from having direct access to Node.js APIs.
+      // 'nodeIntegration' is disabled for security, preventing the renderer from
+      // directly accessing Node.js APIs.
       nodeIntegration: false,
     },
   });
 
-  // Load the correct frontend content based on the environment.
-  if (app.isPackaged) {
-    // In a production build, load the static HTML file from the 'out' directory.
-    mainWindow.loadFile(path.join(__dirname, 'out', 'index.html'));
+  // --- Load Application Content ---
+  if (isDev) {
+    // In development, we load the content from the Next.js development server.
+    win.loadURL('http://localhost:3000');
+    win.webContents.openDevTools(); // Automatically open Chrome DevTools.
   } else {
-    // In development, connect to the Next.js live development server.
-    mainWindow.loadURL('http://localhost:3000');
-    // And open the developer tools for easy debugging.
-    mainWindow.webContents.openDevTools();
+    // In production, we load the content served by our Python backend.
+    const startUrl = `http://localhost:${BACKEND_PORT}`;
+    win.loadURL(startUrl);
   }
-}
 
-// --- PYTHON BACKEND LAUNCHER ---
-// This function finds and starts the Python backend executable.
-function startBackend() {
-  // Only start the backend if the app is packaged. In dev, we run it manually.
-  if (!app.isPackaged) { return; }
-  // process.resourcesPath is the reliable way to find the app's resource directory.
-  const resourcesPath = process.resourcesPath;
-  const backendDir = path.join(resourcesPath, 'backend');
-  const backendExecutableName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
-  const backendPath = path.join(backendDir, backendExecutableName);
-  
-  // Spawn the backend process. Pass the port number as an environment variable.
-  backendProcess = spawn(backendPath, [], { env: { ...process.env, 'YT_LINK_BACKEND_PORT': BACKEND_PORT } });
-  
-  // Log any output from the backend for debugging.
-  backendProcess.stdout.on('data', (data) => console.log(`BACKEND_STDOUT: ${data.toString()}`));
-  backendProcess.stderr.on('data', (data) => console.error(`BACKEND_STDERR: ${data.toString()}`));
-}
+  // --- Inter-Process Communication (IPC) Handlers ---
+  // These handlers allow the renderer process to securely request actions from the main process.
 
-// --- ELECTRON APP LIFECYCLE EVENTS ---
-app.on('ready', () => { startBackend(); createWindow(); });
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('will-quit', () => { if (backendProcess) backendProcess.kill(); }); // Clean up the backend process.
-app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-
-// --- IPC HANDLERS (THE BRIDGE BETWEEN FRONTEND AND MAIN PROCESS) ---
-
-// Handles the 'select-directory' request from the frontend.
-ipcMain.handle('select-directory', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openDirectory']
+  // Handle requests from the renderer to open a directory selection dialog.
+  ipcMain.handle('select-dir', async () => {
+    const result = await dialog.showOpenDialog(win, {
+      properties: ['openDirectory'],
+    });
+    // Return the selected path or null if the dialog was canceled.
+    return result.canceled ? null : result.filePaths[0];
   });
-  if (result.canceled || result.filePaths.length === 0) {
-    return null; // Return null if the user cancels.
-  }
-  return result.filePaths[0]; // Otherwise, return the selected folder path.
+
+  // Handle requests to open the system's file explorer at a given path.
+  ipcMain.handle('open-path-in-explorer', (event, filePath) => {
+    // Use the appropriate method to open the file explorer.
+    // 'shell.showItemInFolder' is the preferred Electron way.
+    require('electron').shell.showItemInFolder(filePath);
+  });
+}
+
+// --- Electron App Lifecycle Events ---
+
+// This method is called when Electron has finished initialization.
+app.whenReady().then(() => {
+  startBackend(); // Start our backend service first.
+  createWindow(); // Then create the application window.
+
+  // Handle macOS 'activate' event (e.g., clicking the app's dock icon).
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
 });
 
-// A map to associate IPC channels with backend API endpoints.
-const jobHandlers = {
-  'start-single-mp3-job': `${BACKEND_URL}/start-single-mp3-job`,
-  'start-playlist-zip-job': `${BACKEND_URL}/start-playlist-zip-job`,
-  'start-combine-playlist-mp3-job': `${BACKEND_URL}/start-combine-playlist-mp3-job`,
-};
-
-// Loop through the handlers to create an IPC listener for each job type.
-for (const channel in jobHandlers) {
-  ipcMain.handle(channel, async (event, args) => {
-    try {
-      // Forward the request from the frontend to the Python backend using axios.
-      const response = await axios.post(jobHandlers[channel], args);
-      return response.data; // Return the backend's response to the frontend.
-    } catch (error) {
-      console.error(`Error on channel ${channel}:`, error.response ? error.response.data : error.message);
-      return { error: error.message };
-    }
-  });
-}
-
-// Handles polling for job status.
-ipcMain.handle('get-job-status', async (event, jobId) => {
-  try {
-    const response = await axios.get(`${BACKEND_URL}/job-status/${jobId}`);
-    // If the job is complete, store its temporary file path for the final save step.
-    if (response.data.status === 'completed' && response.data.result_path) {
-      completedFilePaths.set(jobId, response.data.result_path);
-    }
-    return response.data;
-  } catch (error) {
-    return { error: error.message, status: 'failed' };
+// Quit the app when all windows are closed (except on macOS).
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
   }
 });
 
-// Handles saving the completed file to a user-specified location.
-ipcMain.handle('save-completed-file', async (event, jobId) => {
-  const tempPath = completedFilePaths.get(jobId);
-  if (!tempPath || !fs.existsSync(tempPath)) {
-    return { error: 'File not found or already moved.' };
-  }
-
-  // Show the native "Save As..." dialog.
-  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: path.basename(tempPath) // Suggest the original filename.
-  });
-
-  if (canceled || !filePath) {
-    return { error: 'Save was cancelled.' };
-  }
-
-  // If a path was chosen, copy the file and then clean up the temporary version.
-  try {
-    fs.copyFileSync(tempPath, filePath);
-    fs.unlinkSync(tempPath); 
-    completedFilePaths.delete(jobId);
-    return { success: true, path: filePath };
-  } catch (error) {
-    console.error("File save error:", error);
-    return { error: 'Failed to save the file.' };
+// This event is emitted when the application is about to close.
+app.on('quit', () => {
+  // It's crucial to terminate the backend process when the app quits.
+  if (backendProcess) {
+    console.log('Terminating backend process...');
+    backendProcess.kill();
   }
 });
