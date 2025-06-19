@@ -1,6 +1,6 @@
 {
   "name": "yt-link",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "An application to download YouTube videos as MP3s, either individually or as a whole playlist.",
   "main": "frontend/main.js",
   "scripts": {
