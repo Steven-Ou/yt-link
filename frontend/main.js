@@ -1,122 +1,122 @@
 // frontend/main.js
 
 // --- ELECTRON AND NODE.JS IMPORTS ---
-// Import necessary modules from the Electron framework and Node.js.
-const { app, BrowserWindow, ipcMain, dialog } = require('electron'); // Core Electron modules for app lifecycle, window creation, and inter-process communication.
-const path = require('path'); // Node.js module for handling and transforming file paths.
-const { spawn } = require('child_process'); // Node.js module for creating and managing child processes, used here to run the Python backend.
-const { autoUpdater } = require('electron-updater'); // Handles automatic application updates from a release server (like GitHub).
-const fetch = require('node-fetch'); // A light-weight module that brings the browser's `fetch` API to Node.js, used for making HTTP requests.
+// This section imports all the necessary modules for the application to run.
+const { app, BrowserWindow, ipcMain, dialog } = require('electron'); // Core Electron modules: `app` for managing the app's lifecycle, `BrowserWindow` for creating and controlling windows, `ipcMain` for handling messages from the renderer process, and `dialog` for native system dialogs.
+const path = require('path'); // A Node.js utility for working with file and directory paths in a cross-platform way.
+const url = require('url'); // A Node.js utility for URL resolution and parsing, crucial for creating `file://` URLs for local content.
+const fs = require('fs'); // The Node.js File System module, used here for file operations like copying the downloaded file.
+const { spawn } = require('child_process'); // A Node.js module to create and manage child processes. We use it to run the Python backend script independently.
+const { autoUpdater } = require('electron-updater'); // The primary module for handling automatic application updates from a release server like GitHub.
+const fetch = require('node-fetch'); // A light-weight module that brings the browser's `fetch` API to Node.js, used for making HTTP requests from this main process to the Python backend.
 
 // --- GLOBAL VARIABLES ---
-let mainWindow; // This variable will hold the main application window object. It's global to prevent it from being garbage collected.
-let pythonProcess = null; // This will hold the spawned Python backend process object, allowing us to manage it (e.g., kill it on app quit).
-const isDev = process.env.NODE_ENV !== 'production'; // A boolean flag to check if the app is running in development mode.
+// These variables are declared in the global scope to be accessible throughout the file.
+let mainWindow; // This variable will hold the main application window object. It's kept global to prevent it from being garbage collected, which would close the window.
+let pythonProcess = null; // This will hold the spawned Python backend process object. Storing it globally allows us to manage it, specifically to terminate it when the app quits.
+const isDev = process.env.NODE_ENV !== 'production'; // A boolean flag to check if the app is running in development mode versus a packaged production environment. This is useful for conditional logic, like opening DevTools.
 
 // --- PYTHON BACKEND MANAGEMENT ---
 /**
  * Starts the Python Flask server as a background child process.
  * This function determines the correct path to the Python script for both development and production,
- * spawns the process, and sets up listeners to capture its output for debugging.
+ * spawns the process, and sets up listeners to capture its standard output and error streams for debugging.
  */
 function startPythonBackend() {
-    // Determine the path to the Python script based on the environment.
-    const scriptPath = isDev
-        ? path.join(__dirname, '..', 'service', 'app.py') // In development, the path is relative to the current file.
-        : path.join(process.resourcesPath, 'app', 'service', 'app.py'); // In production, it's inside the packaged app's resources directory.
-
-    // Use 'python' on Windows and 'python3' on other platforms.
+    // Correctly and robustly determine the path to the Python script.
+    // In development, the path is relative to this `main.js` file.
+    // In production, electron-builder unpacks the 'service' directory as specified in `package.json`, and we can access it relative to the app's root.
+    // Electron's `__dirname` and `path.join` will resolve correctly even inside an ASAR archive for the child_process module.
+    const scriptPath = path.join(__dirname, '..', 'service', 'app.py');
+    
+    // Use 'python' on Windows and 'python3' on other platforms to ensure the correct Python executable is called.
     const pythonCommand = process.platform === 'win32' ? 'python' : 'python3';
 
-    console.log(`Starting Python backend with command: ${pythonCommand} ${scriptPath}`);
+    console.log(`[Python Start] Attempting to run command: ${pythonCommand} at ${scriptPath}`);
 
-    // Spawn the python process. This runs the script as a separate process.
+    // Spawn the python process. This runs the script as a separate, non-blocking process.
     pythonProcess = spawn(pythonCommand, [scriptPath]);
 
-    // Listen for standard output from the Python script (e.g., print statements) and log it.
+    // Listen for standard output from the Python script (e.g., `print` statements) and log it for debugging.
     pythonProcess.stdout.on('data', (data) => {
-        console.log(`Python Backend: ${data}`);
+        console.log(`[Python Backend]: ${data}`);
     });
 
-    // Listen for standard error from the Python script and log it.
+    // Listen for standard error from the Python script and log it to help diagnose issues in the backend.
     pythonProcess.stderr.on('data', (data) => {
-        console.error(`Python Backend Error: ${data}`);
+        console.error(`[Python Backend Error]: ${data}`);
     });
 
-    // Log when the Python process closes.
+    // Log a message when the Python process closes, showing its exit code.
     pythonProcess.on('close', (code) => {
-        console.log(`Python Backend exited with code ${code}`);
+        console.log(`[Python Backend] Exited with code ${code}`);
     });
 }
 
 // --- ELECTRON WINDOW CREATION ---
 /**
  * Creates and configures the main application window (BrowserWindow).
- * It sets up web preferences, loads the UI content, and configures the auto-updater.
+ * This function handles window dimensions, web preferences for security, and loading the UI content.
  */
 function createWindow() {
-    // Create a new browser window.
+    // Create a new browser window instance.
     mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
         webPreferences: {
-            // The preload script acts as a secure bridge between the Electron main process and the renderer process (the UI).
+            // The preload script is a crucial piece of Electron's security model. It runs in a privileged context
+            // and acts as the secure bridge between the Node.js main process and the sandboxed renderer process (the UI).
             preload: path.join(__dirname, 'preload.js'),
-            // contextIsolation is a security feature that ensures the preload script and the renderer's main world do not share the same `window` object.
+            // `contextIsolation` is a key security feature. When true, it ensures the preload script and the renderer's
+            // main world do not share the same `window` object, preventing the renderer from accessing Node.js APIs directly.
             contextIsolation: true,
-            // nodeIntegration should be false for security. All Node.js logic should be in the main process or preload script.
+            // `nodeIntegration` must be false for security best practices. All Node.js logic should be handled
+            // in the main process or exposed selectively through the preload script.
             nodeIntegration: false,
         },
-        icon: path.join(__dirname, '..', 'assets', 'icon.png'), // Sets the application icon.
+        icon: path.join(__dirname, '..', 'assets', 'icon.png'), // Sets the application icon for the window and taskbar.
     });
 
     // --- AUTO-UPDATER CONFIGURATION ---
-    // Configure the auto-updater to check for releases on the specified GitHub repository.
-    autoUpdater.setFeedURL({
-        provider: 'github',
-        owner: 'steven-ou',
-        repo: 'yt-link',
-    });
+    // Sets up the auto-updater to check for releases on the specified GitHub repository.
+    autoUpdater.setFeedURL({ provider: 'github', owner: 'steven-ou', repo: 'yt-link' });
     
     // --- Auto-Updater Event Listeners ---
-    // These listeners send messages to the UI (renderer process) when an update event occurs.
-    autoUpdater.on('update-available', () => {
-        mainWindow.webContents.send('update-status', 'Update available.');
-    });
-    autoUpdater.on('update-downloaded', () => {
-        mainWindow.webContents.send('update-status', 'Update downloaded. Restart the app to install.');
-    });
-    autoUpdater.on('checking-for-update', () => {
-        mainWindow.webContents.send('update-status', 'Checking for updates...');
-    });
-    autoUpdater.on('error', (err) => {
-        mainWindow.webContents.send('update-status', `Update error: ${err.message}`);
-    });
-    autoUpdater.on('download-progress', (progressObj) => {
-        mainWindow.webContents.send('update-download-progress', progressObj);
-    });
+    // These listeners send messages to the UI (renderer process) via IPC when an update event occurs.
+    autoUpdater.on('update-available', () => mainWindow.webContents.send('update-status', 'Update available.'));
+    autoUpdater.on('update-downloaded', () => mainWindow.webContents.send('update-status', 'Update downloaded. Click restart to install.'));
+    autoUpdater.on('checking-for-update', () => mainWindow.webContents.send('update-status', 'Checking for updates...'));
+    autoUpdater.on('error', (err) => mainWindow.webContents.send('update-status', `Update error: ${err.message}`));
+    autoUpdater.on('download-progress', (p) => mainWindow.webContents.send('update-download-progress', p));
 
     // --- LOADING UI CONTENT ---
-    // Load the correct content based on whether the app is in development or production.
+    // This logic determines what content to load into the window based on the environment.
     if (isDev) {
-        // In development, load the Next.js development server URL.
+        // In development, load the Next.js development server URL, which supports hot-reloading.
         mainWindow.loadURL('http://localhost:3000');
-        // Automatically open the Chrome DevTools for debugging.
+        // Automatically open the Chrome DevTools for easy debugging during development.
         mainWindow.webContents.openDevTools();
     } else {
-        // In production, load the static HTML file generated by 'next export'.
-        const indexPath = path.join(__dirname, 'out', 'index.html');
-        mainWindow.loadFile(indexPath);
+        // In production, load the static HTML file generated by `next export`.
+        // **FIX:** Using `loadURL` with the `file://` protocol is more reliable for local files than `loadFile`.
+        const startUrl = url.format({
+            pathname: path.join(__dirname, 'out/index.html'),
+            protocol: 'file:',
+            slashes: true
+        });
+        mainWindow.loadURL(startUrl);
     }
     
-    // Check for updates once the window is ready to be shown.
+    // Once the window is fully rendered and ready, check for updates (in production only).
     mainWindow.once('ready-to-show', () => {
-      autoUpdater.checkForUpdatesAndNotify();
+      if (!isDev) {
+        autoUpdater.checkForUpdatesAndNotify();
+      }
     });
 
     // Event listener for when the window is closed.
     mainWindow.on('closed', () => {
-        // Dereference the window object to allow for garbage collection.
+        // Dereference the window object. This is important for memory management and allows the object to be garbage collected.
         mainWindow = null;
     });
 }
@@ -124,100 +124,108 @@ function createWindow() {
 // --- IPC COMMUNICATION BRIDGE ---
 /**
  * A generic handler to securely forward API requests from the renderer process (UI) 
- * to the Python backend via HTTP. This acts as a bridge.
- * @param {string} endpoint - The API endpoint to call on the Python server (e.g., 'start-single-mp3-job').
- * @param {object} body - The JSON data to send with the request.
- * @returns {Promise<object>} - A promise that resolves with the JSON response from the Python server.
+ * to the Python backend via an HTTP request.
  */
 async function forwardToPython(endpoint, body) {
+    // Construct the full URL for the Python backend endpoint.
     const url = `http://127.0.0.1:8080/${endpoint}`;
-    console.log(`[main.js] Forwarding to Python: POST to ${url}`);
-    console.log(`[main.js] Body: ${JSON.stringify(body)}`);
-
+    console.log(`[Main->Python] POST to ${url} with body: ${JSON.stringify(body)}`);
     try {
-        // Make the HTTP POST request to the Python Flask server.
+        // Use node-fetch to make the HTTP POST request.
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         });
-
-        // Check if the request was successful.
+        // If the Python service returns an error status code, throw an error to be caught below.
         if (!response.ok) {
             const errorText = await response.text();
-            console.error(`[main.js] Python service returned an error. Status: ${response.status}, Body: ${errorText}`);
             throw new Error(`Python service error: ${errorText}`);
         }
-
-        // Parse the JSON response and return it.
-        const data = await response.json();
-        console.log('[main.js] Success response from Python:', data);
-        return data;
+        // If successful, parse the JSON response and return it to the renderer process.
+        return await response.json();
     } catch (error) {
-        // Catch any network or other errors during the fetch call.
-        console.error('[main.js] CRITICAL: Failed to communicate with Python backend.', error);
+        // Catch any network or other errors and log them.
+        console.error(`[Main->Python] CRITICAL ERROR:`, error);
+        // Return a structured error object to the renderer process so it can handle the failure gracefully.
         return { error: 'Failed to communicate with the backend service.' };
     }
 }
 
 // --- ELECTRON APP LIFECYCLE EVENTS ---
+// These `app.on` event handlers control the application's lifecycle.
 
-// This method will be called when Electron has finished initialization.
+// This method is called when Electron has finished initialization and is ready to create browser windows.
 app.on('ready', () => {
-    startPythonBackend(); // Start the backend server.
-    createWindow();       // Then create the application window.
+    startPythonBackend(); // Start the backend service first.
+    createWindow();       // Then create the main application window.
 });
 
-// Quit when all windows are closed, except on macOS.
+// This event fires when all windows have been closed.
 app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') { // On macOS, apps usually stay open in the dock.
-        app.quit();
-    }
+    // On macOS, it's common for applications to stay active until the user explicitly quits.
+    // On other platforms (Windows, Linux), we quit the app.
+    if (process.platform !== 'darwin') app.quit();
 });
 
-// Before the application quits, ensure the Python backend process is terminated.
+// This event fires just before the application begins to close its windows.
 app.on('before-quit', () => {
+    // It's crucial to terminate the child process to prevent it from becoming a "zombie" process.
     if (pythonProcess) {
         console.log('Killing Python backend process...');
         pythonProcess.kill();
     }
 });
 
-// On macOS, re-create a window if the dock icon is clicked and no windows are open.
+// On macOS, this event fires when the dock icon is clicked and there are no other windows open.
 app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
-    }
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
 // --- IPC HANDLERS ---
-// These handlers listen for messages from the renderer process (sent via the preload script).
-// They are the bridge between the UI and the main process logic.
+// These handlers listen for specific messages from the renderer process (sent via the preload script).
+// They define the API that the frontend can use to interact with the main process.
 
-// Handles the request to start a single MP3 download job.
-ipcMain.handle('start-single-mp3-job', (event, args) => {
-    return forwardToPython('start-single-mp3-job', args);
-});
+ipcMain.handle('start-single-mp3-job', (_, args) => forwardToPython('start-single-mp3-job', args));
+ipcMain.handle('start-playlist-zip-job', (_, args) => forwardToPython('start-playlist-zip-job', args));
+ipcMain.handle('start-combine-playlist-mp3-job', (_, args) => forwardToPython('start-combine-playlist-mp3-job', args));
 
-// Handles the request to start a playlist ZIP download job.
-ipcMain.handle('start-playlist-zip-job', (event, args) => {
-    return forwardToPython('start-playlist-zip-job', args);
-});
-
-// Handles the request to combine a playlist into a single MP3.
-ipcMain.handle('start-combine-playlist-mp3-job', (event, args) => {
-    return forwardToPython('start-combine-playlist-mp3-job', args);
-});
-
-// Handles requests from the UI to check the status of a specific job.
-ipcMain.handle('get-job-status', async (event, jobId) => {
+ipcMain.handle('get-job-status', async (_, jobId) => {
     try {
         const response = await fetch(`http://127.0.0.1:8080/job-status/${jobId}`);
-        const data = await response.json();
-        return data;
+        return await response.json();
     } catch (error) {
         console.error(`Error checking status for job ${jobId}:`, error);
         return { error: 'Failed to get job status.' };
+    }
+});
+
+// **NEW:** This handler manages the file download process.
+ipcMain.handle('save-file', async (event, jobInfo) => {
+    // Basic validation to ensure we have the necessary info from the renderer.
+    if (!jobInfo || !jobInfo.filepath || !jobInfo.filename) {
+        return { error: 'Invalid job information for saving file.' };
+    }
+
+    // Show a native "Save As..." dialog to the user, suggesting the original filename.
+    const { filePath } = await dialog.showSaveDialog(mainWindow, {
+        title: 'Save File',
+        defaultPath: jobInfo.filename,
+    });
+
+    // If the user cancels the save dialog, `filePath` will be null or undefined.
+    if (!filePath) {
+        return { success: false, reason: 'User cancelled save dialog.' };
+    }
+
+    // Use the `fs` module to copy the file from the temporary backend location to the user's chosen destination.
+    try {
+        fs.copyFileSync(jobInfo.filepath, filePath);
+        console.log(`File saved successfully to: ${filePath}`);
+        return { success: true, path: filePath };
+    } catch (error) {
+        console.error('Failed to save file:', error);
+        return { success: false, error: 'Failed to save file.' };
     }
 });
 
