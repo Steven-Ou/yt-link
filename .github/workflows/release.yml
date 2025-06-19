@@ -39,17 +39,15 @@ jobs:
         if: runner.os == 'macOS'
         working-directory: ./bin
         run: |
-          # Download yt-dlp directly as this link is stable
           curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o yt-dlp
-          
-          # Install ffmpeg using Homebrew for reliability
           brew install ffmpeg
-
-          # Copy the brew-installed ffmpeg executable to our local bin so it gets packaged
           cp $(which ffmpeg) .
-          
-          # Make sure both binaries are executable
           chmod +x yt-dlp ffmpeg
+          
+          # Codesign the binaries to avoid macOS security issues
+          echo "Codesigning binaries for macOS..."
+          codesign --force --deep --sign - yt-dlp
+          codesign --force --deep --sign - ffmpeg
       
       - name: Download Dependencies (Windows)
         if: runner.os == 'Windows'
@@ -74,9 +72,10 @@ jobs:
       - name: Build and Package Application
         run: npm run build
         env:
+          # Required for ad-hoc codesigning on macOS
+          CSC_IDENTITY_AUTO_DISCOVERY: false
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
-      # ---- CORRECTED STEP to allow updating releases ----
       - name: Upload Artifacts to Release
         uses: ncipollo/release-action@v1
         with:
