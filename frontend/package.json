@@ -13,7 +13,14 @@
     "electron:build": "npm run build && electron-builder"
   },
   "dependencies": {
+    "@emotion/react": "^11.11.4",
+    "@emotion/styled": "^11.11.5",
+    "@mui/icons-material": "^5.15.20",
+    "@mui/material": "^5.15.20",
+    "electron-is-dev": "^3.0.1",
+    "electron-updater": "^6.2.1",
     "next": "14.2.4",
+    "node-fetch": "^2.7.0",
     "react": "^18",
     "react-dom": "^18"
   },
@@ -34,6 +41,16 @@
       "out/**/*",
       "main.js",
       "preload.js"
+    ],
+    "extraResources": [
+      {
+        "from": "../service",
+        "to": "service"
+      },
+      {
+        "from": "../backend",
+        "to": "backend"
+      }
     ],
     "directories": {
       "buildResources": "build"
