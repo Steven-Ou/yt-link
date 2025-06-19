@@ -112,6 +112,58 @@ def create_job(target_function, *args):
 
 # --- Target Functions for Background Jobs ---
 
+def do_download_single_mp3(job_id, url, download_path):
+    """Job: Downloads a single video to an MP3 file."""
+    jobs[job_id]['status'] = 'running'
+    jobs[job_id]['message'] = 'Preparing to download...'
+
+    # We download directly to the final destination
+    os.makedirs(download_path, exist_ok=True)
+    
+    def progress_hook(d):
+        if d['status'] == 'downloading':
+            jobs[job_id]['progress'] = int(d['_percent_str'].strip('% '))
+            jobs[job_id]['message'] = f"Downloading..."
+        elif d['status'] == 'finished':
+            jobs[job_id]['message'] = f"Finished downloading, now converting to MP3..."
+            # At this point, yt-dlp has downloaded the file and will start postprocessing (ffmpeg)
+            # We find the downloaded file to set as the job result
+            # Note: This is a simple approach; a more robust solution would parse ydl output
+            for file in os.listdir(download_path):
+                 if file.endswith('.mp3'):
+                     jobs[job_id]['result'] = os.path.join(download_path, file)
+                     break
+
+
+    # Get options for a single file (playlist=False)
+    ydl_opts = get_ydl_options(download_path, playlist=False)
+    ydl_opts['progress_hooks'] = [progress_hook]
+
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        
+        # After download, find the final MP3 file
+        final_file_path = None
+        for file in os.listdir(download_path):
+            if file.endswith('.mp3'):
+                # We assume the first MP3 found is the one we just downloaded
+                final_file_path = os.path.join(download_path, file)
+                break
+        
+        if final_file_path:
+            jobs[job_id]['status'] = 'completed'
+            jobs[job_id]['message'] = 'MP3 created successfully.'
+            jobs[job_id]['result'] = final_file_path
+        else:
+            raise Exception("Could not find the final MP3 file after download.")
+
+    except Exception as e:
+        logging.error(f"Error in job {job_id}: {e}")
+        jobs[job_id]['status'] = 'failed'
+        jobs[job_id]['message'] = str(e)
+
+
 def do_download_and_zip_playlist(job_id, url, download_path):
     """Job: Downloads all videos in a playlist to MP3 and zips them."""
     jobs[job_id]['status'] = 'running'
@@ -123,7 +175,7 @@ def do_download_and_zip_playlist(job_id, url, download_path):
     def progress_hook(d):
         if d['status'] == 'downloading':
             jobs[job_id]['progress'] = int(d['_percent_str'].strip('% '))
-            jobs[job_id]['message'] = f"Downloading: {d['filename']}"
+            jobs[job_id]['message'] = f"Downloading: {d.get('filename', '')}"
         elif d['status'] == 'finished':
             jobs[job_id]['message'] = f"Finished downloading, now converting..."
 
@@ -139,10 +191,10 @@ def do_download_and_zip_playlist(job_id, url, download_path):
         
         playlist_title = "playlist"
         try:
-            info = YoutubeDL({'quiet': True, 'extract_flat': True}).extract_info(url, download=False)
-            playlist_title = info.get('title', 'playlist').replace(" ", "_")
-        except Exception:
-            pass # Use default title on failure
+            info_dict = YoutubeDL({'quiet': True, 'extract_flat': True, 'force_generic_extractor': True}).extract_info(url, download=False)
+            playlist_title = info_dict.get('title', 'playlist').replace(" ", "_")
+        except Exception as e:
+            logging.warning(f"Could not get playlist title: {e}")
 
         zip_filename = f"{playlist_title}.zip"
         zip_filepath = os.path.join(download_path, zip_filename)
@@ -165,6 +217,17 @@ def do_download_and_zip_playlist(job_id, url, download_path):
 
 
 # --- Flask API Endpoints ---
+
+@app.route('/api/start-single-mp3-job', methods=['POST'])
+def start_single_mp3_job():
+    data = request.json
+    url = data.get('url')
+    download_path = data.get('downloadPath')
+    if not url or not download_path:
+        return jsonify({'error': 'Missing URL or downloadPath'}), 400
+    
+    job_id = create_job(do_download_single_mp3, url, download_path)
+    return jsonify({'jobId': job_id})
 
 @app.route('/api/start-playlist-zip-job', methods=['POST'])
 def start_playlist_zip_job():
@@ -196,7 +259,11 @@ def download_result(job_id):
 
     @after_this_request
     def cleanup(response):
-        cleanup_queue.put(file_path)
+        # For single MP3s, we don't want to delete them right away.
+        # The user might want to open the containing folder.
+        # For zip files, we can clean them up.
+        if file_path.endswith('.zip'):
+            cleanup_queue.put(file_path)
         return response
 
     return send_file(file_path, as_attachment=True)
@@ -205,7 +272,7 @@ def cleanup_worker():
     """Worker thread to delete files after they have been sent."""
     while True:
         try:
-            filepath = cleanup_queue.get()
+            filepath = cleanup_queue.get(timeout=1) # Use a timeout to avoid blocking forever
             os.remove(filepath)
             logging.info(f"Cleaned up file: {filepath}")
         except Empty:
@@ -224,4 +291,3 @@ if __name__ == '__main__':
     # Run the Flask app
     logging.info(f"Starting Flask server on port {APP_PORT}...")
     app.run(port=APP_PORT)
-
