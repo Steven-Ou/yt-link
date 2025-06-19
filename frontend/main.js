@@ -15,7 +15,7 @@ ipc.config.silent = true;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 505, // --- SETTING WIDTH ---
+    width: 650, // --- SETTING WIDTH ---
     height: 730, // --- SETTING HEIGHT ---
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
