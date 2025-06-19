@@ -45,7 +45,6 @@ const customTheme = createTheme({
 
 // --- WELCOME PAGE COMPONENT ---
 function WelcomePage({ isElectron }) {
-    // --- CORRECTED --- Using a more recent release that should be functional.
     const MacUtube = "https://github.com/Steven-Ou/yt-link/releases/latest"; 
     const WindUtube = "https://github.com/Steven-Ou/yt-link/releases/latest";
     return (
@@ -53,36 +52,22 @@ function WelcomePage({ isElectron }) {
             {!isElectron && (
                 <Alert severity="warning" sx={{ mb: 4, textAlign: 'left' }}>
                     <AlertTitle>Web Version Notice</AlertTitle>
-                    This web interface is for demonstration only. The features in the sidebar will not work.
-                    For full functionality, please <strong>download the desktop application below.</strong>
+                    This web interface is for demonstration only. For full functionality, please <strong>download the desktop application.</strong>
                 </Alert>
             )}
-
-            <Typography variant="h3" component="h1" gutterBottom fontWeight="bold">
-                YT Link Converter!
-            </Typography>
-            <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
-                Welcome!!
-            </Typography>
-            
+            <Typography variant="h3" component="h1" gutterBottom fontWeight="bold">YT Link Converter!</Typography>
+            <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>Welcome!!</Typography>
             <Typography variant="body1" color="text.secondary" sx={{ mt: 2, mb: 4, maxWidth: '600px', mx: 'auto' }}>
-                Please download the apps if you're on the Website! Website won't work. Please trust the app when you download it. Select a Download Option. Follow the direction. Downloads will be processed in the background. When the download finishes, make sure to click on the green button to download the file! That's it!
+                Please download the app if you're on the Website! Website won't work. Select a Download Option and follow the directions. When the download finishes, click on the green button to save the file! That's it!
             </Typography>
-            
             <Paper elevation={0} variant="outlined" sx={{ mt: 4, p: { xs: 2, sm: 4 }, borderRadius: 4, backgroundColor: '#fafafa' }}>
-                <Typography variant="h5" component="h2" gutterBottom align="center" fontWeight="bold">
-                    Download the Desktop App
-                </Typography>
+                <Typography variant="h5" component="h2" gutterBottom align="center" fontWeight="bold">Download the Desktop App</Typography>
                 <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 4, maxWidth: '500px', mx: 'auto' }}>
-                    Get the full-featured desktop application for a seamless, local experience. Includes background processing and auto-updates. (For Windows users, make sure to extract the zip after downloading.)
+                    Get the full-featured desktop application for a seamless, local experience. (For Windows users, make sure to extract the zip after downloading.)
                 </Typography>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center">
-                    <Button variant="contained" color="secondary" size="large" startIcon={<AppleIcon />} href={MacUtube} sx={{ textTransform: 'none', fontWeight: 'bold' }}>
-                        Download for macOS
-                    </Button>
-                    <Button variant="contained" color="primary" size="large" startIcon={<WindowsIcon />} href={WindUtube} sx={{ textTransform: 'none', fontWeight: 'bold' }}>
-                        Download for Windows
-                    </Button>
+                    <Button variant="contained" color="secondary" size="large" startIcon={<AppleIcon />} href={MacUtube} sx={{ textTransform: 'none', fontWeight: 'bold' }}>Download for macOS</Button>
+                    <Button variant="contained" color="primary" size="large" startIcon={<WindowsIcon />} href={WindUtube} sx={{ textTransform: 'none', fontWeight: 'bold' }}>Download for Windows</Button>
                 </Stack>
             </Paper>
         </Container>
@@ -101,7 +86,6 @@ export default function Home() {
     const [isElectron, setIsElectron] = useState(false);
 
     useEffect(() => {
-        // --- CORRECTED --- This now correctly checks for window.electronAPI.
         const runningInElectron = !!(window && window.electronAPI);
         setIsElectron(runningInElectron);
     }, []);
@@ -113,20 +97,15 @@ export default function Home() {
     };
     const isAnyJobLoading = () => Object.values(activeJobs).some(job => job.status === 'queued' || job.status?.startsWith('processing'));
 
-    // --- CORRECTED --- This function now calls the specific job functions exposed on window.electronAPI.
     const startJob = async (jobType, startFunction, payload, operationName) => {
         if (!isElectron) {
-            alert("This feature is only available in the desktop application. Please download it from the Welcome page.");
+            alert("This feature is only available in the desktop application.");
             return;
         }
-        
         setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...`, type: jobType } }));
-        
         try {
             const result = await startFunction(payload);
-            
             if (result.error) { throw new Error(result.error); }
-
             if (result.job_id) {
                 setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], id: result.job_id, status: 'queued', message: 'Job started...' } }));
                 pollJobStatus(result.job_id, jobType);
@@ -136,23 +115,18 @@ export default function Home() {
         }
     };
 
-    // --- CORRECTED --- This function now correctly calls getJobStatus on the electronAPI object.
     const pollJobStatus = (jobId, jobType) => {
         if (pollingIntervals.current[jobId]) { clearInterval(pollingIntervals.current[jobId]); }
-        
         pollingIntervals.current[jobId] = setInterval(async () => {
             if (!isElectron) { clearInterval(pollingIntervals.current[jobId]); return; }
             try {
                 const data = await window.electronAPI.getJobStatus(jobId);
-                
                 if (data.error) { throw new Error(data.error); }
-
                 setActiveJobs(prev => {
                     const currentJob = prev[jobType];
                     if (currentJob && currentJob.id === jobId) { return { ...prev, [jobType]: { ...currentJob, ...data } }; }
                     return prev;
                 });
-
                 if (data.status === 'completed' || data.status === 'failed' || data.status === 'not_found') {
                     clearInterval(pollingIntervals.current[jobId]);
                     delete pollingIntervals.current[jobId];
@@ -164,7 +138,6 @@ export default function Home() {
                      return prev;
                 });
                 clearInterval(pollingIntervals.current[jobId]);
-                delete pollingIntervals.current[jobId];
             }
         }, 2000);
     };
@@ -174,16 +147,39 @@ export default function Home() {
         return () => { Object.values(intervals).forEach(clearInterval); };
     }, []);
 
-    // --- Button Click Handlers ---
-    // --- CORRECTED --- These now pass the correct API function to the startJob helper.
-    const downloadMP3 = () => { if (!url) { alert('Please enter a YouTube video URL.'); return; } startJob('singleMp3', window.electronAPI.startSingleMp3Job, { url, cookieFileContent: cookieData.trim() || null }, 'single MP3 download'); };
-    const downloadPlaylistZip = () => { if (!playlistUrl) { alert('Please enter a YouTube playlist URL for Zip download.'); return; } startJob('playlistZip', window.electronAPI.startPlaylistZipJob, { url: playlistUrl, cookieFileContent: cookieData.trim() || null }, 'playlist zip'); };
-    const downloadCombinedPlaylistMp3 = () => { if (!combineVideoUrl) { alert('Please enter a YouTube playlist URL to combine into a single MP3.'); return; } startJob('combineMp3', window.electronAPI.startCombinePlaylistMp3Job, { url: combineVideoUrl, cookieFileContent: cookieData.trim() || null }, 'combine playlist to MP3'); };
+    // --- Button Click Handlers (CORRECTED) ---
+    const handleJobRequest = async (urlValue, jobType, startFunction, operationName, urlKey = 'url') => {
+        if (!urlValue) {
+            alert(`Please enter a YouTube URL for: ${operationName}`);
+            return;
+        }
+        if (!isElectron) {
+            alert("This feature is only available in the desktop application.");
+            return;
+        }
+        // First, ask the user to select a directory to save the file.
+        const outputDir = await window.electronAPI.selectDirectory();
+        if (!outputDir) {
+            alert("Directory selection was cancelled.");
+            return;
+        }
+        // Then, construct the payload with all required info.
+        const payload = {
+            [urlKey]: urlValue,
+            outputDir,
+            cookieFileContent: cookieData.trim() || null
+        };
+        // Finally, start the job.
+        startJob(jobType, startFunction, payload, operationName);
+    };
+
+    const downloadMP3 = () => handleJobRequest(url, 'singleMp3', window.electronAPI.startSingleMp3Job, 'Single MP3 Download');
+    const downloadPlaylistZip = () => handleJobRequest(playlistUrl, 'playlistZip', window.electronAPI.startPlaylistZipJob, 'Playlist Zip Download', 'playlistUrl');
+    const downloadCombinedPlaylistMp3 = () => handleJobRequest(combineVideoUrl, 'combineMp3', window.electronAPI.startCombinePlaylistMp3Job, 'Combine Playlist to MP3', 'playlistUrl');
     
     // --- UI Sub-components ---
     const CookieInputField = () => ( <TextField label="Paste YouTube Cookies Here (Optional)" helperText="Needed for age-restricted/private videos." variant='outlined' fullWidth multiline rows={4} value={cookieData} onChange={(e) => setCookieData(e.target.value)} style={{marginBottom: 16}} placeholder="Starts with # Netscape HTTP Cookie File..." disabled={isAnyJobLoading()} InputProps={{ startAdornment: ( <ListItemIcon sx={{minWidth: '40px', color: 'action.active', mr: 1}}><CookieIcon /></ListItemIcon> ), }} /> );
     
-    // --- CORRECTED --- JobStatusDisplay now has a working download button.
     const JobStatusDisplay = ({ jobInfo }) => {
         if (!jobInfo || !jobInfo.status || jobInfo.status === 'idle') return null;
         let icon = <HourglassEmptyIcon />; let color = "text.secondary"; let showProgressBar = false;
@@ -193,7 +189,6 @@ export default function Home() {
         
         const handleDownloadClick = async () => {
             if (!isElectron) { alert("Download not available in web version."); return; }
-            
             const result = await window.electronAPI.saveCompletedFile(jobInfo.id);
             if (result.error) {
                 alert(`Download failed: ${result.error}`);
