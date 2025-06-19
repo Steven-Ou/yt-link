@@ -1,28 +1,45 @@
 {
-  "name": "frontend",
+  "name": "yt-link-frontend",
   "version": "0.1.0",
   "private": true,
+  "main": "main.js",
+  "homepage": "./",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron:build": "npm run build && electron-builder"
   },
   "dependencies": {
-    "next": "14.2.3",
+    "next": "14.2.4",
     "react": "^18",
-    "react-dom": "^18",
-    "@mui/material": "^5.15.20",
-    "@mui/icons-material": "^5.15.20",
-    "@emotion/react": "^11.11.4",
-    "@emotion/styled": "^11.11.5",
-    "axios": "^1.6.8"
+    "react-dom": "^18"
   },
   "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^31.0.2",
+    "electron-builder": "^24.13.3",
     "eslint": "^8",
-    "eslint-config-next": "14.2.3",
+    "eslint-config-next": "14.2.4",
+    "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "postcss": "^8.4.38",
-    "autoprefixer": "^10.4.19"
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.steven-ou.yt-link",
+    "productName": "YT Link",
+    "files": [
+      "out/**/*",
+      "main.js",
+      "preload.js"
+    ],
+    "directories": {
+      "buildResources": "build"
+    },
+    "mac": {
+      "target": "dmg"
+    }
   }
 }
