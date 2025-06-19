@@ -31,10 +31,11 @@ jobs:
         with:
           python-version: '3.11'
 
+      # ---- CORRECTED STEP for cross-platform compatibility ----
       - name: Create Binaries Directory
         run: mkdir -p bin
+        shell: bash
 
-      # ---- CORRECTED STEP for macOS using Homebrew ----
       - name: Download Dependencies (macOS)
         if: runner.os == 'macOS'
         working-directory: ./bin
@@ -51,7 +52,6 @@ jobs:
           # Make sure both binaries are executable
           chmod +x yt-dlp ffmpeg
       
-      # ---- Windows step remains the same ----
       - name: Download Dependencies (Windows)
         if: runner.os == 'Windows'
         working-directory: ./bin
