@@ -23,7 +23,6 @@
 
 
 # production
-/build
 
 # misc
 .DS_Store
