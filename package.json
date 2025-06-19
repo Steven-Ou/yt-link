@@ -38,6 +38,10 @@
       {
         "from": "service/dist",
         "to": "backend"
+      },
+      {
+        "from": "bin",
+        "to": "bin"
       }
     ],
     "win": {
