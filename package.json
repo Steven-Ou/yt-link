@@ -39,11 +39,13 @@
       "frontend/out/**/*",
       "frontend/main.js",
       "frontend/preload.js",
-      "service/**/*",
       "package.json"
     ],
-    "asarUnpack": [
-      "service/**/*"
+    "extraResources": [
+      {
+        "from": "service/dist/yt-link-backend",
+        "to": "backend"
+      }
     ],
     "win": {
       "target": "zip"
