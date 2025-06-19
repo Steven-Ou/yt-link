@@ -45,11 +45,11 @@ const customTheme = createTheme({
 
 // --- WELCOME PAGE COMPONENT ---
 function WelcomePage({ isElectron }) {
-    const MacUtube = "https://github.com/Steven-Ou/yt-link/releases/download/v0.1.0/YT-Link-0.1.0-arm64.dmg"; 
-    const WindUtube = "https://github.com/Steven-Ou/yt-link/releases/download/v0.1.0/YT-Link-0.1.0-win.zip";
+    // --- CORRECTED --- Using a more recent release that should be functional.
+    const MacUtube = "https://github.com/Steven-Ou/yt-link/releases/latest"; 
+    const WindUtube = "https://github.com/Steven-Ou/yt-link/releases/latest";
     return (
         <Container maxWidth="md" sx={{ textAlign: 'center' }}>
-            {/* The warning is shown only if the app is NOT running in Electron */}
             {!isElectron && (
                 <Alert severity="warning" sx={{ mb: 4, textAlign: 'left' }}>
                     <AlertTitle>Web Version Notice</AlertTitle>
@@ -100,13 +100,12 @@ export default function Home() {
     const pollingIntervals = useRef({});
     const [isElectron, setIsElectron] = useState(false);
 
-    // CORRECTED: This hook now correctly checks for window.electronAPI.
     useEffect(() => {
-        const runningInElectron = !!window.electronAPI;
+        // --- CORRECTED --- This now correctly checks for window.electronAPI.
+        const runningInElectron = !!(window && window.electronAPI);
         setIsElectron(runningInElectron);
     }, []);
     
-    // Helper functions to check job status
     const getJobStatus = (jobType) => activeJobs[jobType]?.status;
     const isLoading = (jobType) => {
         const status = getJobStatus(jobType);
@@ -114,7 +113,7 @@ export default function Home() {
     };
     const isAnyJobLoading = () => Object.values(activeJobs).some(job => job.status === 'queued' || job.status?.startsWith('processing'));
 
-    // CORRECTED: This function now calls the specific job functions exposed on window.electronAPI.
+    // --- CORRECTED --- This function now calls the specific job functions exposed on window.electronAPI.
     const startJob = async (jobType, startFunction, payload, operationName) => {
         if (!isElectron) {
             alert("This feature is only available in the desktop application. Please download it from the Welcome page.");
@@ -124,21 +123,20 @@ export default function Home() {
         setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...`, type: jobType } }));
         
         try {
-            // Use the specific function passed in (e.g., window.electronAPI.startSingleMp3Job)
             const result = await startFunction(payload);
             
             if (result.error) { throw new Error(result.error); }
 
-            if (result.jobId) {
-                setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], id: result.jobId, status: 'queued', message: 'Job started...' } }));
-                pollJobStatus(result.jobId, jobType);
+            if (result.job_id) {
+                setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], id: result.job_id, status: 'queued', message: 'Job started...' } }));
+                pollJobStatus(result.job_id, jobType);
             } else { throw new Error("Failed to get Job ID from server."); }
         } catch (error) {
             setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], status: 'failed', message: `Error: ${error.message}` } }));
         }
     };
 
-    // CORRECTED: This function now correctly calls getJobStatus on the electronAPI object.
+    // --- CORRECTED --- This function now correctly calls getJobStatus on the electronAPI object.
     const pollJobStatus = (jobId, jobType) => {
         if (pollingIntervals.current[jobId]) { clearInterval(pollingIntervals.current[jobId]); }
         
@@ -177,14 +175,15 @@ export default function Home() {
     }, []);
 
     // --- Button Click Handlers ---
-    // CORRECTED: These now pass the correct API function to the startJob helper.
+    // --- CORRECTED --- These now pass the correct API function to the startJob helper.
     const downloadMP3 = () => { if (!url) { alert('Please enter a YouTube video URL.'); return; } startJob('singleMp3', window.electronAPI.startSingleMp3Job, { url, cookieFileContent: cookieData.trim() || null }, 'single MP3 download'); };
-    const downloadPlaylistZip = () => { if (!playlistUrl) { alert('Please enter a YouTube playlist URL for Zip download.'); return; } startJob('playlistZip', window.electronAPI.startPlaylistZipJob, { playlistUrl, cookieFileContent: cookieData.trim() || null }, 'playlist zip'); };
-    const downloadCombinedPlaylistMp3 = () => { if (!combineVideoUrl) { alert('Please enter a YouTube playlist URL to combine into a single MP3.'); return; } startJob('combineMp3', window.electronAPI.startCombinePlaylistMp3Job, { playlistUrl: combineVideoUrl, cookieFileContent: cookieData.trim() || null }, 'combine playlist to MP3'); };
+    const downloadPlaylistZip = () => { if (!playlistUrl) { alert('Please enter a YouTube playlist URL for Zip download.'); return; } startJob('playlistZip', window.electronAPI.startPlaylistZipJob, { url: playlistUrl, cookieFileContent: cookieData.trim() || null }, 'playlist zip'); };
+    const downloadCombinedPlaylistMp3 = () => { if (!combineVideoUrl) { alert('Please enter a YouTube playlist URL to combine into a single MP3.'); return; } startJob('combineMp3', window.electronAPI.startCombinePlaylistMp3Job, { url: combineVideoUrl, cookieFileContent: cookieData.trim() || null }, 'combine playlist to MP3'); };
     
     // --- UI Sub-components ---
     const CookieInputField = () => ( <TextField label="Paste YouTube Cookies Here (Optional)" helperText="Needed for age-restricted/private videos." variant='outlined' fullWidth multiline rows={4} value={cookieData} onChange={(e) => setCookieData(e.target.value)} style={{marginBottom: 16}} placeholder="Starts with # Netscape HTTP Cookie File..." disabled={isAnyJobLoading()} InputProps={{ startAdornment: ( <ListItemIcon sx={{minWidth: '40px', color: 'action.active', mr: 1}}><CookieIcon /></ListItemIcon> ), }} /> );
     
+    // --- CORRECTED --- JobStatusDisplay now has a working download button.
     const JobStatusDisplay = ({ jobInfo }) => {
         if (!jobInfo || !jobInfo.status || jobInfo.status === 'idle') return null;
         let icon = <HourglassEmptyIcon />; let color = "text.secondary"; let showProgressBar = false;
@@ -192,15 +191,18 @@ export default function Home() {
         else if (jobInfo.status === 'failed') { icon = <ErrorOutlineIcon color="error" />; color = "error.main"; }
         else if (jobInfo.status === 'queued' || jobInfo.status?.startsWith('processing')) { icon = <CircularProgress size={20} sx={{ mr: 1}} color="inherit" />; color = "info.main"; showProgressBar = true; }
         
-        // This is a special case for the Electron app. We can't use a direct URL.
-        // Instead, we'd need another IPC call to handle the download, e.g., by saving it to a user-selected location.
-        // For now, we'll just show the filename. A full implementation would need a 'save-file' IPC handler.
-        const handleDownloadClick = () => {
-            // This is a placeholder for a more robust download solution
-            alert(`In a real app, this would trigger a download for: ${jobInfo.filename}. For now, the file is in a temporary folder managed by the backend.`);
+        const handleDownloadClick = async () => {
+            if (!isElectron) { alert("Download not available in web version."); return; }
+            
+            const result = await window.electronAPI.saveCompletedFile(jobInfo.id);
+            if (result.error) {
+                alert(`Download failed: ${result.error}`);
+            } else {
+                alert(`File saved to: ${result.path}`);
+            }
         };
         
-        return ( <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}><Typography variant="subtitle1" sx={{display: 'flex', alignItems: 'center', color: color}}>{icon} <Box component="span" sx={{ml:1}}>{jobInfo.message || `Status: ${jobInfo.status}`}</Box></Typography>{showProgressBar && <LinearProgress color="info" sx={{mt:1, mb:1}}/>} {jobInfo.status === 'completed' && jobInfo.filename && (<Button variant="contained" color="success" onClick={handleDownloadClick} sx={{ mt: 1 }}>Download Ready: {jobInfo.filename}</Button>)}</Box> );
+        return ( <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}><Typography variant="subtitle1" sx={{display: 'flex', alignItems: 'center', color: color}}>{icon} <Box component="span" sx={{ml:1}}>{jobInfo.message || `Status: ${jobInfo.status}`}</Box></Typography>{showProgressBar && <LinearProgress color="info" sx={{mt:1, mb:1}}/>} {jobInfo.status === 'completed' && jobInfo.id && (<Button variant="contained" color="success" onClick={handleDownloadClick} sx={{ mt: 1 }}>Download Ready: Click to Save</Button>)}</Box> );
     };
 
     const [expandedDownloads, setExpandedDownloads] = useState(true);
