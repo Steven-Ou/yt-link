@@ -1,32 +1,23 @@
 {
   "name": "yt-link",
-  "version": "0.1.0",
-  "description": "Cross-platform application to download and manage your favorite videos.",
+  "version": "1.0.0",
+  "description": "An application to download YouTube videos as MP3s, either individually or as a whole playlist.",
   "main": "frontend/main.js",
-  "homepage": "./",
   "scripts": {
     "start": "electron .",
+    "build:python": "pyinstaller service/app.py --name yt-link-backend --onefile --distpath service/dist --workpath service/build --noconfirm",
     "start:frontend": "npm run dev --prefix frontend",
-    "build": "npm run build:frontend && npm run dist",
+    "build": "npm run build:python && npm run build:frontend && npm run dist",
     "build:backend": "npm install --prefix backend",
     "build:frontend": "npm install --prefix frontend && npm run build --prefix frontend",
     "dist": "electron-builder"
   },
-  "keywords": [
-    "youtube",
-    "downloader",
-    "electron"
-  ],
+  "keywords": [],
   "author": "Steven Ou",
-  "license": "MIT",
+  "license": "ISC",
   "devDependencies": {
-    "electron": "^28.2.3",
-    "electron-builder": "^24.13.3",
-    "electron-reloader": "^1.2.3"
-  },
-  "dependencies": {
-    "electron-updater": "^6.6.2",
-    "node-fetch": "^2.7.0"
+    "electron": "^31.0.1",
+    "electron-builder": "^24.13.3"
   },
   "build": {
     "appId": "com.steven.ytlink",
@@ -53,5 +44,10 @@
     "mac": {
       "target": "dmg"
     }
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "express": "^4.19.2",
+    "node-ipc": "^11.1.0"
   }
 }
