@@ -62,7 +62,6 @@ jobs:
           rm -r ffmpeg-*
           rm ffmpeg.zip
 
-      # ---- CORRECTED STEP to install pyinstaller ----
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
@@ -77,8 +76,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
+      # ---- CORRECTED STEP to allow updating releases ----
       - name: Upload Artifacts to Release
         uses: ncipollo/release-action@v1
         with:
           artifacts: "dist/*"
           token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
