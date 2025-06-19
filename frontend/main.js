@@ -126,8 +126,62 @@ app.on('activate', () => {
 
 // --- Inter-Process Communication (IPC) ---
 
-// Sets up an IPC handler that the renderer process can invoke to get the backend URL.
+/**
+ * A generic and secure handler to forward API requests from the UI to the Python backend.
+ * @param {string} endpoint - The API endpoint on the Python server (e.g., 'start-single-mp3-job').
+ * @param {object} body - The JSON payload to send.
+ * @returns {Promise<object>} - The JSON response from the Python server or a structured error object.
+ */
+async function forwardToPython(endpoint, body) {
+    const url = `http://127.0.0.1:5001/${endpoint}`;
+    try {
+        const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!response.ok) throw new Error(`Python service error: ${await response.text()}`);
+        return await response.json();
+    } catch (error) {
+        console.error(`[Main->Python] CRITICAL ERROR:`, error);
+        return { error: 'Failed to communicate with the backend service.' };
+    }
+}
+
+// Handlers for the various job types. These listen for messages from the frontend,
+// call the generic forwarder function, and send the results back.
+ipcMain.handle('start-single-mp3-job', (_, args) => forwardToPython('start-single-mp3-job', args));
+ipcMain.handle('start-playlist-zip-job', (_, args) => forwardToPython('start-playlist-zip-job', args));
+ipcMain.handle('start-combine-playlist-mp3-job', (_, args) => forwardToPython('start-combine-playlist-mp3-job', args));
+
+// This handler fetches the status of a specific job from the Python backend.
+ipcMain.handle('get-job-status', async (_, jobId) => {
+    try {
+        const response = await fetch(`http://127.0.0.1:5001/job-status/${jobId}`);
+        if (!response.ok) throw new Error(`Failed to get job status: ${response.statusText}`);
+        return await response.json();
+    } catch (error) {
+        console.error(`[Main->Python] Status Check Error:`, error);
+        return { error: 'Failed to get job status.' };
+    }
+});
+
+// This handler was in your more advanced script. I'm including it here because it's very useful.
+// It opens a native "Save As..." dialog for the user.
+ipcMain.handle('save-file', async (event, jobInfo) => {
+    if (!jobInfo || !jobInfo.filepath || !jobInfo.filename) {
+        return { error: 'Invalid job information provided.' };
+    }
+    const { filePath } = await dialog.showSaveDialog(mainWindow, { defaultPath: jobInfo.filename });
+    if (!filePath) {
+        return { success: false, reason: 'User cancelled save.' };
+    }
+    try {
+        fs.copyFileSync(jobInfo.filepath, filePath);
+        return { success: true, path: filePath };
+    } catch (error) {
+        console.error('Failed to save file:', error);
+        return { success: false, error: 'Failed to save file.' };
+    }
+});
+
+// Sets up a basic IPC handler that the renderer process can invoke to get the backend URL.
 ipcMain.handle('get-backend-url', async () => {
-  // This provides a consistent way for the frontend to know where to send API requests.
   return 'http://127.0.0.1:5001';
 });
