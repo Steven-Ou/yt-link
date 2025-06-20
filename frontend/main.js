@@ -1,34 +1,40 @@
-// --- Electron and Node.js Modules ---
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
-// const isDev = require('electron-is-dev'); // REMOVED: This was causing the crash.
 
-// --- Global Configuration ---
 const BACKEND_PORT = 8080;
 let backendProcess = null;
 
-/**
- * Starts the Python backend executable with extensive logging.
- */
+// --- IPC Handlers ---
+// Moved handlers to the top level to ensure they are only registered ONCE.
+// This fixes the "Attempted to register a second handler" crash.
+ipcMain.handle('select-dir', async () => {
+  // We need a reference to a window to show the dialog.
+  const win = BrowserWindow.getAllWindows()[0];
+  if (!win) return null;
+
+  const result = await dialog.showOpenDialog(win, {
+    properties: ['openDirectory'],
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
+
+ipcMain.handle('open-path-in-explorer', (event, filePath) => {
+  require('electron').shell.showItemInFolder(filePath);
+});
+
+
 function startBackend() {
-  // Use app.isPackaged to determine if we are in development or production.
-  // This is the correct, built-in Electron method.
   if (!app.isPackaged) {
-    console.log('[main.js] Development mode (app.isPackaged is false): Assuming Python backend is running independently.');
+    console.log('[main.js] Development mode: Assuming Python backend is running independently.');
     return;
   }
 
-  // --- Path and Environment Logging ---
   console.log('--- [main.js] Starting Backend Process (Production Mode) ---');
-  
   const resourcesPath = process.resourcesPath;
-  console.log(`[main.js] process.resourcesPath is: ${resourcesPath}`);
-
   const backendDir = path.join(resourcesPath, 'backend');
   const backendExecutableName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
   const backendPath = path.join(backendDir, backendExecutableName);
-  console.log(`[main.js] Calculated backend executable path: ${backendPath}`);
 
   const backendEnv = {
     ...process.env,
@@ -36,30 +42,12 @@ function startBackend() {
     'YT_LINK_RESOURCES_PATH': resourcesPath
   };
   
-  console.log('[main.js] Spawning process with environment...');
-
   backendProcess = spawn(backendPath, [], { env: backendEnv });
 
-  // --- Process Event Handling ---
-  backendProcess.on('error', (err) => {
-    console.error('[main.js] FATAL: Failed to start backend process:', err);
-    dialog.showErrorBox('Backend Error', `Failed to start the backend service: ${err.message}`);
-  });
-
-  backendProcess.stdout.on('data', (data) => {
-    process.stdout.write(`[PYTHON_STDOUT] ${data.toString()}`);
-  });
-
-  backendProcess.stderr.on('data', (data) => {
-    process.stderr.write(`[PYTHON_STDERR] ${data.toString()}`);
-  });
-
-  backendProcess.on('close', (code) => {
-    console.log(`[main.js] Backend process exited with code ${code}`);
-    if (code !== 0) {
-      dialog.showErrorBox('Backend Stopped', `The backend service stopped unexpectedly. Check the console for logs. Code: ${code}`);
-    }
-  });
+  backendProcess.on('error', (err) => console.error('[main.js] FATAL: Failed to start backend process:', err));
+  backendProcess.stdout.on('data', (data) => process.stdout.write(`[PYTHON_STDOUT] ${data.toString()}`));
+  backendProcess.stderr.on('data', (data) => process.stderr.write(`[PYTHON_STDERR] ${data.toString()}`));
+  backendProcess.on('close', (code) => console.log(`[main.js] Backend process exited with code ${code}`));
 }
 
 function createWindow() {
@@ -73,33 +61,29 @@ function createWindow() {
     },
   });
 
-  // Use app.isPackaged to determine the URL to load.
+  const urlToLoad = !app.isPackaged 
+    ? 'http://localhost:3000' 
+    : `http://localhost:${BACKEND_PORT}`;
+
+  // Retry loading the production URL to give the backend time to start.
+  const loadUrlWithRetry = (url, retries = 5, delay = 1000) => {
+    win.loadURL(url).catch((err) => {
+      console.warn(`[main.js] Failed to load URL: ${url}. Retrying in ${delay}ms... (${retries} retries left)`);
+      if (retries > 0) {
+        setTimeout(() => loadUrlWithRetry(url, retries - 1, delay), delay);
+      } else {
+        console.error('[main.js] Could not load URL after multiple retries.', err);
+        dialog.showErrorBox('Load Error', `Failed to connect to the backend at ${url}.`);
+      }
+    });
+  };
+
+  loadUrlWithRetry(urlToLoad);
+
   if (!app.isPackaged) {
-    // Development: Load from the Next.js dev server
-    win.loadURL('http://localhost:3000');
-    win.webContents.openDevTools();
-  } else {
-    // Production: Load from the bundled backend server
-    const startUrl = `http://localhost:${BACKEND_PORT}`;
-    win.loadURL(startUrl).catch(err => {
-        console.error('[main.js] Error loading production URL:', err);
-        dialog.showErrorBox('Load Error', `Failed to load the application URL: ${startUrl}. Is the backend running?`);
-    });
+      win.webContents.openDevTools();
   }
-
-  ipcMain.handle('select-dir', async () => {
-    const result = await dialog.showOpenDialog(win, {
-      properties: ['openDirectory'],
-    });
-    return result.canceled ? null : result.filePaths[0];
-  });
-
-  ipcMain.handle('open-path-in-explorer', (event, filePath) => {
-    require('electron').shell.showItemInFolder(filePath);
-  });
 }
-
-// --- Electron App Lifecycle Events ---
 
 app.whenReady().then(() => {
   startBackend();
@@ -120,7 +104,6 @@ app.on('window-all-closed', () => {
 
 app.on('quit', () => {
   if (backendProcess) {
-    console.log('[main.js] Terminating backend process...');
     backendProcess.kill();
   }
 });
