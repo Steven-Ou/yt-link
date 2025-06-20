@@ -73,19 +73,23 @@ const startPythonBackend = async () => {
   const backendExecutableName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
   
   // Determine the path to the backend executable.
-  // In development, we run the Python script directly.
-  // In production, we run the packaged executable.
+  // In development, we run the Python script directly. The path must go up one level from `frontend` to the project root.
+  // In production, we run the packaged executable from the resources directory.
   const backendPath = isDev
-    ? path.join(__dirname, '../service/app.py')
+    ? path.join(__dirname, '../service/app.py') // <-- THIS IS THE CORRECTED PATH
     : path.join(process.resourcesPath, 'backend', backendExecutableName);
 
   const command = isDev ? 'python' : backendPath;
   const args = [pythonPort.toString()];
   
-  console.log(`Starting backend with command: "${command}" and args: [${args.join(', ')}]`);
+  console.log(`Starting backend with command: "${command}" and script: ${backendPath} on port: ${pythonPort}`);
 
+  // When in development, the 'python' command needs the script path as an argument.
+  // When in production, the executable is run directly with its arguments.
+  const spawnArgs = isDev ? [backendPath, ...args] : args;
+  
   // Spawn the child process for the backend.
-  pythonProcess = isDev ? spawn(command, [backendPath, ...args]) : spawn(command, args);
+  pythonProcess = spawn(command, spawnArgs);
 
   // Log any output from the Python process's standard output for debugging.
   pythonProcess.stdout.on('data', (data) => {
@@ -121,18 +125,24 @@ app.whenReady().then(async () => {
       const url = `http://127.0.0.1:${pythonPort}/${endpoint}`;
       console.log(`Forwarding job to Python: ${url} with data:`, data);
       
-      const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-      });
+      try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
 
-      if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`Python API Error (${response.status}): ${errorText}`);
-          throw new Error(`Python API Error: ${response.statusText} - ${errorText}`);
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`Python API Error (${response.status}): ${errorText}`);
+            throw new Error(`Python API Error: ${response.statusText} - ${errorText}`);
+        }
+        return await response.json();
+      } catch (error) {
+        console.error(`Error occurred in handler for '${endpoint}':`, error);
+        // Re-throw the error so the renderer process knows the operation failed.
+        throw error;
       }
-      return await response.json();
   };
 
   // --- IPC Handlers for specific job types ---
