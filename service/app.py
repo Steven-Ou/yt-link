@@ -11,16 +11,29 @@ from threading import Thread
 import logging
 from werkzeug.serving import make_server
 
-# --- Logging Configuration ---
+# --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# --- Flask App Initialization ---
 app = Flask(__name__)
-
-# --- In-Memory Job Storage ---
 jobs = {}
 
-# --- Server Thread Class (for running Flask without blocking) ---
+# This will be the path to the 'resources' directory in the packaged app, passed from main.js.
+# It will be None during local development.
+resources_path = sys.argv[2] if len(sys.argv) > 2 else None
+
+def get_ffmpeg_path():
+    """
+    Determines the path to the ffmpeg executable.
+    In a packaged app, it looks inside the bundled 'bin' directory.
+    In development, it assumes ffmpeg is in the system's PATH.
+    """
+    if resources_path:
+        ffmpeg_executable = 'ffmpeg.exe' if sys.platform == 'win32' else 'ffmpeg'
+        # Correctly join the paths
+        return os.path.join(resources_path, 'bin', ffmpeg_executable)
+    # For local development, rely on ffmpeg being in the system's PATH
+    return 'ffmpeg'
+
+# --- Server Thread Class ---
 class ServerThread(Thread):
     def __init__(self, flask_app, port):
         super().__init__()
@@ -37,14 +50,10 @@ class ServerThread(Thread):
         logging.info("Shutting down Flask server...")
         self.server.shutdown()
 
-# --- Download Worker Functions ---
-
+# --- Download Worker Function ---
 def download_worker(job_id, ydl_opts, url, download_path, job_type, post_download_action=None):
-    """
-    A generic worker function to handle downloads and post-processing.
-    """
+    """A generic worker function to handle downloads and post-processing."""
     def download_hook(d):
-        """A hook function called by yt-dlp to report progress."""
         if d['status'] == 'downloading':
             if job_id in jobs:
                 jobs[job_id].update({
@@ -64,6 +73,8 @@ def download_worker(job_id, ydl_opts, url, download_path, job_type, post_downloa
             'filename': '', 'download_path': download_path, 'error': None
         }
         
+        # Set ffmpeg location for yt-dlp to use for post-processing
+        ydl_opts['ffmpeg_location'] = get_ffmpeg_path()
         ydl_opts['progress_hooks'] = [download_hook]
 
         with YoutubeDL(ydl_opts) as ydl:
@@ -73,7 +84,6 @@ def download_worker(job_id, ydl_opts, url, download_path, job_type, post_downloa
             jobs[job_id]['status'] = 'processing'
             jobs[job_id]['message'] = 'Finalizing...'
 
-        # Perform the specific action after all downloads are complete (e.g., zip, combine)
         if post_download_action:
             final_filename = post_download_action(job_id, download_path, ydl_opts)
             jobs[job_id]['filename'] = final_filename
@@ -89,12 +99,9 @@ def download_worker(job_id, ydl_opts, url, download_path, job_type, post_downloa
             jobs[job_id]['error'] = str(e)
             jobs[job_id]['message'] = f'Error: {e}'
 
-
 # --- Post-Download Action Implementations ---
-
 def post_process_single_mp3(job_id, download_path, ydl_opts):
     """Gets the final filename for a single MP3 job."""
-    # We need to re-extract info to get the final filename prepared by yt-dlp
     with YoutubeDL(ydl_opts) as ydl:
         info_dict = ydl.extract_info(ydl_opts['final_url'], download=False)
         base_filename = ydl.prepare_filename(info_dict)
@@ -107,14 +114,12 @@ def post_process_zip_playlist(job_id, download_path, ydl_opts):
     playlist_title = ydl_opts['playlist_title']
     zip_filename_base = os.path.join(download_path, playlist_title)
     
-    logging.info(f"[{job_id}] Zipping directory: {temp_dir}")
     shutil.make_archive(zip_filename_base, 'zip', temp_dir)
-    logging.info(f"[{job_id}] Cleaning up temporary directory: {temp_dir}")
-    shutil.rmtree(temp_dir) # Clean up the folder with individual MP3s
+    shutil.rmtree(temp_dir)
     return f"{playlist_title}.zip"
 
 def post_process_combine_playlist(job_id, download_path, ydl_opts):
-    """Combines all downloaded MP3s into a single file."""
+    """Combines all downloaded MP3s into a single file using the correct ffmpeg path."""
     temp_dir = os.path.dirname(ydl_opts['outtmpl']['default'])
     playlist_title = ydl_opts['playlist_title']
     output_filename = os.path.join(download_path, f"{playlist_title} (Combined).mp3")
@@ -126,34 +131,22 @@ def post_process_combine_playlist(job_id, download_path, ydl_opts):
     filelist_path = os.path.join(temp_dir, 'filelist.txt')
     with open(filelist_path, 'w', encoding='utf-8') as f:
         for mp3_file in mp3_files:
-            # Add 'file' keyword and ensure paths are properly quoted for ffmpeg
             f.write(f"file '{os.path.join(temp_dir, mp3_file)}'\n")
 
-    # Use ffmpeg to concatenate the files
-    ffmpeg_command = [
-        'ffmpeg',
-        '-f', 'concat',
-        '-safe', '0',
-        '-i', filelist_path,
-        '-c', 'copy',
-        output_filename
-    ]
+    ffmpeg_path = get_ffmpeg_path()
+    ffmpeg_command = [ffmpeg_path, '-f', 'concat', '-safe', '0', '-i', filelist_path, '-c', 'copy', output_filename]
     
     logging.info(f"[{job_id}] Running ffmpeg command: {' '.join(ffmpeg_command)}")
-    # Using subprocess.run for simplicity, you might want more complex handling in production
     result = subprocess.run(ffmpeg_command, capture_output=True, text=True, encoding='utf-8')
     
     if result.returncode != 0:
         logging.error(f"[{job_id}] FFmpeg error: {result.stderr}")
         raise Exception(f"FFmpeg failed: {result.stderr}")
 
-    logging.info(f"[{job_id}] Cleaning up temporary directory: {temp_dir}")
     shutil.rmtree(temp_dir)
     return os.path.basename(output_filename)
 
-
 # --- API Endpoints ---
-
 @app.route('/start-single-mp3-job', methods=['POST'])
 def start_single_mp3_job():
     data = request.json
@@ -162,7 +155,7 @@ def start_single_mp3_job():
         'format': 'bestaudio/best', 'noplaylist': True,
         'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
         'outtmpl': {'default': os.path.join(data['downloadPath'], '%(title)s.%(ext)s')},
-        'final_url': data['url'] # Store URL for later
+        'final_url': data['url']
     }
     thread = Thread(target=download_worker, args=(job_id, ydl_opts, data['url'], data['downloadPath'], 'single', post_process_single_mp3))
     thread.daemon = True
@@ -173,8 +166,7 @@ def start_single_mp3_job():
 def start_playlist_zip_job():
     data = request.json
     job_id = str(uuid.uuid4())
-    playlist_url = data['playlistUrl'] # CORRECTED: Use 'playlistUrl'
-    # Get playlist title for naming the temp folder and zip file
+    playlist_url = data['playlistUrl']
     with YoutubeDL({'extract_flat': True, 'quiet': True}) as ydl:
         info = ydl.extract_info(playlist_url, download=False)
         playlist_title = info.get('title', f'playlist-{job_id}')
@@ -197,7 +189,7 @@ def start_playlist_zip_job():
 def start_combine_playlist_mp3_job():
     data = request.json
     job_id = str(uuid.uuid4())
-    playlist_url = data['playlistUrl'] # CORRECTED: Use 'playlistUrl'
+    playlist_url = data['playlistUrl']
     with YoutubeDL({'extract_flat': True, 'quiet': True}) as ydl:
         info = ydl.extract_info(playlist_url, download=False)
         playlist_title = info.get('title', f'playlist-{job_id}')
