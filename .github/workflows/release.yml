@@ -35,6 +35,7 @@ jobs:
         run: npm install --prefix frontend
       
       - name: Download FFmpeg and FFprobe
+        shell: bash
         run: |
           if [ "${{ runner.os }}" == "macOS" ]; then
             curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-mac-arm64 -o ffmpeg
