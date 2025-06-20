@@ -2,7 +2,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
-const isDev = require('electron-is-dev');
+// const isDev = require('electron-is-dev'); // REMOVED: This was causing the crash.
 
 // --- Global Configuration ---
 const BACKEND_PORT = 8080;
@@ -12,13 +12,15 @@ let backendProcess = null;
  * Starts the Python backend executable with extensive logging.
  */
 function startBackend() {
-  if (isDev) {
-    console.log('[main.js] Development mode: Assuming Python backend is running independently.');
+  // Use app.isPackaged to determine if we are in development or production.
+  // This is the correct, built-in Electron method.
+  if (!app.isPackaged) {
+    console.log('[main.js] Development mode (app.isPackaged is false): Assuming Python backend is running independently.');
     return;
   }
 
   // --- Path and Environment Logging ---
-  console.log('--- [main.js] Starting Backend Process ---');
+  console.log('--- [main.js] Starting Backend Process (Production Mode) ---');
   
   const resourcesPath = process.resourcesPath;
   console.log(`[main.js] process.resourcesPath is: ${resourcesPath}`);
@@ -33,9 +35,8 @@ function startBackend() {
     'YT_LINK_BACKEND_PORT': BACKEND_PORT.toString(),
     'YT_LINK_RESOURCES_PATH': resourcesPath
   };
-  console.log('[main.js] Environment variables for backend:', JSON.stringify(backendEnv, null, 2));
-  console.log('--- [main.js] Spawning process... ---');
-  // --- End Logging ---
+  
+  console.log('[main.js] Spawning process with environment...');
 
   backendProcess = spawn(backendPath, [], { env: backendEnv });
 
@@ -45,10 +46,7 @@ function startBackend() {
     dialog.showErrorBox('Backend Error', `Failed to start the backend service: ${err.message}`);
   });
 
-  // Pipe backend's stdout and stderr directly to Electron's console.
-  // This is crucial for seeing the Python logs.
   backendProcess.stdout.on('data', (data) => {
-    // Trim to avoid extra newlines from the buffer.
     process.stdout.write(`[PYTHON_STDOUT] ${data.toString()}`);
   });
 
@@ -75,12 +73,18 @@ function createWindow() {
     },
   });
 
-  if (isDev) {
+  // Use app.isPackaged to determine the URL to load.
+  if (!app.isPackaged) {
+    // Development: Load from the Next.js dev server
     win.loadURL('http://localhost:3000');
     win.webContents.openDevTools();
   } else {
+    // Production: Load from the bundled backend server
     const startUrl = `http://localhost:${BACKEND_PORT}`;
-    win.loadURL(startUrl);
+    win.loadURL(startUrl).catch(err => {
+        console.error('[main.js] Error loading production URL:', err);
+        dialog.showErrorBox('Load Error', `Failed to load the application URL: ${startUrl}. Is the backend running?`);
+    });
   }
 
   ipcMain.handle('select-dir', async () => {
@@ -120,4 +124,3 @@ app.on('quit', () => {
     backendProcess.kill();
   }
 });
-
