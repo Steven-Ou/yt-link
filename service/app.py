@@ -103,7 +103,7 @@ def post_process_single_mp3(job_id, download_path, ydl_opts):
 
 def post_process_zip_playlist(job_id, download_path, ydl_opts):
     """Zips the downloaded playlist files."""
-    temp_dir = ydl_opts['outtmpl']['default'].split('/%(title)s')[0]
+    temp_dir = os.path.dirname(ydl_opts['outtmpl']['default'])
     playlist_title = ydl_opts['playlist_title']
     zip_filename_base = os.path.join(download_path, playlist_title)
     
@@ -115,7 +115,7 @@ def post_process_zip_playlist(job_id, download_path, ydl_opts):
 
 def post_process_combine_playlist(job_id, download_path, ydl_opts):
     """Combines all downloaded MP3s into a single file."""
-    temp_dir = ydl_opts['outtmpl']['default'].split('/%(title)s')[0]
+    temp_dir = os.path.dirname(ydl_opts['outtmpl']['default'])
     playlist_title = ydl_opts['playlist_title']
     output_filename = os.path.join(download_path, f"{playlist_title} (Combined).mp3")
     
@@ -173,9 +173,10 @@ def start_single_mp3_job():
 def start_playlist_zip_job():
     data = request.json
     job_id = str(uuid.uuid4())
+    playlist_url = data['playlistUrl'] # CORRECTED: Use 'playlistUrl'
     # Get playlist title for naming the temp folder and zip file
-    with YoutubeDL({'extract_flat': True}) as ydl:
-        info = ydl.extract_info(data['url'], download=False)
+    with YoutubeDL({'extract_flat': True, 'quiet': True}) as ydl:
+        info = ydl.extract_info(playlist_url, download=False)
         playlist_title = info.get('title', f'playlist-{job_id}')
     
     temp_download_dir = os.path.join(data['downloadPath'], f"temp_{job_id}")
@@ -184,10 +185,10 @@ def start_playlist_zip_job():
     ydl_opts = {
         'format': 'bestaudio/best', 'noplaylist': False,
         'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
-        'outtmpl': {'default': os.path.join(temp_download_dir, '%(title)s.%(ext)s')},
+        'outtmpl': {'default': os.path.join(temp_download_dir, '%(playlist_index)s - %(title)s.%(ext)s')},
         'playlist_title': playlist_title
     }
-    thread = Thread(target=download_worker, args=(job_id, ydl_opts, data['url'], data['downloadPath'], 'playlistZip', post_process_zip_playlist))
+    thread = Thread(target=download_worker, args=(job_id, ydl_opts, playlist_url, data['downloadPath'], 'playlistZip', post_process_zip_playlist))
     thread.daemon = True
     thread.start()
     return jsonify({'jobId': job_id})
@@ -196,8 +197,9 @@ def start_playlist_zip_job():
 def start_combine_playlist_mp3_job():
     data = request.json
     job_id = str(uuid.uuid4())
-    with YoutubeDL({'extract_flat': True}) as ydl:
-        info = ydl.extract_info(data['url'], download=False)
+    playlist_url = data['playlistUrl'] # CORRECTED: Use 'playlistUrl'
+    with YoutubeDL({'extract_flat': True, 'quiet': True}) as ydl:
+        info = ydl.extract_info(playlist_url, download=False)
         playlist_title = info.get('title', f'playlist-{job_id}')
 
     temp_download_dir = os.path.join(data['downloadPath'], f"temp_{job_id}")
@@ -209,7 +211,7 @@ def start_combine_playlist_mp3_job():
         'outtmpl': {'default': os.path.join(temp_download_dir, '%(playlist_index)s - %(title)s.%(ext)s')},
         'playlist_title': playlist_title
     }
-    thread = Thread(target=download_worker, args=(job_id, ydl_opts, data['url'], data['downloadPath'], 'combinePlaylist', post_process_combine_playlist))
+    thread = Thread(target=download_worker, args=(job_id, ydl_opts, playlist_url, data['downloadPath'], 'combinePlaylist', post_process_combine_playlist))
     thread.daemon = True
     thread.start()
     return jsonify({'jobId': job_id})
