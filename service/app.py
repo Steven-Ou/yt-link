@@ -5,6 +5,7 @@ import logging
 import threading
 import uuid
 import zipfile
+import stat  # Import the stat module to handle file permissions
 from queue import Queue, Empty
 from flask import Flask, request, jsonify, send_file, after_this_request
 from flask_cors import CORS
@@ -29,36 +30,39 @@ cleanup_queue = Queue()
 
 # --- Core Helper Functions ---
 
+def set_executable_permission(path):
+    """Sets executable permission for a file, necessary on macOS/Linux."""
+    if sys.platform != "win32":
+        try:
+            # Get the current permissions
+            current_stat = os.stat(path)
+            # Add execute permissions for user, group, and others
+            os.chmod(path, current_stat.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+            logging.info(f"Set executable permission for {path}")
+        except Exception as e:
+            logging.error(f"Failed to set executable permission for {path}: {e}")
+
 def find_executable(name):
     """
     Finds an executable, reliably accounting for being bundled in a packaged app.
-    
-    This is the key function to locate ffmpeg and ffprobe correctly.
+    **This version includes a fix for macOS/Linux permissions.**
     """
-    # The Electron main process passes the path to the 'resources' directory via an env var.
     resources_path = os.environ.get('YT_LINK_RESOURCES_PATH')
     
     if resources_path:
-        # This is the reliable method for a packaged application.
-        # Binaries are expected to be in a 'bin' subdirectory of the resources folder.
         bin_dir = os.path.join(resources_path, 'bin')
         exe_name = f"{name}.exe" if sys.platform == "win32" else name
         exe_path = os.path.join(bin_dir, exe_name)
         
         if os.path.exists(exe_path):
             logging.info(f"Found bundled executable '{name}' at: {exe_path}")
-            # Ensure the binary is executable on macOS/Linux
-            if sys.platform != "win32":
-                try:
-                    os.chmod(exe_path, 0o755)
-                except Exception as e:
-                    logging.error(f"Failed to set executable permission for {exe_path}: {e}")
+            # **CRITICAL FIX**: Ensure the binary is executable.
+            set_executable_permission(exe_path)
             return exe_path
         else:
             logging.error(f"Could not find bundled '{name}' at expected path: {exe_path}")
-            return None # Explicitly return None if not found
+            return None
             
-    # Fallback for local development (when not packaged and running from terminal)
     fallback_path = shutil.which(name)
     if fallback_path:
         logging.info(f"Found executable '{name}' in system PATH (dev mode): {fallback_path}")
@@ -71,17 +75,16 @@ def get_ydl_options(output_path, playlist=False):
     """
     Gets the base options for yt-dlp, correctly specifying the ffmpeg path.
     """
+    # Find both ffmpeg and ffprobe to ensure they both exist and have correct permissions.
     ffmpeg_exe_path = find_executable('ffmpeg')
-    ffmpeg_dir = None
+    find_executable('ffprobe') # We call this to set its permission, even if we don't use the return value.
 
+    ffmpeg_dir = None
     if ffmpeg_exe_path:
-        # IMPORTANT: yt-dlp's 'ffmpeg_location' option expects the DIRECTORY 
-        # where both the ffmpeg and ffprobe executables are located.
         ffmpeg_dir = os.path.dirname(ffmpeg_exe_path)
         logging.info(f"Setting ffmpeg directory for yt-dlp to: {ffmpeg_dir}")
     else:
-        # If ffmpeg is not found, post-processing will fail. Log this clearly.
-        logging.error("FFMPEG EXECUTABLE NOT FOUND! Post-processing will likely fail.")
+        logging.error("FFMPEG EXECUTABLE NOT FOUND! Post-processing will fail.")
 
     return {
         'format': 'bestaudio/best',
@@ -90,13 +93,16 @@ def get_ydl_options(output_path, playlist=False):
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
-        'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
+        'outtmpl': {
+            'default': os.path.join(output_path, '%(title)s.%(ext)s')
+        },
         'noplaylist': not playlist,
-        # Pass the directory path. This allows yt-dlp to find both ffmpeg and ffprobe.
         'ffmpeg_location': ffmpeg_dir, 
-        'quiet': False, # Set to False for more detailed logs from yt-dlp
+        'quiet': False,
         'progress_hooks': [],
         'nocheckcertificate': True,
+        # Add verbose logging from yt-dlp to help debug if issues persist
+        'verbose': True,
     }
 
 def create_job(target_function, *args):
@@ -116,52 +122,52 @@ def do_download_single_mp3(job_id, url, download_path):
     """Job: Downloads a single video to an MP3 file."""
     jobs[job_id]['status'] = 'running'
     jobs[job_id]['message'] = 'Preparing to download...'
-
-    # We download directly to the final destination
     os.makedirs(download_path, exist_ok=True)
     
+    final_file_path = [None] # Use a list to make it mutable inside the hook
+
     def progress_hook(d):
-        if d['status'] == 'downloading':
+        if d['status'] == 'finished':
+            # This hook runs when the initial download is done, before postprocessing.
+            jobs[job_id]['message'] = "Download complete. Converting to MP3..."
+        elif d['status'] == 'downloading':
             jobs[job_id]['progress'] = int(d['_percent_str'].strip('% '))
             jobs[job_id]['message'] = f"Downloading..."
-        elif d['status'] == 'finished':
-            jobs[job_id]['message'] = f"Finished downloading, now converting to MP3..."
-            # At this point, yt-dlp has downloaded the file and will start postprocessing (ffmpeg)
-            # We find the downloaded file to set as the job result
-            # Note: This is a simple approach; a more robust solution would parse ydl output
-            for file in os.listdir(download_path):
-                 if file.endswith('.mp3'):
-                     jobs[job_id]['result'] = os.path.join(download_path, file)
-                     break
 
-
-    # Get options for a single file (playlist=False)
     ydl_opts = get_ydl_options(download_path, playlist=False)
     ydl_opts['progress_hooks'] = [progress_hook]
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-        
-        # After download, find the final MP3 file
-        final_file_path = None
-        for file in os.listdir(download_path):
-            if file.endswith('.mp3'):
-                # We assume the first MP3 found is the one we just downloaded
-                final_file_path = os.path.join(download_path, file)
-                break
-        
-        if final_file_path:
+            # The extract_info call gets metadata and determines the final filename
+            info_dict = ydl.extract_info(url, download=True)
+            # yt-dlp now handles naming and placing the file in 'outtmpl'
+            # We need to find the resulting .mp3 file
+            downloaded_file = ydl.prepare_filename(info_dict)
+            # The final file will have .mp3 extension after postprocessing
+            base, _ = os.path.splitext(downloaded_file)
+            final_mp3_path = base + '.mp3'
+            
+            if os.path.exists(final_mp3_path):
+                 final_file_path[0] = final_mp3_path
+            else:
+                # Fallback if the naming is unexpected
+                for file in os.listdir(download_path):
+                    if file.endswith('.mp3'):
+                        final_file_path[0] = os.path.join(download_path, file)
+                        break
+
+        if final_file_path[0]:
             jobs[job_id]['status'] = 'completed'
             jobs[job_id]['message'] = 'MP3 created successfully.'
-            jobs[job_id]['result'] = final_file_path
+            jobs[job_id]['result'] = final_file_path[0]
         else:
-            raise Exception("Could not find the final MP3 file after download.")
+            raise Exception("Conversion to MP3 failed. Could not find the final file.")
 
     except Exception as e:
-        logging.error(f"Error in job {job_id}: {e}")
+        logging.error(f"Error in job {job_id}: {e}", exc_info=True)
         jobs[job_id]['status'] = 'failed'
-        jobs[job_id]['message'] = str(e)
+        jobs[job_id]['message'] = f"An error occurred during conversion: {e}"
 
 
 def do_download_and_zip_playlist(job_id, url, download_path):
@@ -209,7 +215,7 @@ def do_download_and_zip_playlist(job_id, url, download_path):
         jobs[job_id]['message'] = 'Playlist zipped successfully.'
         jobs[job_id]['result'] = zip_filepath
     except Exception as e:
-        logging.error(f"Error in job {job_id}: {e}")
+        logging.error(f"Error in job {job_id}: {e}", exc_info=True)
         jobs[job_id]['status'] = 'failed'
         jobs[job_id]['message'] = str(e)
     finally:
@@ -259,9 +265,6 @@ def download_result(job_id):
 
     @after_this_request
     def cleanup(response):
-        # For single MP3s, we don't want to delete them right away.
-        # The user might want to open the containing folder.
-        # For zip files, we can clean them up.
         if file_path.endswith('.zip'):
             cleanup_queue.put(file_path)
         return response
@@ -272,7 +275,7 @@ def cleanup_worker():
     """Worker thread to delete files after they have been sent."""
     while True:
         try:
-            filepath = cleanup_queue.get(timeout=1) # Use a timeout to avoid blocking forever
+            filepath = cleanup_queue.get(timeout=1)
             os.remove(filepath)
             logging.info(f"Cleaned up file: {filepath}")
         except Empty:
@@ -283,11 +286,9 @@ def cleanup_worker():
 # --- Main Execution ---
 
 if __name__ == '__main__':
-    # Start the cleanup worker in the background
     cleanup_thread = threading.Thread(target=cleanup_worker)
     cleanup_thread.daemon = True
     cleanup_thread.start()
     
-    # Run the Flask app
     logging.info(f"Starting Flask server on port {APP_PORT}...")
     app.run(port=APP_PORT)
