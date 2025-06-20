@@ -1,136 +1,162 @@
+// --- Electron and Node.js Modules ---
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
-const isDev = require('electron-is-dev');
 const { spawn } = require('child_process');
-const portfinder = require('portfinder');
-const fetch = require('node-fetch');
 
-let mainWindow;
-let pythonProcess;
-let pythonPort;
+// --- Global Configuration ---
+const BACKEND_PORT = 8080;
+let backendProcess = null;
 
-// --- Function to Create the Main Application Window ---
+// --- IPC Handlers ---
+// These are defined at the top level to ensure they are only registered ONCE.
+// This prevents the "Attempted to register a second handler" crash.
+
+// Handles the renderer's request to select a directory.
+ipcMain.handle('select-dir', async () => {
+  const win = BrowserWindow.getAllWindows()[0];
+  if (!win) return null; // Can't show a dialog without a window.
+
+  const result = await dialog.showOpenDialog(win, {
+    properties: ['openDirectory'],
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
+
+// Handles opening the file explorer to show the downloaded file.
+ipcMain.handle('open-path-in-explorer', (event, filePath) => {
+  if (filePath && typeof filePath === 'string') {
+    require('electron').shell.showItemInFolder(filePath);
+  } else {
+    console.error('[main.js] Invalid path provided to open-path-in-explorer:', filePath);
+  }
+});
+
+// Forwards the job request from the renderer to the Python backend.
+ipcMain.handle('start-single-mp3-job', async (event, args) => {
+    try {
+        const response = await fetch(`http://127.0.0.1:${BACKEND_PORT}/api/start-single-mp3-job`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(args)
+        });
+        return await response.json();
+    } catch (error) {
+        console.error('[main.js] Error communicating with backend:', error);
+        return { error: 'Could not connect to the backend service.' };
+    }
+});
+
+// Forwards the job status request from the renderer to the Python backend.
+ipcMain.handle('get-job-status', async(event, jobId) => {
+    try {
+        const response = await fetch(`http://127.0.0.1:${BACKEND_PORT}/api/job-status/${jobId}`);
+        return await response.json();
+    } catch (error) {
+        console.error(`[main.js] Error getting status for job ${jobId}:`, error);
+        return { status: 'failed', message: 'Could not connect to the backend service.' };
+    }
+});
+
+
+/**
+ * Starts the Python backend executable when the application is packaged.
+ */
+function startBackend() {
+  // Use `app.isPackaged` - the correct, built-in way to check for production mode.
+  // We do NOT start the backend if we are in development.
+  if (!app.isPackaged) {
+    console.log('[main.js] Development mode: Assuming Python backend is running independently.');
+    return;
+  }
+
+  console.log('--- [main.js] Starting Backend Process (Production Mode) ---');
+  
+  const resourcesPath = process.resourcesPath;
+  const backendDir = path.join(resourcesPath, 'backend');
+  const backendExecutableName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
+  const backendPath = path.join(backendDir, backendExecutableName);
+
+  console.log(`[main.js] Backend executable path: ${backendPath}`);
+
+  // Pass the resource path and port to the backend via environment variables.
+  const backendEnv = {
+    ...process.env,
+    'YT_LINK_BACKEND_PORT': BACKEND_PORT.toString(),
+    'YT_LINK_RESOURCES_PATH': resourcesPath
+  };
+  
+  backendProcess = spawn(backendPath, [], { env: backendEnv });
+
+  // Add detailed logging for the backend process.
+  backendProcess.on('error', (err) => console.error('[main.js] FATAL: Failed to start backend process:', err));
+  backendProcess.stdout.on('data', (data) => process.stdout.write(`[PYTHON_STDOUT] ${data.toString()}`));
+  backendProcess.stderr.on('data', (data) => process.stderr.write(`[PYTHON_STDERR] ${data.toString()}`));
+  backendProcess.on('close', (code) => console.log(`[main.js] Backend process exited with code ${code}`));
+}
+
+/**
+ * Creates and manages the main application window.
+ */
 function createWindow() {
-  mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 800,
-    height: 600,
+    height: 700,
     webPreferences: {
-      // The preload script is essential for secure communication
-      // between the main process (Node.js) and the renderer process (React).
       preload: path.join(__dirname, 'preload.js'),
-      // It's recommended to keep contextIsolation enabled for security.
       contextIsolation: true,
-      // It's recommended to keep nodeIntegration disabled for security.
       nodeIntegration: false,
     },
   });
 
-  // Determine the URL to load. In development, it's the local Next.js server.
-  // In production, it's the static HTML file built by Next.js.
-  const startUrl = isDev
-    ? 'http://localhost:3000'
-    : `file://${path.join(__dirname, '../out/index.html')}`;
+  // Use `app.isPackaged` to determine the correct URL to load.
+  const urlToLoad = !app.isPackaged 
+    ? 'http://localhost:3000' // Development URL from Next.js dev server
+    : `http://127.0.0.1:${BACKEND_PORT}`; // Production URL served by Python
 
-  mainWindow.loadURL(startUrl);
+  // Add a retry mechanism to handle cases where the backend takes a moment to start.
+  const loadUrlWithRetry = (url, retries = 5, delay = 1000) => {
+    win.loadURL(url).catch((err) => {
+      console.warn(`[main.js] Failed to load URL: ${url}. Retrying in ${delay}ms... (${retries} retries left)`);
+      if (retries > 0) {
+        setTimeout(() => loadUrlWithRetry(url, retries - 1, delay), delay);
+      } else {
+        console.error('[main.js] Could not load URL after multiple retries.', err);
+        dialog.showErrorBox('Application Load Error', `Failed to connect to the backend service at ${url}. Please restart the application.`);
+      }
+    });
+  };
 
-  // Open DevTools automatically if in development mode.
-  if (isDev) {
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
+  loadUrlWithRetry(urlToLoad);
+
+  // Open DevTools automatically in development.
+  if (!app.isPackaged) {
+      win.webContents.openDevTools();
   }
 }
 
-// --- Function to Start the Python Backend Server ---
-// We need to find an open port and then start the Python Flask server.
-const startPythonBackend = async () => {
-  // Find an available port to avoid conflicts.
-  pythonPort = await portfinder.getPortPromise();
-  
-  // UPDATED: Define the path to the Python executable.
-  // In development, we can assume 'python' is in the PATH.
-  // In production (packaged app), the executable is bundled inside the app's resources.
-  const backendPath = isDev
-    ? path.join(__dirname, '../../service/app.py') // Path to the .py script in dev
-    : path.join(process.resourcesPath, 'backend', 'app.exe' ); // Path to the packaged .exe in production
-  
-  const scriptToRun = isDev ? [backendPath, pythonPort] : [pythonPort];
-  const command = isDev ? 'python' : backendPath;
+// --- Electron App Lifecycle Events ---
 
-  console.log(`Starting backend: ${command} with args: ${scriptToRun}`);
-  
-  // Spawn the child process.
-  pythonProcess = spawn(command, scriptToRun);
-
-  pythonProcess.stdout.on('data', (data) => {
-    console.log(`Python stdout: ${data}`);
-  });
-
-  pythonProcess.stderr.on('data', (data) => {
-    console.error(`Python stderr: ${data}`);
-  });
-
-  pythonProcess.on('close', (code) => {
-    console.log(`Python process exited with code ${code}`);
-  });
-};
-
-
-// --- Electron App Lifecycle ---
-
-// This method is called when Electron has finished initialization and is ready
-// to create browser windows. Some APIs can only be used after this event occurs.
-app.whenReady().then(async () => {
-  // --- IPC HANDLER REGISTRATION ---
-  // IMPORTANT: Register all IPC handlers BEFORE creating the window.
-  // This prevents a race condition where the renderer process tries to call an IPC
-  // function before the main process has registered it. This fixes the
-  // "No handler registered for 'select-directory'" error.
-  ipcMain.handle('select-directory', async () => {
-    // This function is called from the renderer process (your React app)
-    // when the user wants to select a download folder.
-    const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openDirectory'],
-    });
-    // If the user didn't cancel the dialog, return the selected path.
-    if (!result.canceled) {
-      return result.filePaths[0];
-    }
-    return null; // Return null if canceled.
-  });
-  
-  // Add a handler to get the python port
-  ipcMain.handle('get-python-port', () => {
-    return pythonPort;
-  });
-
-  // First, start the backend server.
-  await startPythonBackend();
-
-  // Now that handlers are registered and the backend is starting, create the main window.
+app.whenReady().then(() => {
+  startBackend();
   createWindow();
 
   app.on('activate', () => {
-    // On macOS, it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
 });
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-// This is the final cleanup step. When the Electron app quits,
-// we must make sure to terminate the Python backend process as well.
-app.on('will-quit', () => {
-  if (pythonProcess) {
-    console.log('Terminating Python backend process.');
-    pythonProcess.kill();
+// Ensure the backend process is terminated when the app quits.
+app.on('quit', () => {
+  if (backendProcess) {
+    console.log('[main.js] Terminating backend process...');
+    backendProcess.kill();
   }
 });
