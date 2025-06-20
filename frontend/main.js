@@ -97,13 +97,11 @@ const startJob = async (endpoint, data) => {
   const url = `http://127.0.0.1:${pythonPort}/${endpoint}`;
   console.log(`[main.js startJob] Forwarding job to Python: ${url}`);
   try {
-    console.log('[main.js startJob] Awaiting fetch...');
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    console.log(`[main.js startJob] Fetch completed. Response status: ${response.status}`);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -111,12 +109,9 @@ const startJob = async (endpoint, data) => {
       throw new Error(`Python API Error: ${response.statusText} - ${errorText}`);
     }
 
-    console.log('[main.js startJob] Awaiting response.json()...');
     const jsonResponse = await response.json();
-    console.log('[main.js startJob] JSON response received:', jsonResponse);
     return jsonResponse;
   } catch (error) {
-    // This is the most important log. If this appears, we know the request failed here.
     console.error(`[main.js startJob] CATCH BLOCK ERROR: The request to the Python backend failed.`, error);
     throw error;
   }
@@ -134,15 +129,48 @@ app.whenReady().then(async () => {
     const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
     return result.canceled ? null : result.filePaths[0];
   });
-  ipcMain.handle('start-single-mp3-job', (event, data) => startJob('start-single-mp3-job', data));
-  ipcMain.handle('start-playlist-zip-job', (event, data) => startJob('start-playlist-zip-job', data));
-  ipcMain.handle('start-combine-playlist-mp3-job', (event, data) => startJob('start-combine-playlist-mp3-job', data));
+
+  // CORRECTED: Added explicit try/catch blocks to the handlers for maximum stability.
+  ipcMain.handle('start-single-mp3-job', async (event, data) => {
+    try {
+      const result = await startJob('start-single-mp3-job', data);
+      console.log('[IPC Handler] Returning result for single-mp3-job:', result);
+      return result;
+    } catch (error) {
+      console.error('[IPC Handler] Error in start-single-mp3-job:', error);
+      throw error; // Propagate the error to the renderer process
+    }
+  });
+
+  ipcMain.handle('start-playlist-zip-job', async (event, data) => {
+    try {
+      const result = await startJob('start-playlist-zip-job', data);
+      console.log('[IPC Handler] Returning result for playlist-zip-job:', result);
+      return result;
+    } catch (error) {
+      console.error('[IPC Handler] Error in start-playlist-zip-job:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('start-combine-playlist-mp3-job', async (event, data) => {
+    try {
+      const result = await startJob('start-combine-playlist-mp3-job', data);
+      console.log('[IPC Handler] Returning result for combine-playlist-mp3-job:', result);
+      return result;
+    } catch (error) {
+      console.error('[IPC Handler] Error in start-combine-playlist-mp3-job:', error);
+      throw error;
+    }
+  });
+
   ipcMain.handle('get-job-status', async (event, jobId) => {
     if (!pythonPort) throw new Error('Python backend is not available.');
     const url = `http://127.0.0.1:${pythonPort}/job-status/${jobId}`;
     const response = await fetch(url);
     return await response.json();
   });
+
   ipcMain.handle('open-folder', (event, folderPath) => {
     if (folderPath) {
       shell.openPath(folderPath);
