@@ -111,6 +111,16 @@ app.whenReady().then(async () => {
   // --- Register all IPC handlers ---
   // A dedicated try/catch block for each handler ensures maximum stability
   // and prevents silent failures.
+  
+  // THIS HANDLER WAS MISSING AND IS NOW RESTORED.
+  ipcMain.handle('select-directory', async () => {
+    if (!mainWindow) return null;
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+    });
+    return result.canceled ? null : result.filePaths[0];
+  });
+  
   ipcMain.handle('start-single-mp3-job', async (event, data) => {
     try {
       const result = await startJob('start-single-mp3-job', data);
@@ -122,11 +132,36 @@ app.whenReady().then(async () => {
     }
   });
 
-  // Add handlers for other job types with the same robust structure.
-  ipcMain.handle('start-playlist-zip-job', (event, data) => { /* ... */ });
-  ipcMain.handle('start-combine-playlist-mp3-job', (event, data) => { /* ... */ });
-  ipcMain.handle('get-job-status', async (event, jobId) => { /* ... */ });
-  ipcMain.handle('open-folder', (event, folderPath) => { /* ... */ });
+  ipcMain.handle('start-playlist-zip-job', async (event, data) => {
+      try {
+        return await startJob('start-playlist-zip-job', data);
+      } catch (error) {
+        console.error('[IPC Handler] Error in start-playlist-zip-job:', error);
+        throw error;
+      }
+  });
+  
+  ipcMain.handle('start-combine-playlist-mp3-job', async (event, data) => {
+      try {
+        return await startJob('start-combine-playlist-mp3-job', data);
+      } catch (error) {
+        console.error('[IPC Handler] Error in start-combine-playlist-mp3-job:', error);
+        throw error;
+      }
+  });
+
+  ipcMain.handle('get-job-status', async (event, jobId) => {
+    if (!pythonPort) throw new Error('Python backend is not available.');
+    const url = `http://127.0.0.1:${pythonPort}/job-status/${jobId}`;
+    const response = await fetch(url);
+    return await response.json();
+  });
+  
+  ipcMain.handle('open-folder', (event, folderPath) => {
+    if (folderPath) {
+      shell.openPath(folderPath);
+    }
+  });
 
   // Now create the application window.
   createWindow();
