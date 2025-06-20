@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const portfinder = require('portfinder');
+const fetch = require('node-fetch'); // Required for communication with the Python backend
 
 let mainWindow;
 let pythonProcess;
@@ -14,8 +15,6 @@ function createWindow() {
     height: 600,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      // Set webSecurity to true is a security best practice.
-      // We will use loadFile to correctly handle local resources.
       webSecurity: true, 
       contextIsolation: true,
       nodeIntegration: false,
@@ -24,17 +23,10 @@ function createWindow() {
   
   const isDev = !app.isPackaged;
 
-  // --- UPDATED: Load URL for Dev, Load File for Prod ---
-  // This is the critical change to fix the "white screen" and "Not allowed to load local resource" error.
   if (isDev) {
-    // In development, we load from the Next.js dev server.
     mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
-    // In production, we use `loadFile`. This is the recommended and more secure way
-    // to load local HTML files, and it correctly handles file-system paths.
-    // The path is also corrected from '../out/index.html' to 'out/index.html'
-    // to match the file structure in the packaged app.
     mainWindow.loadFile(path.join(__dirname, 'out/index.html'));
   }
 }
@@ -48,8 +40,8 @@ const startPythonBackend = async () => {
   const backendExecutableName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
   
   const backendPath = isDev
-    ? path.join(__dirname, '../../service/app.py') // Dev: path to the .py script
-    : path.join(process.resourcesPath, 'backend', backendExecutableName); // Prod: path to the packaged executable
+    ? path.join(__dirname, '../../service/app.py')
+    : path.join(process.resourcesPath, 'backend', backendExecutableName);
 
   const command = isDev ? 'python' : backendPath;
   const args = [pythonPort.toString()];
@@ -72,10 +64,13 @@ const startPythonBackend = async () => {
 };
 
 
-// --- Electron App Lifecycle ---
+// --- Electron App Lifecycle & IPC Handlers ---
 
 app.whenReady().then(async () => {
-  // Register IPC handlers BEFORE creating the window.
+  // --- Register ALL IPC handlers here ---
+  // This centralizes communication between the frontend and the Python backend.
+
+  // Handler for selecting a download directory
   ipcMain.handle('select-directory', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory'],
@@ -86,10 +81,61 @@ app.whenReady().then(async () => {
     return null;
   });
   
-  ipcMain.handle('get-python-port', () => {
-    return pythonPort;
+  // Generic function to forward job requests to the Python backend
+  const startJob = async (endpoint, data) => {
+      if (!pythonPort) throw new Error('Python backend is not available.');
+      try {
+          const response = await fetch(`http://localhost:${pythonPort}/${endpoint}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data),
+          });
+          if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(`Python API Error: ${response.statusText} - ${errorText}`);
+          }
+          return await response.json(); // Should return { job_id: '...' }
+      } catch (error) {
+          console.error(`Failed to start job via ${endpoint}:`, error);
+          throw error;
+      }
+  };
+
+  // Handler for single MP3 downloads
+  ipcMain.handle('start-single-mp3-job', (event, data) => {
+    return startJob('start-single-mp3-job', data);
   });
 
+  // Handler for playlist downloads (zipped)
+  ipcMain.handle('start-playlist-zip-job', (event, data) => {
+    return startJob('start-playlist-zip-job', data);
+  });
+
+  // Handler for playlist downloads (combined into one MP3)
+  ipcMain.handle('start-combine-playlist-mp3-job', (event, data) => {
+    return startJob('start-combine-playlist-mp3-job', data);
+  });
+  
+  // Handler for checking the status of any job
+  ipcMain.handle('get-job-status', async (event, jobId) => {
+    if (!pythonPort) throw new Error('Python backend is not available.');
+    try {
+      const response = await fetch(`http://localhost:${pythonPort}/job-status/${jobId}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        // A 404 is expected if the job ID isn't found yet, don't throw an error for that.
+        if (response.status === 404) return { status: 'not_found' };
+        throw new Error(`Python API Error: ${response.statusText} - ${errorText}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`Failed to get job status for ${jobId}:`, error);
+      throw error;
+    }
+  });
+
+
+  // --- Start Backend and Create Window ---
   await startPythonBackend();
   createWindow();
 
