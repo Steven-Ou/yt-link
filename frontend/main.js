@@ -76,7 +76,7 @@ const startPythonBackend = async () => {
   // In development, we run the Python script directly.
   // In production, we run the packaged executable.
   const backendPath = isDev
-    ? path.join(__dirname, '../../service/app.py')
+    ? path.join(__dirname, '../service/app.py')
     : path.join(process.resourcesPath, 'backend', backendExecutableName);
 
   const command = isDev ? 'python' : backendPath;
