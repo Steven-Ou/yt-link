@@ -17,12 +17,13 @@ import { // Importing Material-UI icons
     CheckCircleOutline as CheckCircleOutlineIcon,
     ErrorOutline as ErrorOutlineIcon,
     HourglassEmpty as HourglassEmptyIcon,
-    Window as WindowsIcon, Apple as AppleIcon
+    Window as WindowsIcon, Apple as AppleIcon,
+    Folder as FolderIcon
  } from '@mui/icons-material';
 
 const drawerWidth = 240;// Define the width of the drawer
 
-// Your custom theme
+// Your custom theme - UNCHANGED
 const customTheme = createTheme({
     palette: {
         mode: 'light',
@@ -43,7 +44,7 @@ const customTheme = createTheme({
     },
 });
 
-// --- WELCOME PAGE COMPONENT ---
+// --- WELCOME PAGE COMPONENT - UNCHANGED ---
 function WelcomePage({ isElectron }) {
     const MacUtube = "https://github.com/Steven-Ou/yt-link/releases/latest"; 
     const WindUtube = "https://github.com/Steven-Ou/yt-link/releases/latest";
@@ -86,7 +87,8 @@ export default function Home() {
     const [isElectron, setIsElectron] = useState(false);
 
     useEffect(() => {
-        const runningInElectron = !!(window && window.electronAPI);
+        // Use a more robust check for Electron
+        const runningInElectron = !!(window && window.electron);
         setIsElectron(runningInElectron);
     }, []);
     
@@ -102,7 +104,8 @@ export default function Home() {
             alert("This feature is only available in the desktop application.");
             return;
         }
-        setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...`, type: jobType } }));
+        // Store the downloadPath in the job's state so we can use it later
+        setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...`, type: jobType, downloadPath: payload.downloadPath } }));
         try {
             const result = await startFunction(payload);
             if (result.error) { throw new Error(result.error); }
@@ -120,7 +123,8 @@ export default function Home() {
         pollingIntervals.current[jobId] = setInterval(async () => {
             if (!isElectron) { clearInterval(pollingIntervals.current[jobId]); return; }
             try {
-                const data = await window.electronAPI.getJobStatus(jobId);
+                // Use the correct API name from preload script
+                const data = await window.electron.getJobStatus(jobId);
                 if (data.error) { throw new Error(data.error); }
                 setActiveJobs(prev => {
                     const currentJob = prev[jobType];
@@ -157,29 +161,32 @@ export default function Home() {
             alert("This feature is only available in the desktop application.");
             return;
         }
-        // First, ask the user to select a directory to save the file.
-        const outputDir = await window.electronAPI.selectDirectory();
-        if (!outputDir) {
-            alert("Directory selection was cancelled.");
+        
+        const downloadPath = await window.electron.selectDirectory();
+        if (!downloadPath) {
+            // User cancelled the directory selection
             return;
         }
-        // Then, construct the payload with all required info.
+
+        // CORRECTED PAYLOAD KEY: The Python backend expects `downloadPath`
         const payload = {
             [urlKey]: urlValue,
-            outputDir,
-            cookieFileContent: cookieData.trim() || null
+            downloadPath, // Use 'downloadPath' instead of 'outputDir'
+            cookiesPath: null // You can implement cookie file logic here later
         };
-        // Finally, start the job.
+
         startJob(jobType, startFunction, payload, operationName);
     };
 
-    const downloadMP3 = () => handleJobRequest(url, 'singleMp3', window.electronAPI.startSingleMp3Job, 'Single MP3 Download');
-    const downloadPlaylistZip = () => handleJobRequest(playlistUrl, 'playlistZip', window.electronAPI.startPlaylistZipJob, 'Playlist Zip Download', 'playlistUrl');
-    const downloadCombinedPlaylistMp3 = () => handleJobRequest(combineVideoUrl, 'combineMp3', window.electronAPI.startCombinePlaylistMp3Job, 'Combine Playlist to MP3', 'playlistUrl');
+    // Make sure to use the correct API from the preload script: window.electron.*
+    const downloadMP3 = () => handleJobRequest(url, 'singleMp3', window.electron.startSingleMp3Job, 'Single MP3 Download');
+    const downloadPlaylistZip = () => handleJobRequest(playlistUrl, 'playlistZip', window.electron.startPlaylistZipJob, 'Playlist Zip Download', 'playlistUrl');
+    const downloadCombinedPlaylistMp3 = () => handleJobRequest(combineVideoUrl, 'combineMp3', window.electron.startCombinePlaylistMp3Job, 'Combine Playlist to MP3', 'playlistUrl');
     
     // --- UI Sub-components ---
     const CookieInputField = () => ( <TextField label="Paste YouTube Cookies Here (Optional)" helperText="Needed for age-restricted/private videos." variant='outlined' fullWidth multiline rows={4} value={cookieData} onChange={(e) => setCookieData(e.target.value)} style={{marginBottom: 16}} placeholder="Starts with # Netscape HTTP Cookie File..." disabled={isAnyJobLoading()} InputProps={{ startAdornment: ( <ListItemIcon sx={{minWidth: '40px', color: 'action.active', mr: 1}}><CookieIcon /></ListItemIcon> ), }} /> );
     
+    // UPDATED: JobStatusDisplay now shows an "Open Folder" button on completion
     const JobStatusDisplay = ({ jobInfo }) => {
         if (!jobInfo || !jobInfo.status || jobInfo.status === 'idle') return null;
         let icon = <HourglassEmptyIcon />; let color = "text.secondary"; let showProgressBar = false;
@@ -187,17 +194,16 @@ export default function Home() {
         else if (jobInfo.status === 'failed') { icon = <ErrorOutlineIcon color="error" />; color = "error.main"; }
         else if (jobInfo.status === 'queued' || jobInfo.status?.startsWith('processing')) { icon = <CircularProgress size={20} sx={{ mr: 1}} color="inherit" />; color = "info.main"; showProgressBar = true; }
         
-        const handleDownloadClick = async () => {
-            if (!isElectron) { alert("Download not available in web version."); return; }
-            const result = await window.electronAPI.saveCompletedFile(jobInfo.id);
-            if (result.error) {
-                alert(`Download failed: ${result.error}`);
-            } else {
-                alert(`File saved to: ${result.path}`);
+        const handleOpenFolder = async () => {
+            if (!isElectron || !jobInfo.downloadPath) { 
+                alert("Could not determine the download folder."); 
+                return; 
             }
+            // This function needs to be added to preload.js and main.js
+            await window.electron.openFolder(jobInfo.downloadPath);
         };
         
-        return ( <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}><Typography variant="subtitle1" sx={{display: 'flex', alignItems: 'center', color: color}}>{icon} <Box component="span" sx={{ml:1}}>{jobInfo.message || `Status: ${jobInfo.status}`}</Box></Typography>{showProgressBar && <LinearProgress color="info" sx={{mt:1, mb:1}}/>} {jobInfo.status === 'completed' && jobInfo.id && (<Button variant="contained" color="success" onClick={handleDownloadClick} sx={{ mt: 1 }}>Download Ready: Click to Save</Button>)}</Box> );
+        return ( <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}><Typography variant="subtitle1" sx={{display: 'flex', alignItems: 'center', color: color}}>{icon} <Box component="span" sx={{ml:1}}>{jobInfo.message || `Status: ${jobInfo.status}`}</Box></Typography>{showProgressBar && <LinearProgress color="info" sx={{mt:1, mb:1}}/>} {jobInfo.status === 'completed' && jobInfo.downloadPath && (<Button variant="contained" color="success" onClick={handleOpenFolder} sx={{ mt: 1 }} startIcon={<FolderIcon />}>Open Download Folder</Button>)}</Box> );
     };
 
     const [expandedDownloads, setExpandedDownloads] = useState(true);
@@ -212,6 +218,7 @@ export default function Home() {
         }
     };
 
+    // The rest of your UI (Drawer, Box, etc.) is UNCHANGED
     return (
         <ThemeProvider theme={customTheme}>
             <Box sx={{ display: 'flex' }}>
