@@ -1,84 +1,90 @@
-name: Release
+name: release
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
 
 jobs:
   release:
-    runs-on: ${{ matrix.os }}
-
     strategy:
       matrix:
         os: [macos-latest, windows-latest]
-
-    permissions:
-      contents: write
-
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Check out Git repository
+        uses: actions/checkout@v3
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
         with:
-          node-version: '20'
-          cache: 'npm'
-      
-      - name: Setup Python
-        uses: actions/setup-python@v5
+          node-version: '18'
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.10'
 
-      - name: Create Binaries Directory
-        run: mkdir -p bin
-        shell: bash
+      - name: Install Node.js dependencies
+        run: npm install
 
-      - name: Download Dependencies (macOS)
-        if: runner.os == 'macOS'
-        working-directory: ./bin
-        run: |
-          curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o yt-dlp
-          brew install ffmpeg
-          cp $(which ffmpeg) .
-          chmod +x yt-dlp ffmpeg
-          
-          # Codesign the binaries to avoid macOS security issues
-          echo "Codesigning binaries for macOS..."
-          codesign --force --deep --sign - yt-dlp
-          codesign --force --deep --sign - ffmpeg
+      - name: Install Python dependencies
+        run: pip install -r service/requirements.txt
+
+      - name: Install frontend dependencies
+        run: npm install --prefix frontend
       
-      - name: Download Dependencies (Windows)
-        if: runner.os == 'Windows'
-        working-directory: ./bin
+      - name: Download FFmpeg and FFprobe
         run: |
-          curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -o yt-dlp.exe
-          curl -L https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip -o ffmpeg.zip
-          tar -xf ffmpeg.zip
-          mv ffmpeg-*/bin/ffmpeg.exe .
-          rm -r ffmpeg-*
-          rm ffmpeg.zip
+          if [ "${{ runner.os }}" == "macOS" ]; then
+            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-mac-arm64 -o ffmpeg
+            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-mac-arm64 -o ffprobe
+          elif [ "${{ runner.os }}" == "Windows" ]; then
+            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-win32-x64.exe -o ffmpeg.exe
+            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-win32-x64.exe -o ffprobe.exe
+          fi
+          chmod +x ffmpeg*
+          mkdir -p bin
+          mv ffmpeg* bin/
 
-      - name: Install Python Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pyinstaller
-          pip install -r service/requirements.txt
+      - name: Build Python backend
+        run: pyinstaller service/app.py --name yt-link-backend --onefile --distpath service/dist --workpath service/build --noconfirm
+      
+      - name: Build and package Electron app
+        run: npm run dist
 
-      - name: Install Root and Frontend Dependencies
-        run: npm install && npm install --prefix frontend
+      - name: Get release version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
 
-      - name: Build and Package Application
-        run: npm run build
+      # --- macOS Artifact Upload Steps ---
+      - name: Zip macOS artifact
+        if: matrix.os == 'macos-latest'
+        run: zip -r yt-link-macOS-arm64-${{ steps.get_version.outputs.VERSION }}.zip dist/mac-arm64
+        
+      - name: Upload macOS Release Asset
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-release-asset@v1
         env:
-          # Required for ad-hoc codesigning on macOS
-          CSC_IDENTITY_AUTO_DISCOVERY: false
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Upload Artifacts to Release
-        uses: ncipollo/release-action@v1
         with:
-          artifacts: "dist/*"
-          token: ${{ secrets.GITHUB_TOKEN }}
-          allowUpdates: true
+          upload_url: https://uploads.github.com/repos/${{ github.repository }}/releases/${{ steps.get_version.outputs.VERSION }}/assets
+          asset_path: ./yt-link-macOS-arm64-${{ steps.get_version.outputs.VERSION }}.zip
+          asset_name: yt-link-macOS-arm64-${{ steps.get_version.outputs.VERSION }}.zip
+          asset_content_type: application/zip
+
+      # --- Windows Artifact Upload Steps ---
+      - name: Zip Windows artifact
+        if: matrix.os == 'windows-latest'
+        run: 7z a yt-link-Windows-${{ steps.get_version.outputs.VERSION }}.zip ./dist/win-unpacked
+        
+      - name: Upload Windows Release Asset
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: https://uploads.github.com/repos/${{ github.repository }}/releases/${{ steps.get_version.outputs.VERSION }}/assets
+          asset_path: ./yt-link-Windows-${{ steps.get_version.outputs.VERSION }}.zip
+          asset_name: yt-link-Windows-${{ steps.get_version.outputs.VERSION }}.zip
+          asset_content_type: application/zip
