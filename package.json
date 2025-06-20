@@ -17,6 +17,7 @@
   "author": "Steven Ou",
   "license": "ISC",
   "devDependencies": {
+    "concurrently": "^9.1.2",
     "electron": "^31.0.1",
     "electron-builder": "^24.13.3",
     "rimraf": "^5.0.7"
