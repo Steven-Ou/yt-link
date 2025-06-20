@@ -82,7 +82,6 @@ function createWindow() {
 }
 
 // --- IPC Handler Function ---
-// This function forwards a job start request to the Python backend.
 const startJob = async (endpoint, data) => {
   if (!pythonPort) {
     console.error('[main.js startJob] Error: pythonPort is not set.');
@@ -105,14 +104,15 @@ const startJob = async (endpoint, data) => {
 
 // --- Electron App Lifecycle ---
 app.whenReady().then(async () => {
-  // Start the backend first.
   await startPythonBackend();
 
   // --- Register all IPC handlers ---
-  // A dedicated try/catch block for each handler ensures maximum stability
-  // and prevents silent failures.
   
-  // THIS HANDLER WAS MISSING AND IS NOW RESTORED.
+  // NEWLY ADDED: This handler gets the default downloads folder path.
+  ipcMain.handle('get-downloads-path', () => {
+    return app.getPath('downloads');
+  });
+
   ipcMain.handle('select-directory', async () => {
     if (!mainWindow) return null;
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -124,11 +124,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('start-single-mp3-job', async (event, data) => {
     try {
       const result = await startJob('start-single-mp3-job', data);
-      console.log('[IPC Handler] Successfully returned a Job ID for single-mp3-job.');
       return result;
     } catch (error) {
       console.error('[IPC Handler] Critical error in start-single-mp3-job:', error);
-      throw error; // Propagate the error to the UI to be displayed.
+      throw error;
     }
   });
 
@@ -163,7 +162,6 @@ app.whenReady().then(async () => {
     }
   });
 
-  // Now create the application window.
   createWindow();
 });
 
