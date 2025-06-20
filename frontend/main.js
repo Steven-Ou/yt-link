@@ -36,10 +36,11 @@ const startPythonBackend = async () => {
 
   // Log output and errors from the Python process for debugging.
   pythonProcess.stdout.on('data', (data) => {
-    console.log(`Python stdout: ${data}`);
+    // Trim the data to avoid logging extra whitespace or newlines
+    console.log(`Python stdout: ${data.toString().trim()}`);
   });
   pythonProcess.stderr.on('data', (data) => {
-    console.error(`Python stderr: ${data}`);
+    console.error(`Python stderr: ${data.toString().trim()}`);
   });
   pythonProcess.on('close', (code) => {
     console.log(`Python process exited with code ${code}`);
@@ -89,22 +90,34 @@ function createWindow() {
 
 // This function forwards a job start request to the Python backend.
 const startJob = async (endpoint, data) => {
-  if (!pythonPort) throw new Error('Python backend is not available.');
+  if (!pythonPort) {
+    console.error('[main.js startJob] Error: pythonPort is not set.');
+    throw new Error('Python backend is not available.');
+  }
   const url = `http://127.0.0.1:${pythonPort}/${endpoint}`;
-  console.log(`Forwarding job to Python: ${url} with data:`, data);
+  console.log(`[main.js startJob] Forwarding job to Python: ${url}`);
   try {
+    console.log('[main.js startJob] Awaiting fetch...');
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
+    console.log(`[main.js startJob] Fetch completed. Response status: ${response.status}`);
+
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`[main.js startJob] Python API response not OK: ${errorText}`);
       throw new Error(`Python API Error: ${response.statusText} - ${errorText}`);
     }
-    return await response.json();
+
+    console.log('[main.js startJob] Awaiting response.json()...');
+    const jsonResponse = await response.json();
+    console.log('[main.js startJob] JSON response received:', jsonResponse);
+    return jsonResponse;
   } catch (error) {
-    console.error(`Error in handler for '${endpoint}':`, error);
+    // This is the most important log. If this appears, we know the request failed here.
+    console.error(`[main.js startJob] CATCH BLOCK ERROR: The request to the Python backend failed.`, error);
     throw error;
   }
 };
