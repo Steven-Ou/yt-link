@@ -15,26 +15,35 @@ let mainWindow;
 let pythonProcess;
 let pythonPort;
 
-// Check if the app is running in development mode.
 const isDev = !app.isPackaged;
 
 /**
  * Starts the Python backend server as a child process.
+ * This function now handles both development and packaged (production) environments.
  */
 const startPythonBackend = async () => {
   try {
-    // Find an available port to avoid conflicts.
     pythonPort = await portfinder.getPortPromise();
 
-    // In development, we run the .py script directly.
-    const scriptPath = path.join(__dirname, '../service/app.py');
-    const command = 'python';
-    const args = [scriptPath, pythonPort.toString()];
+    let command;
+    let args;
+    const backendExecutableName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
 
-    console.log(`[main.js] Starting backend with command: "${command}" and args: [${args.join(', ')}]`);
+    if (isDev) {
+      // In development, run the Python script directly.
+      command = 'python';
+      const scriptPath = path.join(__dirname, '../service/app.py');
+      args = [scriptPath, pythonPort.toString()];
+    } else {
+      // In production, run the packaged backend executable.
+      command = path.join(process.resourcesPath, 'backend', backendExecutableName);
+      // Pass the resources path to the script so it knows where to find other resources like ffmpeg.
+      args = [pythonPort.toString(), process.resourcesPath];
+    }
+
+    console.log(`[main.js] Starting backend with: ${command} ${args.join(' ')}`);
     pythonProcess = spawn(command, args);
 
-    // Log output and errors from the Python process for debugging.
     pythonProcess.stdout.on('data', (data) => console.log(`[Python stdout] ${data.toString().trim()}`));
     pythonProcess.stderr.on('data', (data) => console.error(`[Python stderr] ${data.toString().trim()}`));
     pythonProcess.on('close', (code) => console.log(`[main.js] Python process exited with code ${code}`));
@@ -59,10 +68,8 @@ function createWindow() {
     },
   });
 
-  // Load the application content.
   if (isDev) {
     const devUrl = 'http://localhost:3000';
-    // This robust retry mechanism prevents blank screens.
     const loadDevUrl = () => {
       console.log(`[main.js] Attempting to load URL: ${devUrl}`);
       mainWindow.loadURL(devUrl).catch(() => {
@@ -73,6 +80,7 @@ function createWindow() {
     loadDevUrl();
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
+    // In production, load from the exported static files.
     mainWindow.loadFile(path.join(__dirname, 'out/index.html'));
   }
 
@@ -107,8 +115,6 @@ app.whenReady().then(async () => {
   await startPythonBackend();
 
   // --- Register all IPC handlers ---
-  
-  // NEWLY ADDED: This handler gets the default downloads folder path.
   ipcMain.handle('get-downloads-path', () => {
     return app.getPath('downloads');
   });
@@ -123,8 +129,7 @@ app.whenReady().then(async () => {
   
   ipcMain.handle('start-single-mp3-job', async (event, data) => {
     try {
-      const result = await startJob('start-single-mp3-job', data);
-      return result;
+      return await startJob('start-single-mp3-job', data);
     } catch (error) {
       console.error('[IPC Handler] Critical error in start-single-mp3-job:', error);
       throw error;
