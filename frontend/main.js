@@ -14,22 +14,28 @@ function createWindow() {
     height: 600,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      // Set webSecurity to true is a security best practice.
+      // We will use loadFile to correctly handle local resources.
+      webSecurity: true, 
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
   
-  // Use app.isPackaged to determine the environment.
   const isDev = !app.isPackaged;
 
-  const startUrl = isDev
-    ? 'http://localhost:3000'
-    : `file://${path.join(__dirname, '../out/index.html')}`;
-
-  mainWindow.loadURL(startUrl);
-
+  // --- UPDATED: Load URL for Dev, Load File for Prod ---
+  // This is the critical change to fix the "white screen" and "Not allowed to load local resource" error.
   if (isDev) {
+    // In development, we load from the Next.js dev server.
+    mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools({ mode: 'detach' });
+  } else {
+    // In production, we use `loadFile`. This is the recommended and more secure way
+    // to load local HTML files, and it correctly handles file-system paths.
+    // The path is also corrected from '../out/index.html' to 'out/index.html'
+    // to match the file structure in the packaged app.
+    mainWindow.loadFile(path.join(__dirname, 'out/index.html'));
   }
 }
 
@@ -39,7 +45,6 @@ const startPythonBackend = async () => {
   
   const isDev = !app.isPackaged;
 
-  // UPDATED: Correctly use process.platform to check the operating system.
   const backendExecutableName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
   
   const backendPath = isDev
@@ -51,9 +56,6 @@ const startPythonBackend = async () => {
   
   console.log(`Starting backend with command: "${command}" and args: [${args.join(', ')}]`);
 
-  // Spawn the child process.
-  // In dev, the command is 'python' and the script path is the first argument.
-  // In prod, the command is the executable itself.
   pythonProcess = isDev ? spawn(command, [backendPath, ...args]) : spawn(command, args);
 
   pythonProcess.stdout.on('data', (data) => {
