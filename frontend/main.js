@@ -1,9 +1,8 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
-const isDev = require('electron-is-dev');
+// const isDev = require('electron-is-dev'); // REMOVED: This was causing the ESM/CJS conflict.
 const { spawn } = require('child_process');
 const portfinder = require('portfinder');
-const fetch = require('node-fetch');
 
 let mainWindow;
 let pythonProcess;
@@ -15,50 +14,49 @@ function createWindow() {
     width: 800,
     height: 600,
     webPreferences: {
-      // The preload script is essential for secure communication
-      // between the main process (Node.js) and the renderer process (React).
       preload: path.join(__dirname, 'preload.js'),
-      // It's recommended to keep contextIsolation enabled for security.
       contextIsolation: true,
-      // It's recommended to keep nodeIntegration disabled for security.
       nodeIntegration: false,
     },
   });
+  
+  // UPDATED: Use app.isPackaged to determine the environment.
+  // app.isPackaged is `false` when running from the command line (dev mode)
+  // and `true` when running from a packaged application (prod mode).
+  // So, `!app.isPackaged` is the new `isDev`.
+  const isDev = !app.isPackaged;
 
-  // Determine the URL to load. In development, it's the local Next.js server.
-  // In production, it's the static HTML file built by Next.js.
   const startUrl = isDev
     ? 'http://localhost:3000'
     : `file://${path.join(__dirname, '../out/index.html')}`;
 
   mainWindow.loadURL(startUrl);
 
-  // Open DevTools automatically if in development mode.
   if (isDev) {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 }
 
 // --- Function to Start the Python Backend Server ---
-// We need to find an open port and then start the Python Flask server.
 const startPythonBackend = async () => {
-  // Find an available port to avoid conflicts.
   pythonPort = await portfinder.getPortPromise();
   
-  // UPDATED: Define the path to the Python executable.
-  // In development, we can assume 'python' is in the PATH.
-  // In production (packaged app), the executable is bundled inside the app's resources.
+  const isDev = !app.isPackaged; // Use the same logic here.
+
+  // Determine path to the Python script/executable.
+  const backendExecutable = sys.platform === 'win32' ? 'app.exe' : 'app';
   const backendPath = isDev
     ? path.join(__dirname, '../../service/app.py') // Path to the .py script in dev
-    : path.join(process.resourcesPath, 'backend', 'app.exe' ); // Path to the packaged .exe in production
-  
-  const scriptToRun = isDev ? [backendPath, pythonPort] : [pythonPort];
-  const command = isDev ? 'python' : backendPath;
+    : path.join(process.resourcesPath, 'backend', backendExecutable); // Path to the packaged executable.
 
-  console.log(`Starting backend: ${command} with args: ${scriptToRun}`);
+  const command = isDev ? 'python' : backendPath;
+  const args = [pythonPort.toString()];
   
+  console.log(`Starting backend with command: "${command}" and args: [${args.join(', ')}]`);
+
   // Spawn the child process.
-  pythonProcess = spawn(command, scriptToRun);
+  // In production, the command is the executable itself, so it doesn't need 'script' as an argument.
+  pythonProcess = isDev ? spawn(command, [backendPath, ...args]) : spawn(command, args);
 
   pythonProcess.stdout.on('data', (data) => {
     console.log(`Python stdout: ${data}`);
@@ -76,59 +74,41 @@ const startPythonBackend = async () => {
 
 // --- Electron App Lifecycle ---
 
-// This method is called when Electron has finished initialization and is ready
-// to create browser windows. Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
-  // --- IPC HANDLER REGISTRATION ---
-  // IMPORTANT: Register all IPC handlers BEFORE creating the window.
-  // This prevents a race condition where the renderer process tries to call an IPC
-  // function before the main process has registered it. This fixes the
-  // "No handler registered for 'select-directory'" error.
+  // Register IPC handlers BEFORE creating the window to avoid race conditions.
   ipcMain.handle('select-directory', async () => {
-    // This function is called from the renderer process (your React app)
-    // when the user wants to select a download folder.
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory'],
     });
-    // If the user didn't cancel the dialog, return the selected path.
     if (!result.canceled) {
       return result.filePaths[0];
     }
-    return null; // Return null if canceled.
+    return null;
   });
   
-  // Add a handler to get the python port
   ipcMain.handle('get-python-port', () => {
     return pythonPort;
   });
 
-  // First, start the backend server.
+  // Start the backend and then create the main window.
   await startPythonBackend();
-
-  // Now that handlers are registered and the backend is starting, create the main window.
   createWindow();
 
   app.on('activate', () => {
-    // On macOS, it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
 });
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-// This is the final cleanup step. When the Electron app quits,
-// we must make sure to terminate the Python backend process as well.
 app.on('will-quit', () => {
+  // Ensure the python backend is terminated when the app closes.
   if (pythonProcess) {
     console.log('Terminating Python backend process.');
     pythonProcess.kill();
