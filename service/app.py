@@ -1,142 +1,188 @@
-import sys
+# service/app.py
+
 import os
-import logging
-from flask import Flask, request, jsonify
-from yt_dlp import YoutubeDL
-import threading
+import sys
 import uuid
-import shutil
-import traceback
+from flask import Flask, request, jsonify, send_from_directory
+from yt_dlp import YoutubeDL
+from threading import Thread
+import logging
+from werkzeug.serving import make_server
 
-# --- Basic Setup ---
-# Set up detailed logging to a file. This is crucial for debugging packaged apps.
-log_dir = os.path.join(os.path.expanduser("~"), "yt-link-logs")
-os.makedirs(log_dir, exist_ok=True)
-log_file = os.path.join(log_dir, "backend.log")
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_file),
-        logging.StreamHandler(sys.stdout) # Also print to console
-    ]
-)
+# --- Logging Configuration ---
+# Set up basic logging to capture info and error messages.
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# --- Flask App Initialization ---
 app = Flask(__name__)
-logging.info("Flask App Initialized")
 
-# --- Job Management ---
+# --- In-Memory Job Storage ---
+# A dictionary to keep track of the status and details of ongoing and completed jobs.
+# This is a simple solution for this example; for a production app, you might use a database.
 jobs = {}
 
-# --- Core Logic: Finding Packaged Binaries (Robust Version) ---
-def get_resource_path(filename):
-    """ Get absolute path to a resource, works for dev and for PyInstaller. """
-    # When packaged by PyInstaller, the executable is in a temporary folder `_MEIPASS`.
-    # `sys.executable` points to the running executable.
-    if getattr(sys, 'frozen', False):
-        # Path to the executable (e.g., .../backend/yt-link-backend.exe)
-        executable_path = os.path.dirname(sys.executable)
-        # The 'bin' directory is packaged at the same level as the 'backend' directory.
-        # So we go up one level from the executable's location and then into 'bin'.
-        resource_path = os.path.join(executable_path, '..', 'bin', filename)
-        logging.info(f"Running frozen. Looking for {filename} at {resource_path}")
-        return resource_path
-    else:
-        # In development, check the system's PATH.
-        logging.info(f"Running in dev mode. Looking for '{filename.split('.')[0]}' in PATH.")
-        return shutil.which(filename.split('.')[0])
+class ServerThread(Thread):
+    """
+    A separate thread to run the Flask server so it doesn't block the main application.
+    """
+    def __init__(self, flask_app, port):
+        super().__init__()
+        self.server = make_server('127.0.0.1', port, flask_app)
+        self.ctx = flask_app.app_context()
+        self.ctx.push()
+        self.daemon = True # Allows the main application to exit even if this thread is running
 
-# --- Get Paths for Binaries ---
-ffmpeg_filename = 'ffmpeg.exe' if sys.platform == 'win32' else 'ffmpeg'
-FFMPEG_PATH = get_resource_path(ffmpeg_filename)
-logging.info(f"Final FFMPEG Path: {FFMPEG_PATH}")
-if not FFMPEG_PATH or not os.path.exists(FFMPEG_PATH):
-    logging.error("FATAL: Could not find ffmpeg executable!")
-else:
-    logging.info("SUCCESS: ffmpeg executable found.")
+    def run(self):
+        logging.info("Starting Flask server...")
+        self.server.serve_forever()
 
+    def shutdown(self):
+        logging.info("Shutting down Flask server...")
+        self.server.shutdown()
 
-# --- Worker Functions for YouTube Downloads ---
+def download_hook(d):
+    """
+    A hook function called by yt-dlp during the download process.
+    Updates the job status with progress information.
+    """
+    job_id = d.get('info_dict', {}).get('id')
+    if job_id and job_id in jobs:
+        if d['status'] == 'downloading':
+            # Update progress if the job is actively downloading
+            jobs[job_id]['progress'] = d['_percent_str']
+            jobs[job_id]['speed'] = d.get('_speed_str', 'N/A')
+            jobs[job_id]['eta'] = d.get('_eta_str', 'N/A')
+        elif d['status'] == 'finished':
+            # Mark the download as complete before postprocessing (e.g., audio extraction)
+            logging.info(f"[{job_id}] Finished download, starting postprocessing.")
+            jobs[job_id]['status'] = 'processing'
 
-def download_single_mp3(job_id, url, download_path, cookies_file_path=None):
-    jobs[job_id] = {'status': 'processing', 'progress': 0, 'message': 'Starting download...'}
+def download_media(url, ydl_opts, job_id, download_path):
+    """
+    The main download function that runs in a separate thread.
+    """
     try:
-        logging.info(f"[{job_id}] Starting single MP3 download.")
-        logging.info(f"[{job_id}] URL: {url}")
-        logging.info(f"[{job_id}] Download Path: {download_path}")
-        logging.info(f"[{job_id}] Cookies Path: {cookies_file_path}")
-
-        def progress_hook(d):
-            if d['status'] == 'downloading':
-                percentage = d.get('_percent_str', '0%')
-                jobs[job_id]['progress'] = float(percentage.strip('%'))
-                jobs[job_id]['message'] = f"Downloading: {percentage}"
-            elif d['status'] == 'finished':
-                jobs[job_id]['message'] = 'Download finished, converting...'
-                logging.info(f"[{job_id}] Finished download, starting postprocessing.")
-
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': os.path.join(download_path, '%(title)s.%(ext)s'),
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'progress_hooks': [progress_hook],
-            'ffmpeg_location': FFMPEG_PATH,
-            'cookiefile': cookies_file_path,
-            'nocheckcertificate': True,
+        # Update job status to 'downloading'
+        jobs[job_id] = {
+            'status': 'downloading',
+            'progress': '0%',
+            'speed': 'N/A',
+            'eta': 'N/A',
+            'filename': '',
+            'download_path': download_path,
+            'error': None
         }
         
+        # Add the job_id to the options so it's available in the download_hook
+        ydl_opts['outtmpl']['default'] = os.path.join(download_path, '%(title)s.%(ext)s')
+        ydl_opts['progress_hooks'] = [download_hook]
+        
         with YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            info_dict = ydl.extract_info(url, download=True)
+            # Store the final filename after download and processing
+            final_filename = ydl.prepare_filename(info_dict)
+            # Adjust the extension if it was converted (e.g., to mp3)
+            if 'postprocessors' in ydl_opts and any(pp['key'] == 'FFmpegExtractAudio' for pp in ydl_opts['postprocessors']):
+                final_filename = os.path.splitext(final_filename)[0] + '.mp3'
 
+            jobs[job_id]['filename'] = os.path.basename(final_filename)
+
+        # Mark the job as completed successfully
         jobs[job_id]['status'] = 'completed'
-        jobs[job_id]['progress'] = 100
-        jobs[job_id]['message'] = 'Successfully downloaded and converted to MP3.'
         logging.info(f"[{job_id}] Job completed successfully.")
 
     except Exception as e:
-        # This is the most important part for debugging the 500 error
-        logging.error(f"[{job_id}] An error occurred: {e}")
-        logging.error(f"[{job_id}] Traceback: {traceback.format_exc()}")
-        jobs[job_id] = {'status': 'error', 'message': f"An error occurred: {e}"}
+        # If an error occurs, log it and update the job status
+        logging.error(f"Error in job {job_id}: {e}")
+        jobs[job_id]['status'] = 'failed'
+        jobs[job_id]['error'] = str(e)
 
 
-# --- Flask API Endpoints ---
+# --- API Endpoints ---
 
 @app.route('/start-single-mp3-job', methods=['POST'])
-def start_single_mp3_job_route():
-    try:
-        data = request.json
-        if not all(k in data for k in ['url', 'downloadPath']):
-            raise ValueError("Missing 'url' or 'downloadPath' in request")
-        
-        job_id = str(uuid.uuid4())
-        thread = threading.Thread(target=download_single_mp3, args=(
-            job_id,
-            data['url'],
-            data['downloadPath'],
-            data.get('cookiesPath')
-        ))
-        thread.start()
-        logging.info(f"Started job {job_id} for URL: {data['url']}")
-        return jsonify({'job_id': job_id})
-    except Exception as e:
-        logging.error(f"Failed to start single mp3 job: {e}")
-        logging.error(f"Request Data: {request.data}")
-        logging.error(f"Traceback: {traceback.format_exc()}")
-        return jsonify({'error': str(e)}), 500
+def start_single_mp3_job():
+    """
+    API endpoint to start a download job for a single MP3.
+    """
+    data = request.json
+    url = data['url']
+    download_path = data['downloadPath']
+    
+    job_id = str(uuid.uuid4()) # Generate a unique ID for this job
+    
+    # --- yt-dlp Options for Single MP3 ---
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'noplaylist': True,  # <-- THE FIX: This prevents downloading the whole playlist.
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+        'outtmpl': {}, # Placeholder, will be filled in by download_media
+        'id': job_id   # Pass job_id to be used in hooks
+    }
 
+    # Start the download in a new thread to avoid blocking the API response
+    thread = Thread(target=download_media, args=(url, ydl_opts, job_id, download_path))
+    thread.daemon = True
+    thread.start()
+    
+    return jsonify({'jobId': job_id})
+
+@app.route('/start-playlist-zip-job', methods=['POST'])
+def start_playlist_zip_job():
+    # Placeholder for playlist zip functionality
+    return jsonify({'error': 'Not implemented yet'}), 501
+    
+@app.route('/start-combine-playlist-mp3-job', methods=['POST'])
+def start_combine_playlist_mp3_job():
+    # Placeholder for combining playlist mp3s
+    return jsonify({'error': 'Not implemented yet'}), 501
 
 @app.route('/job-status/<job_id>', methods=['GET'])
-def job_status_route(job_id):
+def get_job_status(job_id):
+    """
+    API endpoint to check the status of a specific job.
+    """
     job = jobs.get(job_id)
-    if job:
-        return jsonify(job)
-    return jsonify({'status': 'not_found'}), 404
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    return jsonify(job)
 
+@app.route('/download-file/<job_id>', methods=['GET'])
+def download_file(job_id):
+    """
+    API endpoint to download the completed file.
+    """
+    job = jobs.get(job_id)
+    if not job or job['status'] != 'completed':
+        return jsonify({'error': 'File not ready or job not found'}), 404
+        
+    directory = job['download_path']
+    filename = job['filename']
+    
+    if not os.path.exists(os.path.join(directory, filename)):
+        return jsonify({'error': f'File not found on server: {filename}'}), 404
+        
+    return send_from_directory(directory, filename, as_attachment=True)
+
+
+# --- Main Execution ---
 if __name__ == '__main__':
+    # Get port from command-line arguments, default to 5001 if not provided
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001
-    logging.info(f"Starting Flask server on port {port}")
-    app.run(port=port, host='127.0.0.1')
+    
+    # Run Flask in a separate thread
+    server_thread = ServerThread(app, port)
+    server_thread.start()
+    
+    try:
+        # Keep the main thread alive
+        while True:
+            pass
+    except KeyboardInterrupt:
+        # Handle Ctrl+C to gracefully shut down the server
+        server_thread.shutdown()
+        sys.exit(0)
