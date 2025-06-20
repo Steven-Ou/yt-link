@@ -1,8 +1,8 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron'); // Add 'shell'
 const path = require('path');
 const { spawn } = require('child_process');
 const portfinder = require('portfinder');
-const fetch = require('node-fetch'); // Required for communication with the Python backend
+const fetch = require('node-fetch');
 
 let mainWindow;
 let pythonProcess;
@@ -11,8 +11,8 @@ let pythonPort;
 // --- Function to Create the Main Application Window ---
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 960,
+    height: 720,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       webSecurity: true, 
@@ -65,91 +65,54 @@ const startPythonBackend = async () => {
 
 
 // --- Electron App Lifecycle & IPC Handlers ---
-
 app.whenReady().then(async () => {
-  // --- Register ALL IPC handlers here ---
-  // This centralizes communication between the frontend and the Python backend.
-
   // Handler for selecting a download directory
   ipcMain.handle('select-directory', async () => {
-    const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openDirectory'],
-    });
-    if (!result.canceled) {
-      return result.filePaths[0];
-    }
-    return null;
+    const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
+    return result.canceled ? null : result.filePaths[0];
   });
   
   // Generic function to forward job requests to the Python backend
   const startJob = async (endpoint, data) => {
       if (!pythonPort) throw new Error('Python backend is not available.');
-      try {
-          const response = await fetch(`http://localhost:${pythonPort}/${endpoint}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(data),
-          });
-          if (!response.ok) {
-              const errorText = await response.text();
-              throw new Error(`Python API Error: ${response.statusText} - ${errorText}`);
-          }
-          return await response.json(); // Should return { job_id: '...' }
-      } catch (error) {
-          console.error(`Failed to start job via ${endpoint}:`, error);
-          throw error;
+      const response = await fetch(`http://127.0.0.1:${pythonPort}/${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Python API Error: ${response.statusText} - ${errorText}`);
       }
+      return await response.json();
   };
 
-  // Handler for single MP3 downloads
-  ipcMain.handle('start-single-mp3-job', (event, data) => {
-    return startJob('start-single-mp3-job', data);
-  });
-
-  // Handler for playlist downloads (zipped)
-  ipcMain.handle('start-playlist-zip-job', (event, data) => {
-    return startJob('start-playlist-zip-job', data);
-  });
-
-  // Handler for playlist downloads (combined into one MP3)
-  ipcMain.handle('start-combine-playlist-mp3-job', (event, data) => {
-    return startJob('start-combine-playlist-mp3-job', data);
-  });
+  ipcMain.handle('start-single-mp3-job', (event, data) => startJob('start-single-mp3-job', data));
+  ipcMain.handle('start-playlist-zip-job', (event, data) => startJob('start-playlist-zip-job', data));
+  ipcMain.handle('start-combine-playlist-mp3-job', (event, data) => startJob('start-combine-playlist-mp3-job', data));
   
   // Handler for checking the status of any job
   ipcMain.handle('get-job-status', async (event, jobId) => {
     if (!pythonPort) throw new Error('Python backend is not available.');
-    try {
-      const response = await fetch(`http://localhost:${pythonPort}/job-status/${jobId}`);
-      if (!response.ok) {
-        const errorText = await response.text();
-        // A 404 is expected if the job ID isn't found yet, don't throw an error for that.
-        if (response.status === 404) return { status: 'not_found' };
-        throw new Error(`Python API Error: ${response.statusText} - ${errorText}`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error(`Failed to get job status for ${jobId}:`, error);
-      throw error;
-    }
+    const response = await fetch(`http://127.0.0.1:${pythonPort}/job-status/${jobId}`);
+    return await response.json();
   });
 
+  // ADDED: Handler for opening a folder in the file explorer
+  ipcMain.handle('open-folder', (event, folderPath) => {
+    shell.openPath(folderPath);
+  });
 
-  // --- Start Backend and Create Window ---
   await startPythonBackend();
   createWindow();
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('will-quit', () => {
