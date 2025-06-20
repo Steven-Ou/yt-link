@@ -1,6 +1,5 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
-// const isDev = require('electron-is-dev'); // REMOVED: This was causing the ESM/CJS conflict.
 const { spawn } = require('child_process');
 const portfinder = require('portfinder');
 
@@ -20,10 +19,7 @@ function createWindow() {
     },
   });
   
-  // UPDATED: Use app.isPackaged to determine the environment.
-  // app.isPackaged is `false` when running from the command line (dev mode)
-  // and `true` when running from a packaged application (prod mode).
-  // So, `!app.isPackaged` is the new `isDev`.
+  // Use app.isPackaged to determine the environment.
   const isDev = !app.isPackaged;
 
   const startUrl = isDev
@@ -41,13 +37,14 @@ function createWindow() {
 const startPythonBackend = async () => {
   pythonPort = await portfinder.getPortPromise();
   
-  const isDev = !app.isPackaged; // Use the same logic here.
+  const isDev = !app.isPackaged;
 
-  // Determine path to the Python script/executable.
-  const backendExecutable = sys.platform === 'win32' ? 'app.exe' : 'app';
+  // UPDATED: Correctly use process.platform to check the operating system.
+  const backendExecutableName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
+  
   const backendPath = isDev
-    ? path.join(__dirname, '../../service/app.py') // Path to the .py script in dev
-    : path.join(process.resourcesPath, 'backend', backendExecutable); // Path to the packaged executable.
+    ? path.join(__dirname, '../../service/app.py') // Dev: path to the .py script
+    : path.join(process.resourcesPath, 'backend', backendExecutableName); // Prod: path to the packaged executable
 
   const command = isDev ? 'python' : backendPath;
   const args = [pythonPort.toString()];
@@ -55,7 +52,8 @@ const startPythonBackend = async () => {
   console.log(`Starting backend with command: "${command}" and args: [${args.join(', ')}]`);
 
   // Spawn the child process.
-  // In production, the command is the executable itself, so it doesn't need 'script' as an argument.
+  // In dev, the command is 'python' and the script path is the first argument.
+  // In prod, the command is the executable itself.
   pythonProcess = isDev ? spawn(command, [backendPath, ...args]) : spawn(command, args);
 
   pythonProcess.stdout.on('data', (data) => {
@@ -75,7 +73,7 @@ const startPythonBackend = async () => {
 // --- Electron App Lifecycle ---
 
 app.whenReady().then(async () => {
-  // Register IPC handlers BEFORE creating the window to avoid race conditions.
+  // Register IPC handlers BEFORE creating the window.
   ipcMain.handle('select-directory', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory'],
@@ -90,7 +88,6 @@ app.whenReady().then(async () => {
     return pythonPort;
   });
 
-  // Start the backend and then create the main window.
   await startPythonBackend();
   createWindow();
 
@@ -108,7 +105,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
-  // Ensure the python backend is terminated when the app closes.
   if (pythonProcess) {
     console.log('Terminating Python backend process.');
     pythonProcess.kill();
