@@ -6,7 +6,7 @@ on:
       - 'v*.*.*'
 
 jobs:
-  release:
+  build:
     strategy:
       matrix:
         os: [macos-latest, windows-latest]
@@ -50,41 +50,44 @@ jobs:
       - name: Build Python backend
         run: pyinstaller service/app.py --name yt-link-backend --onefile --distpath service/dist --workpath service/build --noconfirm
       
-      - name: Build and package Electron app
-        run: npm run dist
+      - name: Build Electron app (without publishing)
+        run: npm run dist -- --publish never
 
       - name: Get release version
         id: get_version
-        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
-
-      # --- macOS Artifact Upload Steps ---
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+      
       - name: Zip macOS artifact
         if: matrix.os == 'macos-latest'
-        run: zip -r yt-link-macOS-arm64-${{ steps.get_version.outputs.VERSION }}.zip dist/mac-arm64
+        run: zip -r yt-link-macOS-arm64.zip dist/mac-arm64
         
-      - name: Upload macOS Release Asset
-        if: matrix.os == 'macos-latest'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: https://uploads.github.com/repos/${{ github.repository }}/releases/${{ steps.get_version.outputs.VERSION }}/assets
-          asset_path: ./yt-link-macOS-arm64-${{ steps.get_version.outputs.VERSION }}.zip
-          asset_name: yt-link-macOS-arm64-${{ steps.get_version.outputs.VERSION }}.zip
-          asset_content_type: application/zip
-
-      # --- Windows Artifact Upload Steps ---
       - name: Zip Windows artifact
         if: matrix.os == 'windows-latest'
-        run: 7z a yt-link-Windows-${{ steps.get_version.outputs.VERSION }}.zip ./dist/win-unpacked
-        
-      - name: Upload Windows Release Asset
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-release-asset@v1
+        shell: pwsh
+        run: 7z a yt-link-Windows.zip ./dist/win-unpacked
+
+      - name: Upload artifact for release job
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.os }}
+          path: |
+            yt-link-macOS-arm64.zip
+            yt-link-Windows.zip
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release and Upload Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/macos-latest/*
+            artifacts/windows-latest/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: https://uploads.github.com/repos/${{ github.repository }}/releases/${{ steps.get_version.outputs.VERSION }}/assets
-          asset_path: ./yt-link-Windows-${{ steps.get_version.outputs.VERSION }}.zip
-          asset_name: yt-link-Windows-${{ steps.get_version.outputs.VERSION }}.zip
-          asset_content_type: application/zip
