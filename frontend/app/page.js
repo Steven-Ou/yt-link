@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useRef } from 'react'; // Importing React hooks
+
+import { useState, useEffect, useRef, useCallback } from 'react'; // Importing React hooks
 import { // Importing Material-UI components
     Box, Button, Container, Divider, Drawer, List, ListItem,
     ListItemButton, ListItemIcon, ListItemText, TextField, Toolbar,
@@ -85,37 +86,47 @@ export default function Home() {
     const [activeJobs, setActiveJobs] = useState({});
     const pollingIntervals = useRef({});
     const [isElectron, setIsElectron] = useState(false);
+    const [downloadPath, setDownloadPath] = useState(''); // Added state for download path
 
     useEffect(() => {
-        setIsElectron(!!(window && window.electron));
+        const electronCheck = !!(window && window.electron);
+        setIsElectron(electronCheck);
+        if (electronCheck) {
+            window.electron.getDownloadsPath().then(path => setDownloadPath(path || ''));
+        }
     }, []);
     
     const getJobStatus = (jobType) => activeJobs[jobType]?.status;
     const isLoading = (jobType) => {
         const status = getJobStatus(jobType);
-        return status === 'queued' || status?.startsWith('processing');
+        return status === 'queued' || status === 'downloading' || status === 'processing';
     };
-    const isAnyJobLoading = () => Object.values(activeJobs).some(job => job.status === 'queued' || job.status?.startsWith('processing'));
+    const isAnyJobLoading = () => Object.values(activeJobs).some(job => job.status === 'queued' || job.status === 'downloading' || job.status === 'processing');
 
     const startJob = async (jobType, startFunction, payload, operationName) => {
         setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...`, type: jobType, downloadPath: payload.downloadPath } }));
         try {
             const result = await startFunction(payload);
             if (result.error) { throw new Error(result.error); }
-            if (result.job_id) {
-                setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], id: result.job_id, status: 'queued', message: 'Job started...' } }));
-                pollJobStatus(result.job_id, jobType);
-            } else { throw new Error("Failed to get Job ID from server."); }
+            
+            // THE FIX IS HERE: Changed result.job_id to result.jobId
+            if (result.jobId) {
+                // AND HERE
+                setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], id: result.jobId, status: 'queued', message: 'Job started...' } }));
+                // AND HERE
+                pollJobStatus(result.jobId, jobType);
+            } else { 
+                throw new Error("Failed to get Job ID from server."); 
+            }
         } catch (error) {
             setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], status: 'failed', message: `Error: ${error.message}` } }));
         }
     };
 
-    const pollJobStatus = (jobId, jobType) => {
+    const pollJobStatus = useCallback((jobId, jobType) => {
         if (pollingIntervals.current[jobId]) { clearInterval(pollingIntervals.current[jobId]); }
         pollingIntervals.current[jobId] = setInterval(async () => {
             try {
-                // Check if window.electron exists before trying to use it
                 if (window.electron) {
                     const data = await window.electron.getJobStatus(jobId);
                     if (data.error) { throw new Error(data.error); }
@@ -129,7 +140,6 @@ export default function Home() {
                         delete pollingIntervals.current[jobId];
                     }
                 } else {
-                    // If not in electron, stop polling
                     clearInterval(pollingIntervals.current[jobId]);
                 }
             } catch (error) {
@@ -141,35 +151,34 @@ export default function Home() {
                 clearInterval(pollingIntervals.current[jobId]);
             }
         }, 2000);
-    };
+    }, []);
 
     useEffect(() => {
         const intervals = pollingIntervals.current;
         return () => { Object.values(intervals).forEach(clearInterval); };
     }, []);
 
-    // --- Button Click Handlers (CORRECTED & SAFER) ---
     const handleJobRequest = async (urlValue, jobType, operationName, urlKey = 'url') => {
         if (!urlValue) {
             alert(`Please enter a YouTube URL for: ${operationName}`);
             return;
         }
 
-        // THIS IS THE KEY FIX: Check for the Electron API at the moment of the click.
         if (!window.electron) {
-            alert("This feature is only available in the desktop application. Please run this app via Electron.");
+            alert("This feature is only available in the desktop application.");
             return;
         }
         
-        const downloadPath = await window.electron.selectDirectory();
-        if (!downloadPath) {
-            return; // User cancelled directory selection
+        const selectedPath = await window.electron.selectDirectory();
+        if (!selectedPath) {
+            return; // User cancelled
         }
+        setDownloadPath(selectedPath); // Update path state
 
         const payload = {
             [urlKey]: urlValue,
-            downloadPath,
-            cookiesPath: null
+            downloadPath: selectedPath, // Use the newly selected path
+            cookiesPath: cookieData || null
         };
         
         let startFunction;
@@ -187,7 +196,6 @@ export default function Home() {
     const downloadPlaylistZip = () => handleJobRequest(playlistUrl, 'playlistZip', 'Playlist Zip Download', 'playlistUrl');
     const downloadCombinedPlaylistMp3 = () => handleJobRequest(combineVideoUrl, 'combineMp3', 'Combine Playlist to MP3', 'playlistUrl');
     
-    // --- UI Sub-components (Unchanged logic, just a reference) ---
     const CookieInputField = () => ( <TextField label="Paste YouTube Cookies Here (Optional)" helperText="Needed for age-restricted/private videos." variant='outlined' fullWidth multiline rows={4} value={cookieData} onChange={(e) => setCookieData(e.target.value)} style={{marginBottom: 16}} placeholder="Starts with # Netscape HTTP Cookie File..." disabled={isAnyJobLoading()} InputProps={{ startAdornment: ( <ListItemIcon sx={{minWidth: '40px', color: 'action.active', mr: 1}}><CookieIcon /></ListItemIcon> ), }} /> );
     
     const JobStatusDisplay = ({ jobInfo }) => {
@@ -195,7 +203,7 @@ export default function Home() {
         let icon = <HourglassEmptyIcon />; let color = "text.secondary"; let showProgressBar = false;
         if (jobInfo.status === 'completed') { icon = <CheckCircleOutlineIcon color="success" />; color = "success.main"; }
         else if (jobInfo.status === 'failed') { icon = <ErrorOutlineIcon color="error" />; color = "error.main"; }
-        else if (jobInfo.status === 'queued' || jobInfo.status?.startsWith('processing')) { icon = <CircularProgress size={20} sx={{ mr: 1}} color="inherit" />; color = "info.main"; showProgressBar = true; }
+        else if (jobInfo.status === 'queued' || jobInfo.status === 'downloading' || jobInfo.status === 'processing') { icon = <CircularProgress size={20} sx={{ mr: 1}} color="inherit" />; color = "info.main"; showProgressBar = true; }
         
         const handleOpenFolder = async () => {
             if (window.electron && jobInfo.downloadPath) { 
@@ -205,7 +213,7 @@ export default function Home() {
             }
         };
         
-        return ( <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}><Typography variant="subtitle1" sx={{display: 'flex', alignItems: 'center', color: color}}>{icon} <Box component="span" sx={{ml:1}}>{jobInfo.message || `Status: ${jobInfo.status}`}</Box></Typography>{showProgressBar && <LinearProgress color="info" sx={{mt:1, mb:1}}/>} {jobInfo.status === 'completed' && jobInfo.downloadPath && (<Button variant="contained" color="success" onClick={handleOpenFolder} sx={{ mt: 1 }} startIcon={<FolderIcon />}>Open Download Folder</Button>)}</Box> );
+        return ( <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}><Typography variant="subtitle1" sx={{display: 'flex', alignItems: 'center', color: color}}>{icon} <Box component="span" sx={{ml:1}}>{jobInfo.message || `Status: ${jobInfo.status}`}</Box></Typography>{showProgressBar && <LinearProgress variant={jobInfo.progress ? "determinate" : "indeterminate"} value={jobInfo.progress ? parseFloat(jobInfo.progress) : 0} color="info" sx={{mt:1, mb:1}}/>} {jobInfo.status === 'completed' && jobInfo.downloadPath && (<Button variant="contained" color="success" onClick={handleOpenFolder} sx={{ mt: 1 }} startIcon={<FolderIcon />}>Open Download Folder</Button>)}</Box> );
     };
 
     const [expandedDownloads, setExpandedDownloads] = useState(true);
@@ -220,7 +228,6 @@ export default function Home() {
         }
     };
 
-    // Your main UI structure is UNCHANGED
     return (
         <ThemeProvider theme={customTheme}>
             <Box sx={{ display: 'flex' }}>
@@ -232,8 +239,8 @@ export default function Home() {
                             <ListItem disablePadding> <ListItemButton selected={currentView === 'welcome'} onClick={() => setCurrentView('welcome')}> <ListItemIcon><HomeIcon /></ListItemIcon><ListItemText primary="Welcome" /> </ListItemButton> </ListItem>
                             <Divider sx={{ my: 1 }} />
                             <Accordion expanded={expandedDownloads} onChange={(event, isExpanded) => setExpandedDownloads(isExpanded)} sx={{ boxShadow: 'none', '&:before': { display: 'none' } }}>
-                                <AccordionSummary expandIcon={<ExpandMoreIcon />} aria-controls="panel1a-content" id="panel1a-header" sx={{ minHeight: '48px', '& .MuiAccordionSummary-content': { my: '12px' } }}>
-                                    <ListItemIcon sx={{ minWidth: '40px' }}><DownloadIcon /></ListItemIcon>
+                                <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'white' }}/>} aria-controls="panel1a-content" id="panel1a-header" sx={{ minHeight: '48px', '& .MuiAccordionSummary-content': { my: '12px' } }}>
+                                    <ListItemIcon sx={{ minWidth: '40px', color: 'white' }}><DownloadIcon /></ListItemIcon>
                                     <ListItemText primary="Download Options" primaryTypographyProps={{ fontWeight: 'medium' }} />
                                 </AccordionSummary>
                                 <AccordionDetails sx={{ p: 0 }}>
@@ -245,7 +252,7 @@ export default function Home() {
                                 </AccordionDetails>
                             </Accordion>
                             <Divider sx={{ my: 1 }} />
-                            <ListItem disablePadding sx={{ mt: 2 }}> <ListItemButton component="a" href="https://www.buymeacoffee.com/yourlink" target="_blank" rel="noopener noreferrer"> <ListItemIcon><CoffeeIcon /></ListItemIcon><ListItemText primary="Buy Me A Coffee" /> </ListItemButton> </ListItem>
+                            <ListItem disablePadding sx={{ mt: 2 }}> <ListItemButton component="a" href="https://www.buymeacoffee.com/stevenou" target="_blank" rel="noopener noreferrer"> <ListItemIcon><CoffeeIcon /></ListItemIcon><ListItemText primary="Buy Me A Coffee" /> </ListItemButton> </ListItem>
                         </List>
                     </Box>
                 </Drawer>
