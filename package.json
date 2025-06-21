@@ -27,6 +27,7 @@
   "build": {
     "appId": "com.steven.ou.ytlink",
     "productName": "YT Link",
+    "electronVersion": "31.0.1",
     "directories": {
       "app": "app",
       "output": "dist"
