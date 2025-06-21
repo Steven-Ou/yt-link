@@ -1,4 +1,4 @@
-name: release
+name: Create and Publish Release
 
 on:
   push:
@@ -13,86 +13,86 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Check out Git repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '18'
+          cache: 'npm'
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip'
 
-      - name: Install Node.js dependencies
-        run: npm install
+      - name: Install root and frontend Node.js dependencies
+        run: npm install && npm install --prefix frontend
 
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
-      - name: Install frontend dependencies
-        run: npm install --prefix frontend
-      
       - name: Download FFmpeg and FFprobe
         shell: bash
         run: |
-          if [ "${{ runner.os }}" == "macOS" ]; then
-            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-mac-arm64 -o ffmpeg
-            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-mac-arm64 -o ffprobe
-          elif [ "${{ runner.os }}" == "Windows" ]; then
-            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-win32-x64.exe -o ffmpeg.exe
-            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-win32-x64.exe -o ffprobe.exe
-          fi
-          chmod +x ffmpeg*
           mkdir -p bin
-          mv ffmpeg* bin/
+          if [ "${{ runner.os }}" == "macOS" ]; then
+            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-mac-arm64 -o bin/ffmpeg
+            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-mac-arm64 -o bin/ffprobe
+          elif [ "${{ runner.os }}" == "Windows" ]; then
+            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-win32-x64.exe -o bin/ffmpeg.exe
+            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-win32-x64.exe -o bin/ffprobe.exe
+          fi
+          chmod +x bin/ffmpeg*
 
-      - name: Build Python backend
-        run: pyinstaller service/app.py --name yt-link-backend --onefile --distpath service/dist --workpath service/build --noconfirm
-      
       - name: Build Electron app (without publishing)
+        # This uses the `dist` script from package.json which correctly builds the backend with PyInstaller first.
         run: npm run dist -- --publish never
 
-      - name: Get release version
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-      
-      - name: Upload macOS artifact
-        if: matrix.os == 'macos-latest'
+      - name: Prepare Artifacts for Upload
+        id: prep_artifacts
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" == "macOS" ]; then
+            # Find the generated .dmg file
+            ARTIFACT_PATH=$(ls dist/*.dmg)
+            # Define a consistent name for the artifact to be uploaded
+            ARTIFACT_NAME="YT-Link-macOS-dmg"
+          elif [ "${{ runner.os }}" == "Windows" ]; then
+            # Find the generated .zip file (as configured in package.json)
+            ARTIFACT_PATH=$(ls dist/*.zip)
+            ARTIFACT_NAME="YT-Link-Windows-zip"
+          fi
+          echo "ARTIFACT_PATH=${ARTIFACT_PATH}" >> $GITHUB_ENV
+          echo "ARTIFACT_NAME=${ARTIFACT_NAME}" >> $GITHUB_ENV
+          
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-artifact
-          path: dist/*.dmg
-        
-      - name: Zip Windows artifact
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: 7z a yt-link-Windows.zip ./dist/win-unpacked
-      
-      - name: Upload Windows artifact
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-artifact
-          path: yt-link-Windows.zip
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ARTIFACT_PATH }}
 
   release:
     runs-on: ubuntu-latest
-    needs: build
+    needs: build # This job runs only after the 'build' job for all OSs has succeeded
     permissions:
-      contents: write
+      contents: write # This permission is required to create a release
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          path: artifacts # All artifacts will be downloaded into the 'artifacts' directory
+
+      - name: List downloaded files for verification
+        run: ls -R artifacts
 
       - name: Create GitHub Release and Upload Assets
         uses: softprops/action-gh-release@v1
         with:
+          # The files from the build job will be attached to this release
           files: |
-            artifacts/macos-artifact/*
-            artifacts/windows-artifact/*
+            artifacts/YT-Link-macOS-dmg/*
+            artifacts/YT-Link-Windows-zip/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
