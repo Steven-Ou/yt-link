@@ -28,18 +28,19 @@ const startPythonBackend = async () => {
     let command;
     let args;
     const backendExecutableName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
+    
+    // In production, the backend is in the 'resources' folder.
+    // In development, we use a path relative to this main.js file.
+    const backendPath = isDev 
+      ? path.join(__dirname, '..', 'service', 'app.py')
+      : path.join(process.resourcesPath, 'backend', backendExecutableName);
 
     if (isDev) {
-      // In development, run the Python script directly.
       command = 'python';
-      const scriptPath = path.join(__dirname, '../service/app.py');
-      args = [scriptPath, pythonPort.toString()];
+      args = [backendPath, pythonPort.toString()];
     } else {
-      // In production, run the packaged backend executable.
-      // process.resourcesPath points to the 'resources' folder in the packaged app.
-      command = path.join(process.resourcesPath, 'backend', backendExecutableName);
-      // Pass the resources path to the script so it knows where to find other resources like ffmpeg.
-      args = [pythonPort.toString(), process.resourcesPath];
+      command = backendPath;
+      args = [pythonPort.toString()];
     }
 
     console.log(`[main.js] Starting backend with: ${command} ${args.join(' ')}`);
@@ -62,7 +63,6 @@ function createWindow() {
     width: 1080,
     height: 720,
     webPreferences: {
-      // The path to preload.js is now simpler because we've flattened the file structure.
       preload: path.join(__dirname, 'preload.js'),
       webSecurity: true,
       contextIsolation: true,
@@ -83,7 +83,6 @@ function createWindow() {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
     // In production, load from the static 'out' directory.
-    // The path is simpler now due to the updated build configuration.
     mainWindow.loadFile(path.join(__dirname, 'out/index.html'));
   }
 
@@ -98,11 +97,19 @@ const startJob = async (endpoint, data) => {
     console.error('[main.js startJob] Error: pythonPort is not set.');
     throw new Error('Python backend is not available.');
   }
+
+  // *** THIS IS THE CRUCIAL FIX ***
+  // Add the resources path to the data payload so the Python script knows where to find ffmpeg.
+  const payload = {
+      ...data,
+      resourcePath: isDev ? path.join(__dirname, '..') : process.resourcesPath,
+  };
+
   const url = `http://127.0.0.1:${pythonPort}/${endpoint}`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -190,3 +197,4 @@ app.on('will-quit', () => {
     pythonProcess.kill();
   }
 });
+
