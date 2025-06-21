@@ -42,7 +42,7 @@
       "icon": "frontend/public/icon.icns"
     },
     "win": {
-      "target": "nsis",
+      "target": "zip",
       "icon": "frontend/public/icon.ico"
     },
     "linux": {
