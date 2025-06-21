@@ -6,22 +6,7 @@ const path = require('path');
 // Get the root directory of the project
 const projectRoot = path.join(__dirname, '..');
 
-// Define paths to the directories and files we'll be working with
-const directoriesToClean = [
-    path.join(projectRoot, 'node_modules'),
-    path.join(projectRoot, 'frontend', 'node_modules'),
-    path.join(projectRoot, 'frontend', '.next'),
-    path.join(projectRoot, 'dist'),
-    path.join(projectRoot, 'app'),
-    path.join(projectRoot, 'service', 'dist'),
-    path.join(projectRoot, 'service', 'build'),
-];
-
-const filesToClean = [
-    path.join(projectRoot, 'package-lock.json'),
-    path.join(projectRoot, 'frontend', 'package-lock.json'),
-];
-
+// --- Path Definitions ---
 const appDir = path.join(projectRoot, 'app');
 const sourcePackageJson = path.join(projectRoot, 'package.json');
 const destPackageJson = path.join(appDir, 'package.json');
@@ -33,8 +18,8 @@ const sourceOut = path.join(projectRoot, 'frontend', 'out');
 const destOut = path.join(appDir, 'out');
 
 /**
- * A robust, cross-platform function to delete a directory recursively.
- * @param {string} dirPath The path to the directory to delete.
+ * Deletes a directory recursively.
+ * @param {string} dirPath The path to the directory.
  */
 function deleteDirectory(dirPath) {
     if (fs.existsSync(dirPath)) {
@@ -44,37 +29,30 @@ function deleteDirectory(dirPath) {
 }
 
 /**
- * A robust, cross-platform function to delete a file.
- * @param {string} filePath The path to the file to delete.
+ * This function cleans directories from a previous build.
  */
-function deleteFile(filePath) {
-    if (fs.existsSync(filePath)) {
-        console.log(`Cleaning file: ${filePath}`);
-        fs.unlinkSync(filePath);
-    }
+function clean() {
+    console.log('--- Cleaning old build artifacts ---');
+    // We only clean the 'app' and 'dist' directories now.
+    // The main 'dist' script will handle the full sequence.
+    deleteDirectory(appDir);
+    deleteDirectory(path.join(projectRoot, 'dist'));
+    deleteDirectory(path.join(projectRoot, 'service', 'dist'));
+    deleteDirectory(path.join(projectRoot, 'service', 'build'));
+    deleteDirectory(path.join(projectRoot, 'frontend', '.next'));
 }
 
 /**
- * Main function to run the packaging preparation steps.
+ * This function prepares the 'app' directory for packaging.
  */
-function packageApp() {
+function packageForBuild() {
     try {
-        console.log('--- Starting build preparation ---');
-
-        // 1. Clean all specified directories and files
-        console.log('\n--- Cleaning old build artifacts ---');
-        directoriesToClean.forEach(deleteDirectory);
-        filesToClean.forEach(deleteFile);
-
-        // 2. Create the new 'app' directory for packaging
         console.log(`\n--- Creating fresh 'app' directory ---`);
         fs.mkdirSync(appDir, { recursive: true });
 
-        // 3. Create a clean package.json for the final app
         console.log('\n--- Creating production package.json ---');
         const rootPackageJson = JSON.parse(fs.readFileSync(sourcePackageJson, 'utf-8'));
         
-        // Create a new object for the production package.json
         const productionPackageJson = {
             name: rootPackageJson.name,
             version: rootPackageJson.version,
@@ -85,29 +63,30 @@ function packageApp() {
             dependencies: rootPackageJson.dependencies
         };
 
-        // Write the clean package.json to the app directory
         fs.writeFileSync(destPackageJson, JSON.stringify(productionPackageJson, null, 2));
         console.log(`Created clean package.json at ${destPackageJson}`);
 
-        // 4. Copy other essential files into the 'app' directory
         console.log('\n--- Copying other files to "app" directory ---');
-        console.log(`Copying ${sourceMain} to ${destMain}`);
         fs.copyFileSync(sourceMain, destMain);
-
-        console.log(`Copying ${sourcePreload} to ${destPreload}`);
         fs.copyFileSync(sourcePreload, destPreload);
-
-        console.log(`Copying directory ${sourceOut} to ${destOut}`);
         fs.cpSync(sourceOut, destOut, { recursive: true });
 
         console.log('\n--- Build preparation complete! ---');
-
     } catch (error) {
         console.error('\n--- An error occurred during build preparation ---');
         console.error(error);
-        process.exit(1); // Exit with an error code
+        process.exit(1);
     }
 }
 
-// Run the main function
-packageApp();
+// --- Script Runner ---
+const command = process.argv[2];
+
+if (command === 'clean') {
+    clean();
+} else if (command === 'package') {
+    packageForBuild();
+} else {
+    console.error('Invalid command. Please use "clean" or "package".');
+    process.exit(1);
+}
