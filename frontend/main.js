@@ -36,6 +36,7 @@ const startPythonBackend = async () => {
       args = [scriptPath, pythonPort.toString()];
     } else {
       // In production, run the packaged backend executable.
+      // process.resourcesPath points to the 'resources' folder in the packaged app.
       command = path.join(process.resourcesPath, 'backend', backendExecutableName);
       // Pass the resources path to the script so it knows where to find other resources like ffmpeg.
       args = [pythonPort.toString(), process.resourcesPath];
@@ -61,6 +62,7 @@ function createWindow() {
     width: 1080,
     height: 720,
     webPreferences: {
+      // The path to preload.js is now simpler because we've flattened the file structure.
       preload: path.join(__dirname, 'preload.js'),
       webSecurity: true,
       contextIsolation: true,
@@ -80,7 +82,8 @@ function createWindow() {
     loadDevUrl();
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
-    // In production, load from the exported static files.
+    // In production, load from the static 'out' directory.
+    // The path is simpler now due to the updated build configuration.
     mainWindow.loadFile(path.join(__dirname, 'out/index.html'));
   }
 
