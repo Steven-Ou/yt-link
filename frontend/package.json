@@ -1,59 +1,59 @@
 {
-  "name": "yt-link-frontend",
+  "name": "yt-link",
   "version": "0.1.0",
-  "private": true,
-  "main": "main.js",
-  "homepage": "./",
+  "description": "Desktop app to download youtube videos and playlist as mp3 files",
+  "author": "Steven Ou",
+  "main": "frontend/main.js",
   "scripts": {
-    "dev": "rimraf .next && next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "electron:build": "npm run build && electron-builder"
+    "start": "electron .",
+    "dev": "concurrently \"npm run dev:next\" \"npm run dev:electron\"",
+    "dev:next": "cd frontend && npm run dev",
+    "dev:electron": "wait-on http://localhost:3000 && electron .",
+    "build": "npm run build:frontend && npm run build:backend",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd service && python -m PyInstaller app.py --noconfirm --onefile --name yt-link-backend --distpath ./dist",
+    "dist": "npm run build && node ./scripts/package.js package",
+    "release": "npm run build && node ./scripts/package.js package --release"
   },
   "dependencies": {
-    "@emotion/react": "^11.11.4",
-    "@emotion/styled": "^11.11.5",
-    "@mui/icons-material": "^5.15.20",
-    "@mui/material": "^5.15.20",
-    "electron-updater": "^6.2.1",
-    "next": "14.2.4",
-    "node-fetch": "^2.7.0",
-    "react": "^18",
-    "react-dom": "^18"
+    "portfinder": "^1.0.32"
   },
   "devDependencies": {
-    "autoprefixer": "^10.4.19",
+    "archiver": "^7.0.1",
     "concurrently": "^8.2.2",
-    "electron": "^31.0.2",
+    "electron": "^31.2.1",
     "electron-builder": "^24.13.3",
-    "eslint": "^8",
-    "eslint-config-next": "14.2.4",
-    "postcss": "^8",
-    "rimraf": "^6.0.1",
-    "tailwindcss": "^3.4.1",
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.steven-ou.yt-link",
+    "appId": "com.stevenou.yt-link",
     "productName": "YT Link",
+    "directories": {
+      "output": "dist"
+    },
     "files": [
-      "out/**/*",
-      "main.js",
-      "preload.js"
+      "frontend/out/**/*",
+      "frontend/main.js",
+      "frontend/preload.js",
+      "frontend/package.json"
     ],
+    "mac": {
+      "target": "dmg",
+      "icon": "frontend/public/icon.icns"
+    },
+    "win": {
+      "target": "zip",
+      "icon": "frontend/public/icon.ico"
+    },
     "extraResources": [
       {
-        "from": "../dist/yt-link-backend",
-        "to": "backend/yt-link-backend"
+        "from": "service/dist",
+        "to": "backend"
+      },
+      {
+        "from": "bin",
+        "to": "bin"
       }
-    ],
-    "directories": {
-      "buildResources": "build"
-    },
-    "mac": {
-      "target": "dmg"
-    }
+    ]
   }
 }
