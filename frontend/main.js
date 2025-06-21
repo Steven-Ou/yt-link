@@ -37,12 +37,15 @@ const startPythonBackend = async () => {
 
     if (isDev) {
       command = 'python';
-      // In dev, we pass the resources path manually for consistency.
+      // In dev, we pass the root project directory so the Python script
+      // can reliably find the `/bin` directory for ffmpeg.
       args = [backendPath, pythonPort.toString(), path.join(__dirname, '..')];
     } else {
-      command = backendPath;
       // *** THIS IS THE CRUCIAL FIX ***
-      // In production, pass the location of the resources folder to the python script.
+      // In production, we pass `process.resourcesPath`, which is the location of the 
+      // 'extraResources' defined in package.json. The Python script will use this path 
+      // to locate the 'bin' directory containing ffmpeg.
+      command = backendPath;
       args = [pythonPort.toString(), process.resourcesPath];
     }
 
@@ -55,6 +58,8 @@ const startPythonBackend = async () => {
 
   } catch (error) {
     console.error('[main.js] Failed to start Python backend:', error);
+    dialog.showErrorBox('Backend Error', 'Could not start the Python backend service.');
+    app.quit();
   }
 };
 
@@ -75,6 +80,7 @@ function createWindow() {
 
   if (isDev) {
     const devUrl = 'http://localhost:3000';
+    // Use a retry mechanism for development to handle the Next.js server starting up.
     const loadDevUrl = () => {
       console.log(`[main.js] Attempting to load URL: ${devUrl}`);
       mainWindow.loadURL(devUrl).catch(() => {
@@ -94,40 +100,26 @@ function createWindow() {
   });
 }
 
-// NOTE: The 'startJob' function that was here previously is no longer needed,
-// as the python script now gets the resource path on startup.
-// We can simplify the IPC handlers to pass data directly.
-
 // --- Electron App Lifecycle ---
 app.whenReady().then(async () => {
   await startPythonBackend();
 
   // --- Register all IPC handlers ---
-  ipcMain.handle('get-downloads-path', () => {
-    return app.getPath('downloads');
-  });
 
-  ipcMain.handle('select-directory', async () => {
-    if (!mainWindow) return null;
-    const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openDirectory'],
-    });
-    return result.canceled ? null : result.filePaths[0];
-  });
-  
+  // A helper function to make API calls to the Python backend.
   const makeApiCall = async (endpoint, data) => {
-      if (!pythonPort) throw new Error('Python backend is not available.');
-      const url = `http://127.0.0.1:${pythonPort}/${endpoint}`;
-      const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-      });
-      if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Python API Error: ${response.statusText} - ${errorText}`);
-      }
-      return await response.json();
+    if (!pythonPort) throw new Error('Python backend is not available.');
+    const url = `http://127.0.0.1:${pythonPort}/${endpoint}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Python API Error: ${response.statusText} - ${errorText}`);
+    }
+    return await response.json();
   };
   
   ipcMain.handle('start-single-mp3-job', (event, data) => makeApiCall('start-single-mp3-job', data));
@@ -138,7 +130,19 @@ app.whenReady().then(async () => {
     if (!pythonPort) throw new Error('Python backend is not available.');
     const url = `http://127.0.0.1:${pythonPort}/job-status/${jobId}`;
     const response = await fetch(url);
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Python API Error: ${response.statusText} - ${errorText}`);
+    }
     return await response.json();
+  });
+
+  ipcMain.handle('select-folder', async () => {
+    if (!mainWindow) return null;
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+    });
+    return canceled ? null : filePaths[0];
   });
   
   ipcMain.handle('open-folder', (event, folderPath) => {
