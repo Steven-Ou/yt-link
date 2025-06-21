@@ -1,66 +1,51 @@
 {
   "name": "yt-link",
   "version": "0.1.0",
-  "private": true,
-  "description": "An application to download YouTube videos as MP3s, either individually or as a whole playlist.",
-  "main": "frontend/main.js",
+  "description": "An Electron app for downloading YouTube videos and playlists.",
+  "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "start:frontend": "npm run dev --prefix frontend",
-    "dev": "concurrently \"npm:start:frontend\" \"wait-on http://localhost:3000 && npm run start\"",
-    "clean": "rimraf node_modules frontend/node_modules package-lock.json frontend/package-lock.json frontend/.next dist service/dist service/build",
-    "build:python": "pip install -r service/requirements.txt && python -m PyInstaller service/app.py --name yt-link-backend --onefile --distpath service/dist --workpath service/build --noconfirm",
-    "build": "npm install && npm run clean && npm run build:python && npm run build:frontend && npm run dist",
-    "build:backend": "npm install --prefix backend",
-    "build:frontend": "npm install --prefix frontend && npm run build --prefix frontend",
-    "dist": "electron-builder"
+    "start": "npm run build:frontend && electron .",
+    "build:frontend": "npm run build --prefix frontend",
+    "dist": "npm run build:frontend && electron-builder",
+    "postinstall": "npm install --prefix frontend"
   },
   "keywords": [],
   "author": "Steven Ou",
   "license": "ISC",
   "devDependencies": {
-    "concurrently": "^8.2.2",
     "electron": "^31.0.1",
-    "electron-builder": "^24.13.3",
-    "rimraf": "^5.0.7",
-    "wait-on": "^7.2.0"
+    "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "node-fetch": "^2.7.0",
+    "portfinder": "^1.0.32"
   },
   "build": {
-    "appId": "com.steven.ou.ytlink",
+    "appId": "com.steven-ou.yt-link",
     "productName": "YT Link",
-    "asar": false,
-    "directories": {
-      "output": "dist"
+    "publish": {
+      "provider": "github"
     },
     "files": [
-      "frontend/out/**/*",
-      "frontend/main.js",
-      "frontend/preload.js",
-      "package.json"
+      "main.js",
+      "preload.js",
+      "out/**/*"
     ],
     "extraResources": [
       {
-        "from": "service/dist",
-        "to": "backend"
+        "from": "service/dist/",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
       },
       {
-        "from": "bin",
-        "to": "bin"
+        "from": "bin/",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
       }
-    ],
-    "win": {
-      "target": "zip"
-    },
-    "mac": {
-      "target": "dmg"
-    }
-  },
-  "dependencies": {
-    "axios": "^1.10.0",
-    "electron-updater": "^6.2.1",
-    "express": "^4.19.2",
-    "node-fetch": "^2.6.7",
-    "node-ipc": "^11.1.0",
-    "portfinder": "^1.0.32"
+    ]
   }
 }
