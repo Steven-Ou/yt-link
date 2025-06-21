@@ -58,22 +58,24 @@ jobs:
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
       
-      - name: Zip macOS artifact
+      - name: Upload macOS artifact
         if: matrix.os == 'macos-latest'
-        run: zip -r yt-link-macOS-arm64.zip dist/mac-arm64
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifact
+          path: dist/*.dmg
         
       - name: Zip Windows artifact
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: 7z a yt-link-Windows.zip ./dist/win-unpacked
-
-      - name: Upload artifact for release job
+      
+      - name: Upload Windows artifact
+        if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.os }}
-          path: |
-            yt-link-macOS-arm64.zip
-            yt-link-Windows.zip
+          name: windows-artifact
+          path: yt-link-Windows.zip
 
   release:
     runs-on: ubuntu-latest
@@ -90,7 +92,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/macos-latest/*
-            artifacts/windows-latest/*
+            artifacts/macos-artifact/*
+            artifacts/windows-artifact/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
