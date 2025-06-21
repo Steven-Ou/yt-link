@@ -16,13 +16,16 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 app = Flask(__name__)
 jobs = {}
 
+# --- THIS IS THE CORE FIX: Part 1 ---
 # This will be the path to the 'resources' directory in the packaged app, passed from main.js.
 # It will be None during local development.
 resources_path = sys.argv[2] if len(sys.argv) > 2 else None
+logging.info(f"Received resources_path on startup: {resources_path}")
 
 def get_ffmpeg_directory():
     """
     Determines the path to the DIRECTORY containing ffmpeg and ffprobe.
+    This is the definitive way to locate our bundled tools.
     """
     # For a packaged app, the binaries are in a 'bin' folder inside the resources path.
     if resources_path:
@@ -32,12 +35,13 @@ def get_ffmpeg_directory():
             return packaged_bin_path
             
     # As a fallback for local development, check the root-level bin folder
+    # This path goes up two directories from app.py (service/ -> root) and then into bin.
     dev_bin_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bin')
     if os.path.isdir(dev_bin_path):
         logging.info(f"Found ffmpeg directory for local development: {dev_bin_path}")
         return dev_bin_path
 
-    logging.warning("FFmpeg directory not found, will rely on system PATH.")
+    logging.warning("FFmpeg directory not found in packaged app or dev folder. Will rely on system PATH.")
     return None # Return None to let yt-dlp search the system PATH
 
 # --- Server Thread Class ---
@@ -64,7 +68,7 @@ def download_worker(job_id, ydl_opts, url, download_path, job_type, post_downloa
         if d['status'] == 'downloading':
             if job_id in jobs:
                 jobs[job_id].update({
-                    'progress': d.get('_percent_str', jobs[job_id]['progress']),
+                    'progress': d.get('_percent_str', jobs[job_id].get('progress', '0%')),
                     'speed': d.get('_speed_str', 'N/A'), 'eta': d.get('_eta_str', 'N/A'),
                     'message': f"Downloading: {d.get('filename')}"
                 })
@@ -77,11 +81,11 @@ def download_worker(job_id, ydl_opts, url, download_path, job_type, post_downloa
     try:
         jobs[job_id] = {
             'status': 'downloading', 'progress': '0%', 'speed': 'N/A', 'eta': 'N/A',
-            'filename': '', 'download_path': download_path, 'error': None
+            'filename': '', 'download_path': download_path, 'error': None, 'message': 'Initializing...'
         }
         
-        # *** THIS IS THE CORE FIX ***
-        # Get the directory and pass it to yt-dlp
+        # --- THIS IS THE CORE FIX: Part 2 ---
+        # Get the directory and pass it to yt-dlp. yt-dlp will find both ffmpeg and ffprobe inside.
         ffmpeg_dir = get_ffmpeg_directory()
         if ffmpeg_dir:
             ydl_opts['ffmpeg_location'] = ffmpeg_dir
@@ -114,10 +118,9 @@ def download_worker(job_id, ydl_opts, url, download_path, job_type, post_downloa
 def post_process_single_mp3(job_id, download_path, ydl_opts):
     """Gets the final filename for a single MP3 job."""
     with YoutubeDL(ydl_opts) as ydl:
-        # Use the URL from the original options
-        url = ydl_opts.get('original_url', '')
+        url = ydl_opts.get('original_url')
         if not url:
-             raise Exception("Original URL not found in options for post-processing.")
+            raise Exception("Original URL not found in options for post-processing.")
         info_dict = ydl.extract_info(url, download=False)
         base_filename = ydl.prepare_filename(info_dict)
         final_filename = os.path.splitext(base_filename)[0] + '.mp3'
@@ -146,10 +149,11 @@ def post_process_combine_playlist(job_id, download_path, ydl_opts):
     filelist_path = os.path.join(temp_dir, 'filelist.txt')
     with open(filelist_path, 'w', encoding='utf-8') as f:
         for mp3_file in mp3_files:
-            # Use absolute paths for ffmpeg concat
             full_mp3_path = os.path.join(temp_dir, mp3_file).replace("'", "'\\''")
             f.write(f"file '{full_mp3_path}'\n")
 
+    # --- THIS IS THE CORE FIX: Part 3 ---
+    # Construct the full path to the ffmpeg executable for the direct subprocess call.
     ffmpeg_dir = get_ffmpeg_directory()
     ffmpeg_exe = 'ffmpeg.exe' if sys.platform == 'win32' else 'ffmpeg'
     ffmpeg_path = os.path.join(ffmpeg_dir, ffmpeg_exe) if ffmpeg_dir else 'ffmpeg'
@@ -175,7 +179,6 @@ def start_single_mp3_job():
         'format': 'bestaudio/best', 'noplaylist': True,
         'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
         'outtmpl': {'default': os.path.join(data['downloadPath'], '%(title)s.%(ext)s')},
-        # Store original URL for post-processing
         'original_url': data['url']
     }
     thread = Thread(target=download_worker, args=(job_id, ydl_opts, data['url'], data['downloadPath'], 'single', post_process_single_mp3))
