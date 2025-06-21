@@ -47,8 +47,8 @@ jobs:
           chmod +x bin/ffmpeg*
 
       - name: Build Electron app (without publishing)
-        # This uses the `dist` script from package.json which correctly builds the backend with PyInstaller first.
-        run: npm run dist -- --publish never
+        # This now correctly calls the 'dist' script, which calls your package.js script with the right command.
+        run: npm run dist
 
       - name: Prepare Artifacts for Upload
         id: prep_artifacts
