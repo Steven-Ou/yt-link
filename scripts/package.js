@@ -23,6 +23,8 @@ const filesToClean = [
 ];
 
 const appDir = path.join(projectRoot, 'app');
+const sourcePackageJson = path.join(projectRoot, 'package.json');
+const destPackageJson = path.join(appDir, 'package.json');
 const sourceMain = path.join(projectRoot, 'frontend', 'main.js');
 const destMain = path.join(appDir, 'main.js');
 const sourcePreload = path.join(projectRoot, 'frontend', 'preload.js');
@@ -70,6 +72,10 @@ function packageApp() {
 
         // 3. Copy essential files into the 'app' directory
         console.log('\n--- Copying files to "app" directory ---');
+        
+        console.log(`Copying ${sourcePackageJson} to ${destPackageJson}`);
+        fs.copyFileSync(sourcePackageJson, destPackageJson);
+
         console.log(`Copying ${sourceMain} to ${destMain}`);
         fs.copyFileSync(sourceMain, destMain);
 
