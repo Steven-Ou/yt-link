@@ -70,12 +70,27 @@ function packageApp() {
         console.log(`\n--- Creating fresh 'app' directory ---`);
         fs.mkdirSync(appDir, { recursive: true });
 
-        // 3. Copy essential files into the 'app' directory
-        console.log('\n--- Copying files to "app" directory ---');
+        // 3. Create a clean package.json for the final app
+        console.log('\n--- Creating production package.json ---');
+        const rootPackageJson = JSON.parse(fs.readFileSync(sourcePackageJson, 'utf-8'));
         
-        console.log(`Copying ${sourcePackageJson} to ${destPackageJson}`);
-        fs.copyFileSync(sourcePackageJson, destPackageJson);
+        // Create a new object for the production package.json
+        const productionPackageJson = {
+            name: rootPackageJson.name,
+            version: rootPackageJson.version,
+            description: rootPackageJson.description,
+            main: rootPackageJson.main,
+            author: rootPackageJson.author,
+            license: rootPackageJson.license,
+            dependencies: rootPackageJson.dependencies
+        };
 
+        // Write the clean package.json to the app directory
+        fs.writeFileSync(destPackageJson, JSON.stringify(productionPackageJson, null, 2));
+        console.log(`Created clean package.json at ${destPackageJson}`);
+
+        // 4. Copy other essential files into the 'app' directory
+        console.log('\n--- Copying other files to "app" directory ---');
         console.log(`Copying ${sourceMain} to ${destMain}`);
         fs.copyFileSync(sourceMain, destMain);
 
