@@ -37,10 +37,13 @@ const startPythonBackend = async () => {
 
     if (isDev) {
       command = 'python';
-      args = [backendPath, pythonPort.toString()];
+      // In dev, we pass the resources path manually for consistency.
+      args = [backendPath, pythonPort.toString(), path.join(__dirname, '..')];
     } else {
       command = backendPath;
-      args = [pythonPort.toString()];
+      // *** THIS IS THE CRUCIAL FIX ***
+      // In production, pass the location of the resources folder to the python script.
+      args = [pythonPort.toString(), process.resourcesPath];
     }
 
     console.log(`[main.js] Starting backend with: ${command} ${args.join(' ')}`);
@@ -91,34 +94,9 @@ function createWindow() {
   });
 }
 
-// --- IPC Handler Function ---
-const startJob = async (endpoint, data) => {
-  if (!pythonPort) {
-    console.error('[main.js startJob] Error: pythonPort is not set.');
-    throw new Error('Python backend is not available.');
-  }
-
-  // *** THIS IS THE CRUCIAL FIX ***
-  // Add the resources path to the data payload so the Python script knows where to find ffmpeg.
-  const payload = {
-      ...data,
-      resourcePath: isDev ? path.join(__dirname, '..') : process.resourcesPath,
-  };
-
-  const url = `http://127.0.0.1:${pythonPort}/${endpoint}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[main.js startJob] Python API response not OK: ${errorText}`);
-    throw new Error(`Python API Error: ${response.statusText} - ${errorText}`);
-  }
-  return await response.json();
-};
+// NOTE: The 'startJob' function that was here previously is no longer needed,
+// as the python script now gets the resource path on startup.
+// We can simplify the IPC handlers to pass data directly.
 
 // --- Electron App Lifecycle ---
 app.whenReady().then(async () => {
@@ -137,32 +115,24 @@ app.whenReady().then(async () => {
     return result.canceled ? null : result.filePaths[0];
   });
   
-  ipcMain.handle('start-single-mp3-job', async (event, data) => {
-    try {
-      return await startJob('start-single-mp3-job', data);
-    } catch (error) {
-      console.error('[IPC Handler] Critical error in start-single-mp3-job:', error);
-      throw error;
-    }
-  });
-
-  ipcMain.handle('start-playlist-zip-job', async (event, data) => {
-      try {
-        return await startJob('start-playlist-zip-job', data);
-      } catch (error) {
-        console.error('[IPC Handler] Error in start-playlist-zip-job:', error);
-        throw error;
+  const makeApiCall = async (endpoint, data) => {
+      if (!pythonPort) throw new Error('Python backend is not available.');
+      const url = `http://127.0.0.1:${pythonPort}/${endpoint}`;
+      const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Python API Error: ${response.statusText} - ${errorText}`);
       }
-  });
+      return await response.json();
+  };
   
-  ipcMain.handle('start-combine-playlist-mp3-job', async (event, data) => {
-      try {
-        return await startJob('start-combine-playlist-mp3-job', data);
-      } catch (error) {
-        console.error('[IPC Handler] Error in start-combine-playlist-mp3-job:', error);
-        throw error;
-      }
-  });
+  ipcMain.handle('start-single-mp3-job', (event, data) => makeApiCall('start-single-mp3-job', data));
+  ipcMain.handle('start-playlist-zip-job', (event, data) => makeApiCall('start-playlist-zip-job', data));
+  ipcMain.handle('start-combine-playlist-mp3-job', (event, data) => makeApiCall('start-combine-playlist-mp3-job', data));
 
   ipcMain.handle('get-job-status', async (event, jobId) => {
     if (!pythonPort) throw new Error('Python backend is not available.');
@@ -197,4 +167,3 @@ app.on('will-quit', () => {
     pythonProcess.kill();
   }
 });
-
