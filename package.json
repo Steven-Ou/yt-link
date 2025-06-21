@@ -8,11 +8,11 @@
     "start": "npm run build:frontend && electron .",
     "start:frontend": "npm run dev --prefix frontend",
     "dev": "concurrently \"npm:start:frontend\" \"wait-on http://localhost:3000 && npm run start\"",
-    "clean": "rimraf node_modules frontend/node_modules package-lock.json frontend/package-lock.json frontend/.next dist app service/dist service/build",
+    "clean": "node scripts/package.js",
     "build:python": "pyinstaller service/app.py --name yt-link-backend --onefile --distpath service/dist --workpath service/build --noconfirm",
     "build:frontend": "npm install --prefix frontend && npm run build --prefix frontend",
     "dist": "npm run build:frontend && npm run package-app && electron-builder",
-    "package-app": "npm run clean && rimraf app && mkdir app && cp frontend/main.js app/main.js && cp frontend/preload.js app/preload.js && cp -r frontend/out app/out"
+    "package-app": "node scripts/package.js"
   },
   "keywords": [],
   "author": "Steven Ou",
