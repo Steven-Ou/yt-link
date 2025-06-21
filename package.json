@@ -3,16 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "description": "An application to download YouTube videos as MP3s, either individually or as a whole playlist.",
-  "main": "app/main.js",
+  "main": "main.js",
   "scripts": {
     "start": "npm run build:frontend && electron .",
     "start:frontend": "npm run dev --prefix frontend",
     "dev": "concurrently \"npm:start:frontend\" \"wait-on http://localhost:3000 && npm run start\"",
-    "clean": "node scripts/package.js",
+    "clean": "node scripts/package.js clean",
     "build:python": "pyinstaller service/app.py --name yt-link-backend --onefile --distpath service/dist --workpath service/build --noconfirm",
     "build:frontend": "npm install --prefix frontend && npm run build --prefix frontend",
-    "dist": "npm run build:frontend && npm run package-app && npx electron-builder",
-    "package-app": "node scripts/package.js"
+    "dist": "npm run clean && npm run build:python && npm run build:frontend && npm run package-app && npx electron-builder",
+    "package-app": "node scripts/package.js package"
   },
   "keywords": [],
   "author": "Steven Ou",
@@ -33,7 +33,7 @@
       "output": "dist"
     },
     "files": [
-      "app/**/*"
+      "**/*"
     ],
     "extraResources": [
       {
