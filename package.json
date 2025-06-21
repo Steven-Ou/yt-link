@@ -11,7 +11,7 @@
     "clean": "node scripts/package.js",
     "build:python": "pyinstaller service/app.py --name yt-link-backend --onefile --distpath service/dist --workpath service/build --noconfirm",
     "build:frontend": "npm install --prefix frontend && npm run build --prefix frontend",
-    "dist": "npm run build:frontend && npm run package-app && electron-builder",
+    "dist": "npm run build:frontend && npm run package-app && npx electron-builder",
     "package-app": "node scripts/package.js"
   },
   "keywords": [],
