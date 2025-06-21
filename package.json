@@ -7,10 +7,10 @@
   "scripts": {
     "start": "electron .",
     "dev": "concurrently \"npm run dev:next\" \"npm run dev:electron\"",
-    "dev:next": "cd frontend && npx next dev",
+    "dev:next": "npm exec --prefix frontend -- next dev",
     "dev:electron": "wait-on http://localhost:3000 && electron .",
     "build": "npm run build:frontend && npm run build:backend",
-    "build:frontend": "cd frontend && npx next build",
+    "build:frontend": "npm exec --prefix frontend -- next build",
     "build:backend": "cd service && python -m PyInstaller app.py --noconfirm --onefile --name yt-link-backend --distpath ./dist",
     "dist": "npm run build && node ./scripts/package.js package",
     "release": "npm run build && node ./scripts/package.js package --release"
