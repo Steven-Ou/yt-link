@@ -1,40 +1,54 @@
 {
   "name": "yt-link",
   "version": "0.1.0",
-  "private": true,
-  "description": "An application to download YouTube videos as MP3s, either individually or as a whole playlist.",
-  "main": "main.js",
-  "scripts": {
-    "start": "npm run build:frontend && electron .",
-    "start:frontend": "npm run dev --prefix frontend",
-    "dev": "concurrently \"npm:start:frontend\" \"wait-on http://localhost:3000 && npm run start\"",
-    "clean": "node scripts/package.js clean",
-    "build:python": "pyinstaller service/app.py --name yt-link-backend --onefile --distpath service/dist --workpath service/build --noconfirm",
-    "build:frontend": "npm install --prefix frontend && npm run build --prefix frontend",
-    "dist": "npm run clean && npm run build:python && npm run build:frontend && npm run package-app && npx electron-builder",
-    "package-app": "node scripts/package.js package"
-  },
-  "keywords": [],
+  "description": "Desktop app to download youtube videos and playlist as mp3 files",
   "author": "Steven Ou",
-  "license": "ISC",
+  "main": "frontend/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run dev:next\" \"npm run dev:electron\"",
+    "dev:next": "cd frontend && npm run dev",
+    "dev:electron": "wait-on http://localhost:3000 && electron .",
+    "build": "npm run build:frontend && npm run build:backend",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd service && npm run build",
+    "dist": "npm run build && node ./scripts/package.js",
+    "release": "npm run build && node ./scripts/package.js --release"
+  },
+  "dependencies": {
+    "portfinder": "^1.0.32"
+  },
   "devDependencies": {
+    "archiver": "^7.0.1",
     "concurrently": "^8.2.2",
-    "electron": "^31.0.1",
+    "electron": "^31.2.1",
     "electron-builder": "^24.13.3",
-    "rimraf": "^5.0.7",
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.steven.ou.ytlink",
+    "appId": "com.stevenou.yt-link",
     "productName": "YT Link",
-    "electronVersion": "31.0.1",
     "directories": {
-      "app": "app",
       "output": "dist"
     },
     "files": [
-      "**/*"
+      "frontend/out/**/*",
+      "frontend/main.js",
+      "frontend/preload.js",
+      "frontend/package.json"
     ],
+    "mac": {
+      "target": "dmg",
+      "icon": "frontend/public/icon.icns"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "frontend/public/icon.ico"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "frontend/public/icon.png"
+    },
     "extraResources": [
       {
         "from": "service/dist",
@@ -44,20 +58,6 @@
         "from": "bin",
         "to": "bin"
       }
-    ],
-    "win": {
-      "target": "zip"
-    },
-    "mac": {
-      "target": "dmg"
-    }
-  },
-  "dependencies": {
-    "axios": "^1.10.0",
-    "electron-updater": "^6.2.1",
-    "express": "^4.19.2",
-    "node-fetch": "^2.6.7",
-    "node-ipc": "^11.1.0",
-    "portfinder": "^1.0.32"
+    ]
   }
 }
