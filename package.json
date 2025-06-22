@@ -12,8 +12,7 @@
     "build": "npm run build:frontend && npm run build:backend",
     "build:frontend": "cd frontend && npx next build",
     "build:backend": "cd service && python -m PyInstaller app.py --noconfirm --onefile --name yt-link-backend --distpath ./dist",
-    "dist": "npm run build && node ./scripts/package.js package",
-    "release": "npm run build && node ./scripts/package.js package --release"
+    "dist": "npm run build && electron-builder"
   },
   "dependencies": {
     "portfinder": "^1.0.32"
