@@ -47,8 +47,12 @@ jobs:
           chmod +x bin/ffmpeg*
 
       - name: Build Electron app (without publishing)
-        # This now correctly calls the 'dist' script, which calls your package.js script with the right command.
         run: npm run dist
+
+      - name: DEBUG - List files in build directory
+        # This is the new debugging step. It will show us what files were actually created.
+        shell: bash
+        run: ls -R dist
 
       - name: Prepare Artifacts for Upload
         id: prep_artifacts
