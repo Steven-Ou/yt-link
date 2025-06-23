@@ -5,8 +5,7 @@ import json
 import zipfile
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from rq import Queue
-from rq.job import Job
+from rq import Queue, Job, get_current_job # Import get_current_job
 from redis import Redis
 import yt_dlp
 import static_ffmpeg # Solves the ffmpeg/ffprobe not found issue
@@ -77,7 +76,9 @@ def download_task(job_type, url, download_path, cookies_path=None):
     Main task function for downloading and processing YouTube videos/playlists.
     This function runs in the background on a worker.
     """
-    job = Job.fetch(request.json['jobId'], connection=redis_conn)
+    # FIX: Use get_current_job() to correctly get the job instance within a worker.
+    # This replaces the old code that incorrectly tried to access the Flask `request`.
+    job = get_current_job()
     job.meta['message'] = 'Preparing download...'
     job.save_meta()
 
