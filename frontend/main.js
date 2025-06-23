@@ -19,7 +19,7 @@ const isDev = !app.isPackaged;
 
 /**
  * Starts the Python backend server as a child process.
- * This function now handles both development and packaged (production) environments.
+ * This function handles both development and packaged (production) environments.
  */
 const startPythonBackend = async () => {
   try {
@@ -29,20 +29,18 @@ const startPythonBackend = async () => {
     let args;
     const backendExecutableName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
     
-    // In production, the backend is in the 'resources' folder.
-    // In development, we use a path relative to this main.js file.
+    // Determine the path to the backend executable or script.
     const backendPath = isDev 
       ? path.join(__dirname, '..', 'service', 'app.py')
       : path.join(process.resourcesPath, 'backend', backendExecutableName);
 
     if (isDev) {
       command = 'python';
-      // In dev, we pass the root project directory so the Python script
-      // can reliably find the `/bin` directory for ffmpeg.
+      // In dev, we pass the root project directory so the Python script can find the /bin folder.
       args = [backendPath, pythonPort.toString(), path.join(__dirname, '..')];
     } else {
-      // In a packaged app, we pass `process.resourcesPath` so the python script
-      // knows where to find the bundled 'bin' directory with ffmpeg.
+      // In a packaged app, we pass `process.resourcesPath` as the second argument.
+      // This is the critical step that tells the Python script where to find its resources.
       command = backendPath;
       args = [pythonPort.toString(), process.resourcesPath];
     }
@@ -76,21 +74,11 @@ function createWindow() {
     },
   });
 
+  const startUrl = isDev ? 'http://localhost:3000' : `file://${path.join(__dirname, 'out/index.html')}`;
+  mainWindow.loadURL(startUrl);
+
   if (isDev) {
-    const devUrl = 'http://localhost:3000';
-    // Use a retry mechanism for development to handle the Next.js server starting up.
-    const loadDevUrl = () => {
-      console.log(`[main.js] Attempting to load URL: ${devUrl}`);
-      mainWindow.loadURL(devUrl).catch(() => {
-        console.error(`[main.js] Failed to load ${devUrl}. Retrying in 2 seconds...`);
-        setTimeout(loadDevUrl, 2000);
-      });
-    };
-    loadDevUrl();
     mainWindow.webContents.openDevTools({ mode: 'detach' });
-  } else {
-    // In production, load from the static 'out' directory.
-    mainWindow.loadFile(path.join(__dirname, 'out/index.html'));
   }
 
   mainWindow.on('closed', () => {
@@ -98,14 +86,12 @@ function createWindow() {
   });
 }
 
-// --- Electron App Lifecycle ---
+// --- Electron App Lifecycle & IPC Handlers ---
 app.whenReady().then(async () => {
   await startPythonBackend();
   createWindow();
 
-  // --- Register all IPC handlers ---
-
-  // A helper function to make API calls to the Python backend.
+  // --- API Handlers to communicate with the Python backend ---
   const makeApiCall = async (endpoint, data) => {
     if (!pythonPort) throw new Error('Python backend is not available.');
     const url = `http://127.0.0.1:${pythonPort}/${endpoint}`;
@@ -127,7 +113,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('get-job-status', async (event, jobId) => {
     if (!pythonPort) throw new Error('Python backend is not available.');
-    const url = `http://127.0.0.1:${pythonPort}/job-status/${jobId}`;
+    const url = `http://12.0.0.1:${pythonPort}/job-status/${jobId}`;
     const response = await fetch(url);
     if (!response.ok) {
         const errorText = await response.text();
@@ -136,7 +122,7 @@ app.whenReady().then(async () => {
     return await response.json();
   });
 
-  // FIX: Renamed handler from 'select-folder' to 'select-directory' to match the error log and frontend call.
+  // --- Native OS Dialog Handlers ---
   ipcMain.handle('select-directory', async () => {
     if (!mainWindow) return null;
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
@@ -151,15 +137,8 @@ app.whenReady().then(async () => {
     }
   });
 
-  // FIX: Added missing handler for getting the system's default downloads path.
-  ipcMain.handle('get-downloads-path', () => {
-    return app.getPath('downloads');
-  });
-
-  // FIX: Added missing handler so the frontend can get the Python server's port.
-  ipcMain.handle('get-python-port', () => {
-    return pythonPort;
-  });
+  ipcMain.handle('get-downloads-path', () => app.getPath('downloads'));
+  ipcMain.handle('get-python-port', () => pythonPort);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
