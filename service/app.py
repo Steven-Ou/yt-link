@@ -1,5 +1,3 @@
-# service/app.py
-
 import os
 import sys
 import uuid
@@ -16,11 +14,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 app = Flask(__name__)
 jobs = {}
 
-# --- THIS IS THE CORE FIX: Part 1 ---
+# --- FFMPEG PATHING: THE FINAL FIX (Part 1) ---
 # This will be the path to the 'resources' directory in the packaged app, passed from main.js.
-# It will be None during local development.
-resources_path = sys.argv[2] if len(sys.argv) > 2 else None
-logging.info(f"Received resources_path on startup: {resources_path}")
+base_path_for_bins = sys.argv[2] if len(sys.argv) > 2 else None
+logging.info(f"Received resources_path on startup: {base_path_for_bins}")
 
 def get_ffmpeg_directory():
     """
@@ -28,23 +25,22 @@ def get_ffmpeg_directory():
     This is the definitive way to locate our bundled tools.
     """
     # For a packaged app, the binaries are in a 'bin' folder inside the resources path.
-    if resources_path:
-        packaged_bin_path = os.path.join(resources_path, 'bin')
+    if base_path_for_bins:
+        packaged_bin_path = os.path.join(base_path_for_bins, 'bin')
         if os.path.isdir(packaged_bin_path):
             logging.info(f"Found ffmpeg directory for packaged app: {packaged_bin_path}")
             return packaged_bin_path
             
-    # As a fallback for local development, check the root-level bin folder
-    # This path goes up two directories from app.py (service/ -> root) and then into bin.
+    # Fallback for local development
     dev_bin_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bin')
     if os.path.isdir(dev_bin_path):
         logging.info(f"Found ffmpeg directory for local development: {dev_bin_path}")
         return dev_bin_path
 
     logging.warning("FFmpeg directory not found in packaged app or dev folder. Will rely on system PATH.")
-    return None # Return None to let yt-dlp search the system PATH
+    return None
 
-# --- Server Thread Class ---
+# --- Server Thread Class (Restored from Original) ---
 class ServerThread(Thread):
     def __init__(self, flask_app, port):
         super().__init__()
@@ -54,23 +50,24 @@ class ServerThread(Thread):
         self.daemon = True
 
     def run(self):
-        logging.info("Starting Flask server...")
+        logging.info(f"Starting Flask server on port {self.server.port}...")
         self.server.serve_forever()
 
     def shutdown(self):
         logging.info("Shutting down Flask server...")
         self.server.shutdown()
 
-# --- Download Worker Function ---
+# --- Download Worker Function (Restored and Fixed) ---
 def download_worker(job_id, ydl_opts, url, download_path, job_type, post_download_action=None):
     """A generic worker function to handle downloads and post-processing."""
     def download_hook(d):
         if d['status'] == 'downloading':
             if job_id in jobs:
                 jobs[job_id].update({
-                    'progress': d.get('_percent_str', jobs[job_id].get('progress', '0%')),
+                    'status': 'downloading',
+                    'progress': d.get('_percent_str', 'N/A'),
                     'speed': d.get('_speed_str', 'N/A'), 'eta': d.get('_eta_str', 'N/A'),
-                    'message': f"Downloading: {d.get('filename')}"
+                    'message': 'Downloading...'
                 })
         elif d['status'] == 'finished':
             logging.info(f"[{job_id}] Finished downloading a file, starting postprocessing.")
@@ -80,12 +77,11 @@ def download_worker(job_id, ydl_opts, url, download_path, job_type, post_downloa
 
     try:
         jobs[job_id] = {
-            'status': 'downloading', 'progress': '0%', 'speed': 'N/A', 'eta': 'N/A',
-            'filename': '', 'download_path': download_path, 'error': None, 'message': 'Initializing...'
+            'status': 'starting', 'progress': '0%', 'message': 'Initializing job...'
         }
         
-        # --- THIS IS THE CORE FIX: Part 2 ---
-        # Get the directory and pass it to yt-dlp. yt-dlp will find both ffmpeg and ffprobe inside.
+        # --- FFMPEG PATHING: THE FINAL FIX (Part 2) ---
+        # Get the ffmpeg directory and pass it to yt-dlp.
         ffmpeg_dir = get_ffmpeg_directory()
         if ffmpeg_dir:
             ydl_opts['ffmpeg_location'] = ffmpeg_dir
@@ -95,9 +91,8 @@ def download_worker(job_id, ydl_opts, url, download_path, job_type, post_downloa
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
         
-        if job_id in jobs:
-            jobs[job_id]['status'] = 'processing'
-            jobs[job_id]['message'] = 'Finalizing...'
+        jobs[job_id]['status'] = 'processing'
+        jobs[job_id]['message'] = 'Finalizing...'
 
         if post_download_action:
             final_filename = post_download_action(job_id, download_path, ydl_opts)
@@ -109,42 +104,32 @@ def download_worker(job_id, ydl_opts, url, download_path, job_type, post_downloa
 
     except Exception as e:
         logging.error(f"Error in job {job_id}: {e}", exc_info=True)
-        if job_id in jobs:
-            jobs[job_id]['status'] = 'failed'
-            jobs[job_id]['error'] = str(e)
-            jobs[job_id]['message'] = f'Error: {e}'
+        jobs[job_id]['status'] = 'failed'
+        jobs[job_id]['error'] = str(e)
 
-# --- Post-Download Action Implementations ---
+# --- Post-Download Actions (Restored from Original) ---
 def post_process_single_mp3(job_id, download_path, ydl_opts):
-    """Gets the final filename for a single MP3 job."""
     with YoutubeDL(ydl_opts) as ydl:
-        url = ydl_opts.get('original_url')
-        if not url:
-            raise Exception("Original URL not found in options for post-processing.")
-        info_dict = ydl.extract_info(url, download=False)
+        info_dict = ydl.extract_info(ydl_opts.get('original_url'), download=False)
         base_filename = ydl.prepare_filename(info_dict)
         final_filename = os.path.splitext(base_filename)[0] + '.mp3'
         return os.path.basename(final_filename)
 
 def post_process_zip_playlist(job_id, download_path, ydl_opts):
-    """Zips the downloaded playlist files."""
     temp_dir = os.path.dirname(ydl_opts['outtmpl']['default'])
     playlist_title = ydl_opts.get('playlist_title', f'playlist_{job_id}')
     zip_filename_base = os.path.join(download_path, playlist_title)
-    
     shutil.make_archive(zip_filename_base, 'zip', temp_dir)
     shutil.rmtree(temp_dir)
     return f"{playlist_title}.zip"
 
 def post_process_combine_playlist(job_id, download_path, ydl_opts):
-    """Combines all downloaded MP3s into a single file using the correct ffmpeg path."""
     temp_dir = os.path.dirname(ydl_opts['outtmpl']['default'])
     playlist_title = ydl_opts.get('playlist_title', f'playlist_{job_id}')
     output_filename = os.path.join(download_path, f"{playlist_title} (Combined).mp3")
     
     mp3_files = sorted([f for f in os.listdir(temp_dir) if f.endswith('.mp3')])
-    if not mp3_files:
-        raise Exception("No MP3 files found to combine.")
+    if not mp3_files: raise Exception("No MP3 files found to combine.")
 
     filelist_path = os.path.join(temp_dir, 'filelist.txt')
     with open(filelist_path, 'w', encoding='utf-8') as f:
@@ -152,7 +137,7 @@ def post_process_combine_playlist(job_id, download_path, ydl_opts):
             full_mp3_path = os.path.join(temp_dir, mp3_file).replace("'", "'\\''")
             f.write(f"file '{full_mp3_path}'\n")
 
-    # --- THIS IS THE CORE FIX: Part 3 ---
+    # --- FFMPEG PATHING: THE FINAL FIX (Part 3) ---
     # Construct the full path to the ffmpeg executable for the direct subprocess call.
     ffmpeg_dir = get_ffmpeg_directory()
     ffmpeg_exe = 'ffmpeg.exe' if sys.platform == 'win32' else 'ffmpeg'
@@ -170,7 +155,7 @@ def post_process_combine_playlist(job_id, download_path, ydl_opts):
     shutil.rmtree(temp_dir)
     return os.path.basename(output_filename)
 
-# --- API Endpoints ---
+# --- API Endpoints (Restored from Original) ---
 @app.route('/start-single-mp3-job', methods=['POST'])
 def start_single_mp3_job():
     data = request.json
@@ -182,71 +167,61 @@ def start_single_mp3_job():
         'original_url': data['url']
     }
     thread = Thread(target=download_worker, args=(job_id, ydl_opts, data['url'], data['downloadPath'], 'single', post_process_single_mp3))
-    thread.daemon = True
-    thread.start()
+    thread.daemon = True; thread.start()
     return jsonify({'jobId': job_id})
 
 @app.route('/start-playlist-zip-job', methods=['POST'])
 def start_playlist_zip_job():
     data = request.json
     job_id = str(uuid.uuid4())
-    playlist_url = data['playlistUrl']
     with YoutubeDL({'extract_flat': True, 'quiet': True}) as ydl:
-        info = ydl.extract_info(playlist_url, download=False)
+        info = ydl.extract_info(data['playlistUrl'], download=False)
         playlist_title = info.get('title', f'playlist-{job_id}')
     
-    temp_download_dir = os.path.join(data['downloadPath'], f"temp_{job_id}")
-    os.makedirs(temp_download_dir, exist_ok=True)
-
+    temp_dir = os.path.join(data['downloadPath'], f"temp_{job_id}"); os.makedirs(temp_dir, exist_ok=True)
     ydl_opts = {
         'format': 'bestaudio/best', 'noplaylist': False,
         'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
-        'outtmpl': {'default': os.path.join(temp_download_dir, '%(playlist_index)s - %(title)s.%(ext)s')},
+        'outtmpl': {'default': os.path.join(temp_dir, '%(playlist_index)s - %(title)s.%(ext)s')},
         'playlist_title': playlist_title
     }
-    thread = Thread(target=download_worker, args=(job_id, ydl_opts, playlist_url, data['downloadPath'], 'playlistZip', post_process_zip_playlist))
-    thread.daemon = True
-    thread.start()
+    thread = Thread(target=download_worker, args=(job_id, ydl_opts, data['playlistUrl'], data['downloadPath'], 'playlistZip', post_process_zip_playlist))
+    thread.daemon = True; thread.start()
     return jsonify({'jobId': job_id})
 
 @app.route('/start-combine-playlist-mp3-job', methods=['POST'])
 def start_combine_playlist_mp3_job():
     data = request.json
     job_id = str(uuid.uuid4())
-    playlist_url = data['playlistUrl']
     with YoutubeDL({'extract_flat': True, 'quiet': True}) as ydl:
-        info = ydl.extract_info(playlist_url, download=False)
+        info = ydl.extract_info(data['playlistUrl'], download=False)
         playlist_title = info.get('title', f'playlist-{job_id}')
 
-    temp_download_dir = os.path.join(data['downloadPath'], f"temp_{job_id}")
-    os.makedirs(temp_download_dir, exist_ok=True)
-
+    temp_dir = os.path.join(data['downloadPath'], f"temp_{job_id}"); os.makedirs(temp_dir, exist_ok=True)
     ydl_opts = {
         'format': 'bestaudio/best', 'noplaylist': False,
         'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
-        'outtmpl': {'default': os.path.join(temp_download_dir, '%(playlist_index)s - %(title)s.%(ext)s')},
+        'outtmpl': {'default': os.path.join(temp_dir, '%(playlist_index)s - %(title)s.%(ext)s')},
         'playlist_title': playlist_title
     }
-    thread = Thread(target=download_worker, args=(job_id, ydl_opts, playlist_url, data['downloadPath'], 'combinePlaylist', post_process_combine_playlist))
-    thread.daemon = True
-    thread.start()
+    thread = Thread(target=download_worker, args=(job_id, ydl_opts, data['playlistUrl'], data['downloadPath'], 'combinePlaylist', post_process_combine_playlist))
+    thread.daemon = True; thread.start()
     return jsonify({'jobId': job_id})
 
 @app.route('/job-status/<job_id>', methods=['GET'])
 def get_job_status(job_id):
     job = jobs.get(job_id)
-    if not job:
-        return jsonify({'status': 'not_found', 'message': 'Job not found.'}), 404
+    if not job: return jsonify({'status': 'not_found', 'message': 'Job not found.'}), 404
     return jsonify(job)
 
-# --- Main Execution ---
+# --- Main Execution (Restored from Original) ---
 if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001
     server_thread = ServerThread(app, port)
     server_thread.start()
     try:
-        while True:
-            pass
+        # Keep the main thread alive
+        while True: pass
     except KeyboardInterrupt:
         server_thread.shutdown()
         sys.exit(0)
