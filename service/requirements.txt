@@ -1,4 +1,7 @@
 Flask>=2.0
 yt-dlp>=2023.01.01
 Flask-Cors>=3.0.10
+redis
+rq
+static-ffmpeg
 pyinstaller
