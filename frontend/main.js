@@ -113,7 +113,8 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('get-job-status', async (event, jobId) => {
     if (!pythonPort) throw new Error('Python backend is not available.');
-    const url = `http://12.0.0.1:${pythonPort}/job-status/${jobId}`;
+    // FIX: Corrected the IP address from 12.0.0.1 to 127.0.0.1
+    const url = `http://127.0.0.1:${pythonPort}/job-status/${jobId}`;
     const response = await fetch(url);
     if (!response.ok) {
         const errorText = await response.text();
