@@ -41,10 +41,8 @@ const startPythonBackend = async () => {
       // can reliably find the `/bin` directory for ffmpeg.
       args = [backendPath, pythonPort.toString(), path.join(__dirname, '..')];
     } else {
-      // *** THIS IS THE CRUCIAL FIX ***
-      // In production, we pass `process.resourcesPath`, which is the location of the 
-      // 'extraResources' defined in package.json. The Python script will use this path 
-      // to locate the 'bin' directory containing ffmpeg.
+      // In a packaged app, we pass `process.resourcesPath` so the python script
+      // knows where to find the bundled 'bin' directory with ffmpeg.
       command = backendPath;
       args = [pythonPort.toString(), process.resourcesPath];
     }
@@ -103,6 +101,7 @@ function createWindow() {
 // --- Electron App Lifecycle ---
 app.whenReady().then(async () => {
   await startPythonBackend();
+  createWindow();
 
   // --- Register all IPC handlers ---
 
@@ -137,7 +136,8 @@ app.whenReady().then(async () => {
     return await response.json();
   });
 
-  ipcMain.handle('select-folder', async () => {
+  // FIX: Renamed handler from 'select-folder' to 'select-directory' to match the error log and frontend call.
+  ipcMain.handle('select-directory', async () => {
     if (!mainWindow) return null;
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory'],
@@ -151,7 +151,21 @@ app.whenReady().then(async () => {
     }
   });
 
-  createWindow();
+  // FIX: Added missing handler for getting the system's default downloads path.
+  ipcMain.handle('get-downloads-path', () => {
+    return app.getPath('downloads');
+  });
+
+  // FIX: Added missing handler so the frontend can get the Python server's port.
+  ipcMain.handle('get-python-port', () => {
+    return pythonPort;
+  });
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
 });
 
 // --- Quit and Cleanup ---
@@ -160,11 +174,7 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
-});
+
 app.on('will-quit', () => {
   if (pythonProcess) {
     console.log('[main.js] Terminating Python backend process.');
