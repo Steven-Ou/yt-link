@@ -1,78 +1,78 @@
-// Save this file at: frontend/app/components/UpdateStatus.js
+import { useEffect, useRef } from 'react';
 
-'use client'; // This is a Client Component because it uses hooks and browser APIs
-
-import { useState, useEffect } from 'react';
-import { LinearProgress, Typography, Box, Slide } from '@mui/material'; // Using MUI for a nice look
-
-export default function UpdateStatus() {
-  const [statusMessage, setStatusMessage] = useState('');
-  const [progress, setProgress] = useState(0);
-  const [showBanner, setShowBanner] = useState(false);
+/**
+ * A non-visual component that polls the backend for job status updates.
+ * @param {object} props - The component props.
+ * @param {string} props.jobId - The ID of the job to poll.
+ * @param {function} props.setJobStatus - The state setter function from the parent component.
+ * @param {boolean} props.isJobRunning - A flag to control the polling loop.
+ */
+export default function UpdateStatus({ jobId, setJobStatus, isJobRunning }) {
+  // Use a ref to hold the interval ID so it persists across re-renders
+  const intervalRef = useRef(null);
 
   useEffect(() => {
-    // This code only runs in the Electron environment where `window.electronAPI` is exposed
-    if (window.electronAPI && typeof window.electronAPI.onUpdateStatus === 'function') {
-      
-      // Listener for general status messages
-      const removeStatusListener = window.electronAPI.onUpdateStatus((message) => {
-        console.log('Update Status from Main:', message);
-        setStatusMessage(message);
-        setShowBanner(true);
-        setProgress(0); // Reset progress for new status messages
-        // Hide the banner after a few seconds if it's not a progress message
-        if (!message.toLowerCase().includes('downloading')) {
-            setTimeout(() => {
-                setShowBanner(false);
-            }, 6000); // Hide after 6 seconds
+    // Function to fetch the current job status from the backend
+    const checkJobStatus = async () => {
+      if (!jobId) return;
+
+      try {
+        const response = await fetch(`/api/job-status?jobId=${jobId}`);
+        
+        // If the server responds with an error, stop polling and update status.
+        if (!response.ok) {
+          console.error('Failed to fetch job status. Server responded with:', response.status);
+          // Keep previous details if available, otherwise set a generic error.
+          setJobStatus(prev => ({
+              ...prev,
+              status: 'failed',
+              details: prev.details || 'Error fetching status from server.'
+          }));
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          return;
         }
-      });
 
-      // Listener for download progress
-      const removeProgressListener = window.electronAPI.onUpdateDownloadProgress((progressInfo) => {
-        console.log('Update Progress from Main:', progressInfo);
-        setProgress(progressInfo.percent);
-        setStatusMessage(`Downloading update: ${Math.round(progressInfo.percent)}%`);
-        setShowBanner(true); // Ensure banner is visible during download
-      });
+        const data = await response.json();
 
-      // The 'return' function is a cleanup function that React runs when the component unmounts.
-      return () => {
-        // This removes the listeners to prevent memory leaks if the component ever unmounts.
-        removeStatusListener();
-        removeProgressListener();
-      };
+        // Update the parent component's state with the new status object
+        setJobStatus(data);
+
+        // If the job is finished (completed or failed), stop the polling.
+        if (data.status === 'completed' || data.status === 'failed') {
+          if (intervalRef.current) clearInterval(intervalRef.current);
+        }
+      } catch (error) {
+        // If there's a network error, stop polling and update status.
+        console.error('Network error while checking job status:', error);
+        setJobStatus(prev => ({ ...prev, status: 'failed', details: 'Network error checking status.' }));
+        if (intervalRef.current) clearInterval(intervalRef.current);
+      }
+    };
+
+    // --- Interval Management ---
+
+    // Clear any existing interval when the component re-renders or unmounts.
+    // This is a crucial cleanup step to prevent memory leaks.
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
     }
-  }, []); // The empty dependency array means this useEffect runs only once.
+    
+    // If there is an active job, start polling.
+    if (jobId && isJobRunning) {
+        // Fetch status immediately on start, then begin the interval.
+        checkJobStatus();
+        intervalRef.current = setInterval(checkJobStatus, 2000); // Poll every 2 seconds
+    }
 
-  return (
-    <Slide direction="up" in={showBanner} mountOnEnter unmountOnExit>
-      <Box
-        sx={{
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          backgroundColor: 'secondary.main', // Using your theme's secondary color
-          color: 'primary.contrastText',
-          padding: '12px 24px',
-          zIndex: 1500, // Ensure it's above other content
-          boxShadow: '0 -2px 10px rgba(0,0,0,0.2)'
-        }}
-      >
-        <Typography variant="body1">{statusMessage}</Typography>
-        {progress > 0 && progress < 100 && (
-          <LinearProgress
-            variant="determinate"
-            value={progress}
-            sx={{
-              marginTop: '8px',
-              height: '8px',
-              borderRadius: '4px'
-            }}
-          />
-        )}
-      </Box>
-    </Slide>
-  );
+    // The return function from useEffect is the cleanup function.
+    // It runs when the component unmounts or before the effect runs again.
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [jobId, isJobRunning, setJobStatus]); // Dependencies for the useEffect hook
+
+  // This component does not render any UI elements itself.
+  return null;
 }

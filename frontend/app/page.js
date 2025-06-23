@@ -22,9 +22,9 @@ import { // Importing Material-UI icons
     Folder as FolderIcon
  } from '@mui/icons-material';
 
-const drawerWidth = 240;// Define the width of the drawer
+const drawerWidth = 240; // Define the width of the drawer
 
-// Your custom theme - UNCHANGED
+// Your custom theme is preserved exactly as you designed it.
 const customTheme = createTheme({
     palette: {
         mode: 'light',
@@ -45,10 +45,14 @@ const customTheme = createTheme({
     },
 });
 
-// --- WELCOME PAGE COMPONENT - UNCHANGED ---
+// --- HELPER COMPONENTS ---
+// These are defined outside the main component to prevent re-declarations on each render.
+
+/**
+ * The Welcome page, displayed on first load.
+ */
 function WelcomePage({ isElectron }) {
-    const MacUtube = "https://github.com/Steven-Ou/yt-link/releases/latest"; 
-    const WindUtube = "https://github.com/Steven-Ou/yt-link/releases/latest";
+    const downloadUrl = "https://github.com/Steven-Ou/yt-link/releases/latest";
     return (
         <Container maxWidth="md" sx={{ textAlign: 'center' }}>
             {!isElectron && (
@@ -57,10 +61,10 @@ function WelcomePage({ isElectron }) {
                     This web interface is for demonstration only. For full functionality, please <strong>download the desktop application.</strong>
                 </Alert>
             )}
-            <Typography variant="h3" component="h1" gutterBottom fontWeight="bold">YT Link Converter!</Typography>
-            <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>Welcome!!</Typography>
+            <Typography variant="h3" component="h1" gutterBottom fontWeight="bold">YT Link Converter</Typography>
+            <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>Welcome!</Typography>
             <Typography variant="body1" color="text.secondary" sx={{ mt: 2, mb: 4, maxWidth: '600px', mx: 'auto' }}>
-                Please download the app if you're on the Website! Website won't work. Select a Download Option and follow the directions. When the download finishes, click on the green button to save the file! That's it!
+                Please download the app if you're on the Website! The web version does not support downloads. Select a download option, choose where to save the file, and wait for it to finish.
             </Typography>
             <Paper elevation={0} variant="outlined" sx={{ mt: 4, p: { xs: 2, sm: 4 }, borderRadius: 4, backgroundColor: '#fafafa' }}>
                 <Typography variant="h5" component="h2" gutterBottom align="center" fontWeight="bold">Download the Desktop App</Typography>
@@ -68,96 +72,190 @@ function WelcomePage({ isElectron }) {
                     Get the full-featured desktop application for a seamless, local experience. (For Windows users, make sure to extract the zip after downloading.)
                 </Typography>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center">
-                    <Button variant="contained" color="secondary" size="large" startIcon={<AppleIcon />} href={MacUtube} sx={{ textTransform: 'none', fontWeight: 'bold' }}>Download for macOS</Button>
-                    <Button variant="contained" color="primary" size="large" startIcon={<WindowsIcon />} href={WindUtube} sx={{ textTransform: 'none', fontWeight: 'bold' }}>Download for Windows</Button>
+                    <Button variant="contained" color="secondary" size="large" startIcon={<AppleIcon />} href={downloadUrl} sx={{ textTransform: 'none', fontWeight: 'bold' }}>Download for macOS</Button>
+                    <Button variant="contained" color="primary" size="large" startIcon={<WindowsIcon />} href={downloadUrl} sx={{ textTransform: 'none', fontWeight: 'bold' }}>Download for Windows</Button>
                 </Stack>
             </Paper>
         </Container>
     );
 }
 
+/**
+ * Displays the status of a single job, including progress and messages.
+ */
+const JobStatusDisplay = ({ jobInfo }) => {
+    if (!jobInfo || !jobInfo.status || jobInfo.status === 'idle') return null;
+
+    let icon = <HourglassEmptyIcon />;
+    let color = "text.secondary";
+    let showProgressBar = false;
+
+    switch (jobInfo.status) {
+        case 'completed':
+            icon = <CheckCircleOutlineIcon color="success" />;
+            color = "success.main";
+            break;
+        case 'failed':
+            icon = <ErrorOutlineIcon color="error" />;
+            color = "error.main";
+            break;
+        case 'queued':
+        case 'downloading':
+        case 'processing':
+            icon = <CircularProgress size={20} sx={{ mr: 1}} color="inherit" />;
+            color = "info.main";
+            showProgressBar = true;
+            break;
+        default:
+             break;
+    }
+
+    const handleOpenFolder = async () => {
+        if (window.electron && jobInfo.downloadPath) {
+            await window.electron.openFolder(jobInfo.downloadPath);
+        } else {
+            alert("Could not determine the download folder.");
+        }
+    };
+
+    return (
+        <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+            <Typography variant="subtitle1" sx={{display: 'flex', alignItems: 'center', color: color}}>
+                {icon}
+                <Box component="span" sx={{ml:1}}>{jobInfo.message || `Status: ${jobInfo.status}`}</Box>
+            </Typography>
+            {showProgressBar && <LinearProgress variant={jobInfo.progress ? "determinate" : "indeterminate"} value={jobInfo.progress ? parseFloat(jobInfo.progress) : 0} color="info" sx={{mt:1, mb:1}}/>}
+            {jobInfo.status === 'completed' && jobInfo.downloadPath && (
+                <Button variant="contained" color="success" onClick={handleOpenFolder} sx={{ mt: 1 }} startIcon={<FolderIcon />}>
+                    Open Download Folder
+                </Button>
+            )}
+        </Box>
+    );
+};
+
+/**
+ * A reusable input field for YouTube cookie data.
+ */
+const CookieInputField = ({ value, onChange, disabled }) => (
+    <TextField
+        label="Paste YouTube Cookies Here (Optional)"
+        helperText="Needed for age-restricted or private videos."
+        variant='outlined'
+        fullWidth
+        multiline
+        rows={4}
+        value={value}
+        onChange={onChange}
+        style={{marginBottom: 16}}
+        placeholder="Begins with '# Netscape HTTP Cookie File...'"
+        disabled={disabled}
+        InputProps={{
+            startAdornment: (
+                <ListItemIcon sx={{minWidth: '40px', color: 'action.active', mr: 1}}>
+                    <CookieIcon />
+                </ListItemIcon>
+            ),
+        }}
+    />
+);
+
+
 // --- MAIN HOME COMPONENT ---
 export default function Home() {
     const [currentView, setCurrentView] = useState('welcome');
+    // State for each input field
     const [url, setUrl] = useState('');
     const [playlistUrl, setPlaylistUrl] = useState('');
     const [combineVideoUrl, setCombineVideoUrl] = useState('');
     const [cookieData, setCookieData] = useState('');
+    // Central state object to track all active jobs by their type
     const [activeJobs, setActiveJobs] = useState({});
     const pollingIntervals = useRef({});
     const [isElectron, setIsElectron] = useState(false);
-    const [downloadPath, setDownloadPath] = useState(''); // Added state for download path
+    const [expandedDownloads, setExpandedDownloads] = useState(true);
 
+    // Check if the app is running in Electron on component mount
     useEffect(() => {
-        const electronCheck = !!(window && window.electron);
-        setIsElectron(electronCheck);
-        if (electronCheck) {
-            window.electron.getDownloadsPath().then(path => setDownloadPath(path || ''));
-        }
+        setIsElectron(!!(window && window.electron));
     }, []);
-    
-    const getJobStatus = (jobType) => activeJobs[jobType]?.status;
-    const isLoading = (jobType) => {
-        const status = getJobStatus(jobType);
-        return status === 'queued' || status === 'downloading' || status === 'processing';
-    };
-    const isAnyJobLoading = () => Object.values(activeJobs).some(job => job.status === 'queued' || job.status === 'downloading' || job.status === 'processing');
 
+    // Helper function to check if any job is currently active
+    const isAnyJobLoading = () => Object.values(activeJobs).some(job =>
+        job.status === 'queued' || job.status === 'downloading' || job.status === 'processing'
+    );
+
+    // A memoized version of the polling function to prevent re-creation
+    const pollJobStatus = useCallback((jobId, jobType) => {
+        // Clear any old interval for this job ID just in case
+        if (pollingIntervals.current[jobId]) {
+            clearInterval(pollingIntervals.current[jobId]);
+        }
+        
+        pollingIntervals.current[jobId] = setInterval(async () => {
+            try {
+                if (!window.electron) {
+                    clearInterval(pollingIntervals.current[jobId]);
+                    return;
+                }
+                const data = await window.electron.getJobStatus(jobId);
+
+                if (data.error) { throw new Error(data.error); }
+                
+                // Update the state for the specific job type
+                setActiveJobs(prev => {
+                    const currentJob = prev[jobType];
+                    // Defensive check to ensure we are updating the correct job
+                    if (currentJob && currentJob.id === jobId) {
+                        return { ...prev, [jobType]: { ...currentJob, ...data } };
+                    }
+                    return prev;
+                });
+                
+                // If the job is finished, stop polling
+                if (data.status === 'completed' || data.status === 'failed' || data.status === 'not_found') {
+                    clearInterval(pollingIntervals.current[jobId]);
+                    delete pollingIntervals.current[jobId];
+                }
+            } catch (error) {
+                setActiveJobs(prev => {
+                     const currentJob = prev[jobType];
+                     if (currentJob && currentJob.id === jobId) {
+                         return { ...prev, [jobType]: { ...currentJob, status: 'failed', message: `Error checking status: ${error.message}` } };
+                     }
+                     return prev;
+                });
+                clearInterval(pollingIntervals.current[jobId]);
+            }
+        }, 2000); // Poll every 2 seconds
+    }, []); // Empty dependency array means this function is created only once
+
+    // Starts a job by calling the Electron backend and then initiates polling
     const startJob = async (jobType, startFunction, payload, operationName) => {
         setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...`, type: jobType, downloadPath: payload.downloadPath } }));
         try {
             const result = await startFunction(payload);
             if (result.error) { throw new Error(result.error); }
-            
-            // THE FIX IS HERE: Changed result.job_id to result.jobId
+
+            // This is the key fix: The backend sends `job_id`, but we now correctly use `jobId`.
             if (result.jobId) {
-                // AND HERE
-                setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], id: result.jobId, status: 'queued', message: 'Job started...' } }));
-                // AND HERE
+                setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], id: result.jobId, status: 'queued', message: 'Job started, waiting for worker...' } }));
                 pollJobStatus(result.jobId, jobType);
-            } else { 
-                throw new Error("Failed to get Job ID from server."); 
+            } else {
+                throw new Error("Failed to get Job ID from server.");
             }
         } catch (error) {
             setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], status: 'failed', message: `Error: ${error.message}` } }));
         }
     };
 
-    const pollJobStatus = useCallback((jobId, jobType) => {
-        if (pollingIntervals.current[jobId]) { clearInterval(pollingIntervals.current[jobId]); }
-        pollingIntervals.current[jobId] = setInterval(async () => {
-            try {
-                if (window.electron) {
-                    const data = await window.electron.getJobStatus(jobId);
-                    if (data.error) { throw new Error(data.error); }
-                    setActiveJobs(prev => {
-                        const currentJob = prev[jobType];
-                        if (currentJob && currentJob.id === jobId) { return { ...prev, [jobType]: { ...currentJob, ...data } }; }
-                        return prev;
-                    });
-                    if (data.status === 'completed' || data.status === 'failed' || data.status === 'not_found') {
-                        clearInterval(pollingIntervals.current[jobId]);
-                        delete pollingIntervals.current[jobId];
-                    }
-                } else {
-                    clearInterval(pollingIntervals.current[jobId]);
-                }
-            } catch (error) {
-                setActiveJobs(prev => {
-                     const currentJob = prev[jobType];
-                     if (currentJob && currentJob.id === jobId) { return { ...prev, [jobType]: { ...currentJob, status: 'failed', message: `Error checking status: ${error.message}` } }; }
-                     return prev;
-                });
-                clearInterval(pollingIntervals.current[jobId]);
-            }
-        }, 2000);
-    }, []);
-
+    // Cleanup intervals on component unmount
     useEffect(() => {
         const intervals = pollingIntervals.current;
         return () => { Object.values(intervals).forEach(clearInterval); };
     }, []);
 
+    // Generic handler to request a job
     const handleJobRequest = async (urlValue, jobType, operationName, urlKey = 'url') => {
         if (!urlValue) {
             alert(`Please enter a YouTube URL for: ${operationName}`);
@@ -168,16 +266,13 @@ export default function Home() {
             alert("This feature is only available in the desktop application.");
             return;
         }
-        
+
         const selectedPath = await window.electron.selectDirectory();
-        if (!selectedPath) {
-            return; // User cancelled
-        }
-        setDownloadPath(selectedPath); // Update path state
+        if (!selectedPath) return; // User cancelled the directory selection
 
         const payload = {
             [urlKey]: urlValue,
-            downloadPath: selectedPath, // Use the newly selected path
+            downloadPath: selectedPath,
             cookiesPath: cookieData || null
         };
         
@@ -188,43 +283,61 @@ export default function Home() {
             case 'combineMp3': startFunction = window.electron.startCombinePlaylistMp3Job; break;
             default: alert('Unknown job type'); return;
         }
-
         startJob(jobType, startFunction, payload, operationName);
     };
-
+    
+    // --- Specific Job Handlers ---
     const downloadMP3 = () => handleJobRequest(url, 'singleMp3', 'Single MP3 Download');
     const downloadPlaylistZip = () => handleJobRequest(playlistUrl, 'playlistZip', 'Playlist Zip Download', 'playlistUrl');
     const downloadCombinedPlaylistMp3 = () => handleJobRequest(combineVideoUrl, 'combineMp3', 'Combine Playlist to MP3', 'playlistUrl');
-    
-    const CookieInputField = () => ( <TextField label="Paste YouTube Cookies Here (Optional)" helperText="Needed for age-restricted/private videos." variant='outlined' fullWidth multiline rows={4} value={cookieData} onChange={(e) => setCookieData(e.target.value)} style={{marginBottom: 16}} placeholder="Starts with # Netscape HTTP Cookie File..." disabled={isAnyJobLoading()} InputProps={{ startAdornment: ( <ListItemIcon sx={{minWidth: '40px', color: 'action.active', mr: 1}}><CookieIcon /></ListItemIcon> ), }} /> );
-    
-    const JobStatusDisplay = ({ jobInfo }) => {
-        if (!jobInfo || !jobInfo.status || jobInfo.status === 'idle') return null;
-        let icon = <HourglassEmptyIcon />; let color = "text.secondary"; let showProgressBar = false;
-        if (jobInfo.status === 'completed') { icon = <CheckCircleOutlineIcon color="success" />; color = "success.main"; }
-        else if (jobInfo.status === 'failed') { icon = <ErrorOutlineIcon color="error" />; color = "error.main"; }
-        else if (jobInfo.status === 'queued' || jobInfo.status === 'downloading' || jobInfo.status === 'processing') { icon = <CircularProgress size={20} sx={{ mr: 1}} color="inherit" />; color = "info.main"; showProgressBar = true; }
-        
-        const handleOpenFolder = async () => {
-            if (window.electron && jobInfo.downloadPath) { 
-                await window.electron.openFolder(jobInfo.downloadPath);
-            } else {
-                alert("Could not determine the download folder.");
-            }
-        };
-        
-        return ( <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}><Typography variant="subtitle1" sx={{display: 'flex', alignItems: 'center', color: color}}>{icon} <Box component="span" sx={{ml:1}}>{jobInfo.message || `Status: ${jobInfo.status}`}</Box></Typography>{showProgressBar && <LinearProgress variant={jobInfo.progress ? "determinate" : "indeterminate"} value={jobInfo.progress ? parseFloat(jobInfo.progress) : 0} color="info" sx={{mt:1, mb:1}}/>} {jobInfo.status === 'completed' && jobInfo.downloadPath && (<Button variant="contained" color="success" onClick={handleOpenFolder} sx={{ mt: 1 }} startIcon={<FolderIcon />}>Open Download Folder</Button>)}</Box> );
+
+    const isLoading = (jobType) => {
+        const status = activeJobs[jobType]?.status;
+        return status === 'queued' || status === 'downloading' || status === 'processing';
     };
 
-    const [expandedDownloads, setExpandedDownloads] = useState(true);
-
+    // Renders the main content based on the current view state
     const renderContent = () => {
+        const anyJobLoading = isAnyJobLoading();
         switch (currentView) {
             case 'welcome': return <WelcomePage isElectron={isElectron} />;
-            case 'single': return ( <Container maxWidth="sm" sx={{ mt: 4 }}><Typography variant='h6' gutterBottom>Convert Single Video to MP3</Typography><TextField label="YouTube Video URL" variant='outlined' fullWidth value={url} onChange={(e)=> setUrl(e.target.value)} style={{marginBottom: 16}} disabled={isAnyJobLoading()} /><CookieInputField /><Button variant='contained' color='primary' fullWidth onClick={downloadMP3} disabled={isLoading('singleMp3') || (isAnyJobLoading() && !isLoading('singleMp3'))}>{isLoading('singleMp3') && <CircularProgress size={24} sx={{mr:1}} />} {isLoading('singleMp3') ? 'Processing...' : 'Download MP3'}</Button><JobStatusDisplay jobInfo={activeJobs['singleMp3']} /></Container> );
-            case 'zip': return ( <Container maxWidth="sm" sx={{ mt: 4 }}><Typography variant='h6' gutterBottom>Download Playlist as Zip</Typography><TextField label="YouTube Playlist URL (for Zip)" variant='outlined' fullWidth value={playlistUrl} onChange={(e)=> setPlaylistUrl(e.target.value)} style={{marginBottom: 16}} disabled={isAnyJobLoading()} /><CookieInputField /><Button variant='contained' color='secondary' onClick={downloadPlaylistZip} fullWidth style={{marginBottom: 16}} disabled={isLoading('playlistZip') || (isAnyJobLoading() && !isLoading('playlistZip'))}>{isLoading('playlistZip') && <CircularProgress size={24} sx={{mr:1}} />} {isLoading('playlistZip') ? 'Processing...' : 'Download Playlist As Zip'}</Button><JobStatusDisplay jobInfo={activeJobs['playlistZip']} /></Container> );
-            case 'combine': return ( <Container maxWidth="sm" sx={{ mt: 4 }}><Typography variant='h6' gutterBottom>Convert Playlist to Single MP3</Typography><TextField label="YouTube Playlist URL (for Single MP3)" variant='outlined' fullWidth value={combineVideoUrl} onChange={(e)=> setCombineVideoUrl(e.target.value)} style={{marginBottom: 16}} disabled={isAnyJobLoading()} /><CookieInputField /><Button variant='contained' color='warning' onClick={downloadCombinedPlaylistMp3} fullWidth style={{marginBottom: 16}} disabled={isLoading('combineMp3') || (isAnyJobLoading() && !isLoading('combineMp3'))}>{isLoading('combineMp3') && <CircularProgress size={24} sx={{mr:1}} />} {isLoading('combineMp3') ? 'Processing...' : 'Download Playlist As Single MP3'}</Button><JobStatusDisplay jobInfo={activeJobs['combineMp3']} /></Container> );
-            default: return <Typography>Select an option</Typography>;
+            case 'single': return (
+                <Container maxWidth="sm" sx={{ mt: 4 }}>
+                    <Typography variant='h6' gutterBottom>Convert Single Video to MP3</Typography>
+                    <TextField label="YouTube Video URL" variant='outlined' fullWidth value={url} onChange={(e)=> setUrl(e.target.value)} style={{marginBottom: 16}} disabled={anyJobLoading} />
+                    <CookieInputField value={cookieData} onChange={e => setCookieData(e.target.value)} disabled={anyJobLoading}/>
+                    <Button variant='contained' color='primary' fullWidth onClick={downloadMP3} disabled={isLoading('singleMp3') || (anyJobLoading && !isLoading('singleMp3'))}>
+                        {isLoading('singleMp3') && <CircularProgress size={24} sx={{mr:1}} />}
+                        {isLoading('singleMp3') ? 'Processing...' : 'Download MP3'}
+                    </Button>
+                    <JobStatusDisplay jobInfo={activeJobs['singleMp3']} />
+                </Container>
+            );
+            case 'zip': return (
+                <Container maxWidth="sm" sx={{ mt: 4 }}>
+                    <Typography variant='h6' gutterBottom>Download Playlist as Zip</Typography>
+                    <TextField label="YouTube Playlist URL (for Zip)" variant='outlined' fullWidth value={playlistUrl} onChange={(e)=> setPlaylistUrl(e.target.value)} style={{marginBottom: 16}} disabled={anyJobLoading} />
+                     <CookieInputField value={cookieData} onChange={e => setCookieData(e.target.value)} disabled={anyJobLoading}/>
+                    <Button variant='contained' color='secondary' onClick={downloadPlaylistZip} fullWidth style={{marginBottom: 16}} disabled={isLoading('playlistZip') || (anyJobLoading && !isLoading('playlistZip'))}>
+                        {isLoading('playlistZip') && <CircularProgress size={24} sx={{mr:1}} />}
+                        {isLoading('playlistZip') ? 'Processing...' : 'Download Playlist As Zip'}
+                    </Button>
+                    <JobStatusDisplay jobInfo={activeJobs['playlistZip']} />
+                </Container>
+            );
+            case 'combine': return (
+                <Container maxWidth="sm" sx={{ mt: 4 }}>
+                    <Typography variant='h6' gutterBottom>Convert Playlist to Single MP3</Typography>
+                    <TextField label="YouTube Playlist URL (for Single MP3)" variant='outlined' fullWidth value={combineVideoUrl} onChange={(e)=> setCombineVideoUrl(e.target.value)} style={{marginBottom: 16}} disabled={anyJobLoading} />
+                     <CookieInputField value={cookieData} onChange={e => setCookieData(e.target.value)} disabled={anyJobLoading}/>
+                    <Button variant='contained' color='warning' onClick={downloadCombinedPlaylistMp3} fullWidth style={{marginBottom: 16}} disabled={isLoading('combineMp3') || (anyJobLoading && !isLoading('combineMp3'))}>
+                        {isLoading('combineMp3') && <CircularProgress size={24} sx={{mr:1}} />}
+                        {isLoading('combineMp3') ? 'Processing...' : 'Download Playlist As Single MP3'}
+                    </Button>
+                    <JobStatusDisplay jobInfo={activeJobs['combineMp3']} />
+                </Container>
+            );
+            default: return <Typography>Select an option from the menu.</Typography>;
         }
     };
 
@@ -236,23 +349,48 @@ export default function Home() {
                     <Toolbar />
                     <Box sx={{ overflow: 'auto' }}>
                         <List>
-                            <ListItem disablePadding> <ListItemButton selected={currentView === 'welcome'} onClick={() => setCurrentView('welcome')}> <ListItemIcon><HomeIcon /></ListItemIcon><ListItemText primary="Welcome" /> </ListItemButton> </ListItem>
+                            <ListItem disablePadding>
+                                <ListItemButton selected={currentView === 'welcome'} onClick={() => setCurrentView('welcome')}>
+                                    <ListItemIcon><HomeIcon /></ListItemIcon>
+                                    <ListItemText primary="Welcome" />
+                                </ListItemButton>
+                            </ListItem>
                             <Divider sx={{ my: 1 }} />
-                            <Accordion expanded={expandedDownloads} onChange={(event, isExpanded) => setExpandedDownloads(isExpanded)} sx={{ boxShadow: 'none', '&:before': { display: 'none' } }}>
-                                <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'white' }}/>} aria-controls="panel1a-content" id="panel1a-header" sx={{ minHeight: '48px', '& .MuiAccordionSummary-content': { my: '12px' } }}>
+                            <Accordion expanded={expandedDownloads} onChange={(e, isExpanded) => setExpandedDownloads(isExpanded)}>
+                                <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'white' }}/>} aria-controls="downloads-content" id="downloads-header">
                                     <ListItemIcon sx={{ minWidth: '40px', color: 'white' }}><DownloadIcon /></ListItemIcon>
                                     <ListItemText primary="Download Options" primaryTypographyProps={{ fontWeight: 'medium' }} />
                                 </AccordionSummary>
                                 <AccordionDetails sx={{ p: 0 }}>
                                     <List component="div" disablePadding>
-                                        <ListItem disablePadding sx={{ pl: 4 }}> <ListItemButton selected={currentView === 'single'} onClick={() => setCurrentView('single')}> <ListItemIcon><DownloadIcon /></ListItemIcon><ListItemText primary="Single MP3" /> </ListItemButton> </ListItem>
-                                        <ListItem disablePadding sx={{ pl: 4 }}> <ListItemButton selected={currentView === 'zip'} onClick={() => setCurrentView('zip')}> <ListItemIcon><QueueMusicIcon /></ListItemIcon><ListItemText primary="Playlist Zip" /> </ListItemButton> </ListItem>
-                                        <ListItem disablePadding sx={{ pl: 4 }}> <ListItemButton selected={currentView === 'combine'} onClick={() => setCurrentView('combine')}> <ListItemIcon><VideoLibraryIcon /></ListItemIcon><ListItemText primary="Combine Playlist MP3" /> </ListItemButton> </ListItem>
+                                        <ListItem disablePadding sx={{ pl: 4 }}>
+                                            <ListItemButton selected={currentView === 'single'} onClick={() => setCurrentView('single')}>
+                                                <ListItemIcon><DownloadIcon /></ListItemIcon>
+                                                <ListItemText primary="Single MP3" />
+                                            </ListItemButton>
+                                        </ListItem>
+                                        <ListItem disablePadding sx={{ pl: 4 }}>
+                                            <ListItemButton selected={currentView === 'zip'} onClick={() => setCurrentView('zip')}>
+                                                <ListItemIcon><QueueMusicIcon /></ListItemIcon>
+                                                <ListItemText primary="Playlist Zip" />
+                                            </ListItemButton>
+                                        </ListItem>
+                                        <ListItem disablePadding sx={{ pl: 4 }}>
+                                            <ListItemButton selected={currentView === 'combine'} onClick={() => setCurrentView('combine')}>
+                                                <ListItemIcon><VideoLibraryIcon /></ListItemIcon>
+                                                <ListItemText primary="Combine Playlist MP3" />
+                                            </ListItemButton>
+                                        </ListItem>
                                     </List>
                                 </AccordionDetails>
                             </Accordion>
                             <Divider sx={{ my: 1 }} />
-                            <ListItem disablePadding sx={{ mt: 2 }}> <ListItemButton component="a" href="https://www.buymeacoffee.com/stevenou" target="_blank" rel="noopener noreferrer"> <ListItemIcon><CoffeeIcon /></ListItemIcon><ListItemText primary="Buy Me A Coffee" /> </ListItemButton> </ListItem>
+                            <ListItem disablePadding sx={{ mt: 2 }}>
+                                <ListItemButton component="a" href="https://www.buymeacoffee.com/stevenou" target="_blank" rel="noopener noreferrer">
+                                    <ListItemIcon><CoffeeIcon /></ListItemIcon>
+                                    <ListItemText primary="Buy Me A Coffee" />
+                                </ListItemButton>
+                            </ListItem>
                         </List>
                     </Box>
                 </Drawer>
