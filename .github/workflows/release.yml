@@ -50,7 +50,6 @@ jobs:
         run: npm run dist
 
       - name: DEBUG - List files in build directory
-        # This is the new debugging step. It will show us what files were actually created.
         shell: bash
         run: ls -R dist
 
@@ -59,12 +58,9 @@ jobs:
         shell: bash
         run: |
           if [ "${{ runner.os }}" == "macOS" ]; then
-            # Find the generated .dmg file
             ARTIFACT_PATH=$(ls dist/*.dmg)
-            # Define a consistent name for the artifact to be uploaded
             ARTIFACT_NAME="YT-Link-macOS-dmg"
           elif [ "${{ runner.os }}" == "Windows" ]; then
-            # Find the generated .zip file (as configured in package.json)
             ARTIFACT_PATH=$(ls dist/*.zip)
             ARTIFACT_NAME="YT-Link-Windows-zip"
           fi
@@ -79,25 +75,31 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: build # This job runs only after the 'build' job for all OSs has succeeded
+    needs: build
     permissions:
-      contents: write # This permission is required to create a release
+      contents: write 
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts # All artifacts will be downloaded into the 'artifacts' directory
+          path: artifacts
 
       - name: List downloaded files for verification
         run: ls -R artifacts
 
+      # This is the new step that fixes the error.
+      # It deletes the existing release and tag if they already exist.
+      - name: Delete existing release and tag
+        uses: dev-drpr/delete-tag-and-release@v1
+        with:
+          tag_name: ${{ github.ref_name }} # Gets the tag name (e.g., v1.0.0) from the push event
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          delete_tag: true # Ensures the git tag is also removed
+
       - name: Create GitHub Release and Upload Assets
         uses: softprops/action-gh-release@v1
         with:
-          # This is the key change to fix the "already_exists" error.
-          # It allows the action to replace assets if the release already exists.
-          overwrite: true
-          # The files from the build job will be attached to this release
+          # The files from the build job will be attached to this new release
           files: |
             artifacts/YT-Link-macOS-dmg/*
             artifacts/YT-Link-Windows-zip/*
