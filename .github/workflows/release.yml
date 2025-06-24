@@ -86,15 +86,16 @@ jobs:
 
       - name: List downloaded files for verification
         run: ls -R artifacts
-
-      # This is the corrected step that fixes the error.
-      # It uses the official GitHub CLI to delete the release and tag.
-      - name: Delete existing release and tag
+        
+      # This is the new, corrected step to fix the "already_exists" error.
+      # It uses the official GitHub CLI to delete the release and tag if they exist.
+      - name: Delete existing release and tag before creating a new one
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Use the official GitHub CLI to delete the release and its associated tag.
-          # The "|| true" part ensures the workflow doesn't fail if the release doesn't exist yet (e.g., on a first run).
+          # The "gh release delete" command will fail if the release doesn't exist.
+          # The "|| true" part ensures that the workflow continues without error
+          # on a fresh release where the tag doesn't exist yet.
           gh release delete ${{ github.ref_name }} --cleanup-tag --yes || true
 
       - name: Create GitHub Release and Upload Assets
