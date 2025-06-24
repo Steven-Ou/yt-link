@@ -87,14 +87,15 @@ jobs:
       - name: List downloaded files for verification
         run: ls -R artifacts
 
-      # This is the new step that fixes the error.
-      # It deletes the existing release and tag if they already exist.
+      # This is the corrected step that fixes the error.
+      # It uses the official GitHub CLI to delete the release and tag.
       - name: Delete existing release and tag
-        uses: dev-drpr/delete-tag-and-release@v1
-        with:
-          tag_name: ${{ github.ref_name }} # Gets the tag name (e.g., v1.0.0) from the push event
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          delete_tag: true # Ensures the git tag is also removed
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Use the official GitHub CLI to delete the release and its associated tag.
+          # The "|| true" part ensures the workflow doesn't fail if the release doesn't exist yet (e.g., on a first run).
+          gh release delete ${{ github.ref_name }} --cleanup-tag --yes || true
 
       - name: Create GitHub Release and Upload Assets
         uses: softprops/action-gh-release@v1
