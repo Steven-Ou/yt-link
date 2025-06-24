@@ -8,19 +8,37 @@ import threading
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import yt_dlp
-import static_ffmpeg
 
 # --- Basic Setup ---
-static_ffmpeg.add_paths()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 app = Flask(__name__)
 CORS(app)
 
-# FIX: In-memory job store instead of Redis. This removes the external dependency.
+# In-memory job store instead of Redis.
 JOBS = {}
-JOBS_LOCK = threading.Lock() # To safely access the JOBS dict from multiple threads
+JOBS_LOCK = threading.Lock()
 
 # --- Helper Functions ---
+
+def get_ffmpeg_path():
+    """
+    Determines the path to the ffmpeg executable directory, which is required by yt-dlp.
+    This function robustly finds the 'bin' directory containing ffmpeg both in
+    development and in the final packaged Electron application.
+    """
+    # When running as a PyInstaller bundle, sys.frozen is set to True.
+    if getattr(sys, 'frozen', False):
+        # In the packaged app, the Python executable is in a 'backend' folder,
+        # and the ffmpeg binaries are in a sibling 'bin' folder.
+        # e.g., /Resources/backend/yt-link-backend and /Resources/bin/ffmpeg
+        base_path = os.path.dirname(sys.executable)
+        return os.path.join(base_path, '..', 'bin')
+    else:
+        # In development, this script runs from the 'service' directory.
+        # The ffmpeg binaries are in the 'bin' directory at the project root.
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(base_path, '..', 'bin')
+
 def update_job_status(job_id, status, message=None, progress=None, download_path=None):
     """Safely updates the status of a job in the in-memory store."""
     with JOBS_LOCK:
@@ -52,6 +70,8 @@ def download_video_task(job_id, job_type, url, download_path, cookies_path=None)
     """This function runs in the background to download and process the video/playlist."""
     try:
         ydl_opts = {
+            # FIX: Explicitly tell yt-dlp where to find the ffmpeg binaries.
+            'ffmpeg_location': get_ffmpeg_path(),
             'cookiefile': cookies_path, 'progress_hooks': [lambda d: progress_hook(d, job_id)],
             'nocheckcertificate': True, 'ignoreerrors': True,
             'outtmpl': os.path.join(download_path, '%(title)s.%(ext)s'),
@@ -125,7 +145,6 @@ def job_status_route():
         job_info = JOBS.get(job_id)
 
     if job_info:
-        # We need to add the id to the response for the frontend
         response_data = {'id': job_id, **job_info}
         return jsonify(response_data), 200
     else:
@@ -133,6 +152,5 @@ def job_status_route():
 
 if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001
-    # This print statement sends the "ready" signal to the Electron main process.
     print(f"Flask-Backend-Ready:{port}", flush=True)
     app.run(host='127.0.0.1', port=port, debug=False)
