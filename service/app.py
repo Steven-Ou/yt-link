@@ -108,7 +108,7 @@ def start_job_handler(job_type):
     """A generic handler to validate the request and enqueue a job."""
     data = request.get_json()
     
-    # FIX: Correctly get the URL from any of the keys the frontend might send.
+    # This correctly gets the URL from any of the keys the frontend might send.
     url = data.get('url') or data.get('playlistUrl') or data.get('youtubeUrl')
     
     download_path = data.get('downloadPath')
