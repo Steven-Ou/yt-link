@@ -10,6 +10,27 @@ let mainWindow = null;
 let pyPort = null; // This will hold the dynamically assigned port
 let isBackendReady = false; // This flag will track if the Python service is ready
 
+// FIX: A new helper function to wait for the backend to signal it's ready.
+// This prevents race conditions on app startup.
+function waitForBackend(timeout = 5000) { // Wait up to 5 seconds
+    return new Promise((resolve, reject) => {
+        if (isBackendReady) {
+            return resolve(true);
+        }
+
+        const startTime = Date.now();
+        const interval = setInterval(() => {
+            if (isBackendReady) {
+                clearInterval(interval);
+                resolve(true);
+            } else if (Date.now() - startTime > timeout) {
+                clearInterval(interval);
+                reject(new Error('Backend service failed to start in time.'));
+            }
+        }, 250); // Check for readiness every 250ms
+    });
+}
+
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1200,
@@ -44,11 +65,9 @@ function createWindow() {
 
             pythonProcess = spawn(pyServicePath, [pyPort.toString()]);
 
-            // FIX: Listen to the Python process's stdout to know when it's ready.
             pythonProcess.stdout.on('data', (data) => {
                 const output = data.toString();
                 console.log(`[Python] stdout: ${output}`);
-                // Check for the specific "ready" message from the Python script.
                 if (output.includes('Flask-Backend-Ready')) {
                     console.log('[Electron] Python backend has signaled it is ready.');
                     isBackendReady = true;
@@ -60,7 +79,7 @@ function createWindow() {
             });
             pythonProcess.on('close', (code) => {
                 console.log(`[Python] process exited with code ${code}`);
-                isBackendReady = false; // Mark backend as not ready if it closes
+                isBackendReady = false;
             });
         })
         .catch(err => {
@@ -81,41 +100,25 @@ function createWindow() {
 }
 
 app.on('ready', createWindow);
-
-app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
-});
-
-app.on('quit', () => {
-    if (pythonProcess) {
-        console.log('[Electron] Terminating Python process...');
-        pythonProcess.kill();
-    }
-});
-
-app.on('activate', () => {
-    if (mainWindow === null) {
-        createWindow();
-    }
-});
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('quit', () => { if (pythonProcess) pythonProcess.kill(); });
+app.on('activate', () => { if (mainWindow === null) createWindow(); });
 
 // --- IPC Handlers ---
 
-// This generic handler proxies requests to the Python backend on the correct port.
+// This generic handler now waits for the backend before proxying the request.
 async function proxyToPython(endpoint, payload) {
-    // FIX: Check if the backend is ready before attempting to send a request.
-    if (!isBackendReady) {
-        console.error('[Electron] Attempted to call backend before it was ready.');
-        return { error: 'Backend service is still starting up. Please try again in a moment.' };
+    try {
+        await waitForBackend();
+    } catch (error) {
+        console.error(`[Electron] ${error.message}`);
+        return { error: 'Backend service failed to start. Please try restarting the application.' };
     }
-    if (!pyPort) {
-        return { error: 'Python service port not assigned.' };
-    }
+
+    if (!pyPort) return { error: 'Python service port not assigned.' };
+
     try {
         const url = `http://127.0.0.1:${pyPort}/${endpoint}`;
-        console.log(`[Electron] Forwarding request to Python: ${url}`);
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -137,15 +140,17 @@ ipcMain.handle('start-playlist-zip-job', (event, payload) => proxyToPython('star
 ipcMain.handle('start-combine-playlist-mp3-job', (event, payload) => proxyToPython('start-combine-playlist-mp3-job', payload));
 
 ipcMain.handle('get-job-status', async (event, jobId) => {
-    if (!isBackendReady) {
-        return { error: 'Backend service is not ready.' };
+    try {
+        await waitForBackend();
+    } catch (error) {
+        console.error(`[Electron] ${error.message}`);
+        return { error: 'Backend service failed to start. Please try restarting the application.' };
     }
-    if (!pyPort) {
-        return { error: 'Python service port not assigned.' };
-    }
+
+    if (!pyPort) return { error: 'Python service port not assigned.' };
+
     try {
         const url = `http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`;
-        console.log(`[Electron] Checking job status: ${url}`);
         const response = await fetch(url);
         if (!response.ok) {
             const errorText = await response.text();
