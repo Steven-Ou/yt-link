@@ -4,20 +4,17 @@ const { spawn } = require('child_process');
 const portfinder = require('portfinder');
 const fetch = require('node-fetch');
 const fs = require('fs');
+const os = require('os'); // Required for handling temporary files
 
 let pythonProcess = null;
 let mainWindow = null;
-let pyPort = null; // This will hold the dynamically assigned port
-let isBackendReady = false; // This flag will track if the Python service is ready
+let pyPort = null;
+let isBackendReady = false;
 
-// FIX: A new helper function to wait for the backend to signal it's ready.
-// This prevents race conditions on app startup.
-function waitForBackend(timeout = 5000) { // Wait up to 5 seconds
+// Helper function to wait for the backend to be ready
+function waitForBackend(timeout = 10000) { // Increased timeout to 10 seconds for safety
     return new Promise((resolve, reject) => {
-        if (isBackendReady) {
-            return resolve(true);
-        }
-
+        if (isBackendReady) return resolve(true);
         const startTime = Date.now();
         const interval = setInterval(() => {
             if (isBackendReady) {
@@ -27,7 +24,7 @@ function waitForBackend(timeout = 5000) { // Wait up to 5 seconds
                 clearInterval(interval);
                 reject(new Error('Backend service failed to start in time.'));
             }
-        }, 250); // Check for readiness every 250ms
+        }, 250);
     });
 }
 
@@ -46,25 +43,18 @@ function createWindow() {
         .then(freePort => {
             pyPort = freePort;
             console.log(`[Electron] Found free port for Python service: ${pyPort}`);
-
             const isDev = !app.isPackaged;
             const backendExecutableName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
-            
             const pyServicePath = isDev
                 ? path.join(app.getAppPath(), 'service/dist', backendExecutableName)
                 : path.join(process.resourcesPath, 'backend', backendExecutableName);
-
             console.log(`[Electron] Attempting to start Python service at: ${pyServicePath}`);
-            
             if (!fs.existsSync(pyServicePath)) {
                 console.error('[Electron] Python service executable not found at path:', pyServicePath);
                 dialog.showErrorBox('Backend Error', `The backend service executable could not be found at: ${pyServicePath}`);
-                app.quit();
-                return;
+                return app.quit();
             }
-
             pythonProcess = spawn(pyServicePath, [pyPort.toString()]);
-
             pythonProcess.stdout.on('data', (data) => {
                 const output = data.toString();
                 console.log(`[Python] stdout: ${output}`);
@@ -73,7 +63,6 @@ function createWindow() {
                     isBackendReady = true;
                 }
             });
-
             pythonProcess.stderr.on('data', (data) => {
                 console.error(`[Python] stderr: ${data}`);
             });
@@ -91,12 +80,8 @@ function createWindow() {
     const startUrl = app.isPackaged 
         ? `file://${path.join(__dirname, 'out/index.html')}`
         : 'http://localhost:3000';
-        
     mainWindow.loadURL(startUrl);
-
-    mainWindow.on('closed', () => {
-        mainWindow = null;
-    });
+    mainWindow.on('closed', () => { mainWindow = null; });
 }
 
 app.on('ready', createWindow);
@@ -106,7 +91,29 @@ app.on('activate', () => { if (mainWindow === null) createWindow(); });
 
 // --- IPC Handlers ---
 
-// This generic handler now waits for the backend before proxying the request.
+// FIX: This is the core of the solution. It saves the cookie string to a temp file.
+function handleCookiePayload(payload) {
+    if (payload.cookiesPath && payload.cookiesPath.trim().length > 0) {
+        try {
+            // Create a temporary file path
+            const tempDir = app.getPath('temp');
+            const cookieFilePath = path.join(tempDir, `yt-link-cookies-${Date.now()}.txt`);
+            // Write the cookie string to the file
+            fs.writeFileSync(cookieFilePath, payload.cookiesPath);
+            console.log(`[Electron] Saved cookies to temporary file: ${cookieFilePath}`);
+            // Update the payload to use the file path instead of the raw string
+            payload.cookiesPath = cookieFilePath;
+        } catch (error) {
+            console.error('[Electron] Failed to write temporary cookie file:', error);
+            // If it fails, nullify the path so it doesn't cause a crash
+            payload.cookiesPath = null;
+        }
+    } else {
+        payload.cookiesPath = null;
+    }
+    return payload;
+}
+
 async function proxyToPython(endpoint, payload) {
     try {
         await waitForBackend();
@@ -114,15 +121,17 @@ async function proxyToPython(endpoint, payload) {
         console.error(`[Electron] ${error.message}`);
         return { error: 'Backend service failed to start. Please try restarting the application.' };
     }
-
     if (!pyPort) return { error: 'Python service port not assigned.' };
+
+    // Handle the cookie data before sending the payload to Python
+    const finalPayload = handleCookiePayload(payload);
 
     try {
         const url = `http://127.0.0.1:${pyPort}/${endpoint}`;
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(finalPayload),
         });
         if (!response.ok) {
             const errorText = await response.text();
@@ -146,9 +155,7 @@ ipcMain.handle('get-job-status', async (event, jobId) => {
         console.error(`[Electron] ${error.message}`);
         return { error: 'Backend service failed to start. Please try restarting the application.' };
     }
-
     if (!pyPort) return { error: 'Python service port not assigned.' };
-
     try {
         const url = `http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`;
         const response = await fetch(url);
