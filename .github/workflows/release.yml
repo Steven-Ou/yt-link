@@ -79,6 +79,10 @@ jobs:
     permissions:
       contents: write 
     steps:
+      # FIX: Check out the repository so the gh command has the necessary git context.
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -87,20 +91,15 @@ jobs:
       - name: List downloaded files for verification
         run: ls -R artifacts
 
-      # FIX: This new step deletes the old release and tag before creating a new one.
-      # This prevents the "already_exists" error on subsequent runs for the same tag.
       - name: Delete existing release and tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Use the official GitHub CLI to delete the release and its associated tag.
-          # The "|| true" part ensures the workflow doesn't fail if the release doesn't exist yet (e.g., on a first run).
           gh release delete ${{ github.ref_name }} --cleanup-tag --yes || true
 
       - name: Create GitHub Release and Upload Assets
         uses: softprops/action-gh-release@v1
         with:
-          # The files from the build job will be attached to this new release
           files: |
             artifacts/YT-Link-macOS-dmg/*
             artifacts/YT-Link-Windows-zip/*
