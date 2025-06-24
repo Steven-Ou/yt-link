@@ -1,15 +1,13 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
-const findFreePort = require('find-free-port');
+const portfinder = require('portfinder');
 const fetch = require('node-fetch');
 const fs = require('fs');
 
 let pythonProcess = null;
 let mainWindow = null;
-
-// This variable will hold the dynamically assigned port for the Python service.
-let pyPort = null;
+let pyPort = null; // This will hold the dynamically assigned port
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -22,54 +20,55 @@ function createWindow() {
         },
     });
 
-    // Start the Python backend service
-    findFreePort(5001) // Start searching for a free port from 5001
+    // Use portfinder to find an available port for the Python backend.
+    portfinder.getPortPromise({ port: 5001 }) // Start searching from port 5001
         .then(freePort => {
-            pyPort = freePort; // Store the found port in our global variable
-            console.log(`Found free port for Python service: ${pyPort}`);
+            pyPort = freePort;
+            console.log(`[Electron] Found free port for Python service: ${pyPort}`);
 
-            // Determine the path to the executable based on the environment
-            const isDev = process.env.NODE_ENV !== 'production';
-            const serviceName = process.platform === 'win32' ? 'app.exe' : 'app';
-            // In dev, we might run the script directly. In prod, we run the bundled executable.
+            const isDev = !app.isPackaged;
+            const backendExecutableName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
+            
+            // This path logic correctly points to the PyInstaller executable
+            // both in development and in the final packaged application.
             const pyServicePath = isDev
-                ? path.join(__dirname, '../../service/app.py') // Path for development
-                : path.join(process.resourcesPath, 'service', serviceName); // Path for packaged app
+                ? path.join(app.getAppPath(), 'service/dist', backendExecutableName)
+                : path.join(process.resourcesPath, 'backend', backendExecutableName);
 
-            console.log(`Attempting to start Python service at: ${pyServicePath}`);
+            console.log(`[Electron] Attempting to start Python service at: ${pyServicePath}`);
             
             if (!fs.existsSync(pyServicePath)) {
-                console.error('Python service executable not found at path:', pyServicePath);
-                dialog.showErrorBox('Backend Error', 'The backend service executable could not be found.');
+                console.error('[Electron] Python service executable not found at path:', pyServicePath);
+                dialog.showErrorBox('Backend Error', `The backend service executable could not be found at: ${pyServicePath}`);
                 app.quit();
                 return;
             }
 
-            // Spawn the Python process, passing the found port as an argument
+            // Spawn the Python process, passing the found port as an argument.
             pythonProcess = spawn(pyServicePath, [pyPort.toString()]);
 
             pythonProcess.stdout.on('data', (data) => {
-                console.log(`Python stdout: ${data}`);
+                console.log(`[Python] stdout: ${data}`);
             });
             pythonProcess.stderr.on('data', (data) => {
-                console.error(`Python stderr: ${data}`);
+                console.error(`[Python] stderr: ${data}`);
             });
             pythonProcess.on('close', (code) => {
-                console.log(`Python process exited with code ${code}`);
+                console.log(`[Python] process exited with code ${code}`);
             });
         })
         .catch(err => {
-            console.error('Could not find a free port:', err);
+            console.error('[Electron] Could not find a free port:', err);
             dialog.showErrorBox('Backend Error', 'Could not find a free port to start the backend service.');
             app.quit();
         });
 
-    // Load the Next.js app
-    const startUrl = 'http://localhost:3000';
+    // This logic correctly loads from localhost in dev and from the file system in production.
+    const startUrl = app.isPackaged 
+        ? `file://${path.join(__dirname, 'out/index.html')}`
+        : 'http://localhost:3000';
+        
     mainWindow.loadURL(startUrl);
-
-    // Open the DevTools.
-    // mainWindow.webContents.openDevTools();
 
     mainWindow.on('closed', () => {
         mainWindow = null;
@@ -85,9 +84,8 @@ app.on('window-all-closed', () => {
 });
 
 app.on('quit', () => {
-    // Kill the python process when the app quits
     if (pythonProcess) {
-        console.log('Terminating Python process...');
+        console.log('[Electron] Terminating Python process...');
         pythonProcess.kill();
     }
 });
@@ -100,14 +98,15 @@ app.on('activate', () => {
 
 // --- IPC Handlers ---
 
-// A generic function to start a job
-async function startJob(jobType, payload) {
-    if (!pyPort) { // Check if the Python service port is available
-        return { error: 'Python service is not ready.' };
+// This generic handler proxies requests to the Python backend on the correct port.
+async function proxyToPython(endpoint, payload) {
+    if (!pyPort) {
+        return { error: 'Python service is not ready or port not assigned.' };
     }
     try {
-        // FIX: Use the dynamic `pyPort` variable instead of the hardcoded port 8000
-        const response = await fetch(`http://127.0.0.1:${pyPort}/${jobType}`, {
+        const url = `http://127.0.0.1:${pyPort}/${endpoint}`;
+        console.log(`[Electron] Forwarding request to Python: ${url}`);
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -118,65 +117,40 @@ async function startJob(jobType, payload) {
         }
         return await response.json();
     } catch (error) {
-        console.error(`Error invoking remote method '${jobType}':`, error);
+        console.error(`[Electron] Error invoking remote method '${endpoint}':`, error);
         return { error: error.message };
     }
 }
 
-// IPC handler for starting a single MP3 download job
-ipcMain.handle('start-single-mp3-job', async (event, payload) => {
-    return await startJob('start-single-mp3-job', payload);
-});
+// All IPC handlers now use the robust proxy function.
+ipcMain.handle('start-single-mp3-job', (event, payload) => proxyToPython('start-single-mp3-job', payload));
+ipcMain.handle('start-playlist-zip-job', (event, payload) => proxyToPython('start-playlist-zip-job', payload));
+ipcMain.handle('start-combine-playlist-mp3-job', (event, payload) => proxyToPython('start-combine-playlist-mp3-job', payload));
 
-// IPC handler for starting a playlist ZIP download job
-ipcMain.handle('start-playlist-zip-job', async (event, payload) => {
-    return await startJob('start-playlist-zip-job', payload);
-});
-
-// IPC handler for starting a combined playlist MP3 download job
-ipcMain.handle('start-combine-playlist-mp3-job', async (event, payload) => {
-    return await startJob('start-combine-playlist-mp3-job', payload);
-});
-
-// IPC handler for checking job status
 ipcMain.handle('get-job-status', async (event, jobId) => {
-    if (!pyPort) { // Check if the Python service port is available
-        return { error: 'Python service is not ready.' };
+    if (!pyPort) {
+        return { error: 'Python service is not ready or port not assigned.' };
     }
     try {
-        // FIX: Use the dynamic `pyPort` variable here as well
-        const response = await fetch(`http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`);
+        const url = `http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`;
+        console.log(`[Electron] Checking job status: ${url}`);
+        const response = await fetch(url);
         if (!response.ok) {
             const errorText = await response.text();
             throw new Error(`Python API Error: ${response.status} - ${errorText}`);
         }
         return await response.json();
     } catch (error) {
-        console.error(`Error getting job status for ${jobId}:`, error);
+        console.error(`[Electron] Error getting job status for ${jobId}:`, error);
         return { error: error.message };
     }
 });
 
-// IPC handler to open a directory selection dialog
 ipcMain.handle('select-directory', async () => {
-    const result = await dialog.showOpenDialog(mainWindow, {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
         properties: ['openDirectory']
     });
-    if (result.canceled) {
-        return null;
-    } else {
-        return result.filePaths[0];
-    }
+    return canceled ? null : filePaths[0];
 });
 
-// IPC handler to get the default downloads path
-const { shell } = require('electron');
-ipcMain.handle('open-folder', async (event, folderPath) => {
-    try {
-        await shell.openPath(folderPath);
-        return { success: true };
-    } catch (error) {
-        console.error(`Failed to open folder: ${folderPath}`, error);
-        return { error: error.message };
-    }
-});
+ipcMain.handle('open-folder', (event, folderPath) => shell.openPath(folderPath));
