@@ -94,6 +94,9 @@ jobs:
       - name: Create GitHub Release and Upload Assets
         uses: softprops/action-gh-release@v1
         with:
+          # This is the key change to fix the "already_exists" error.
+          # It allows the action to replace assets if the release already exists.
+          overwrite: true
           # The files from the build job will be attached to this release
           files: |
             artifacts/YT-Link-macOS-dmg/*
