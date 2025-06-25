@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react'; // Importing React hooks
-import { // Importing Material-UI components
+import { useState, useEffect, useRef, useCallback } from 'react';
+import {
     Box, Button, Container, Divider, Drawer, List, ListItem,
     ListItemButton, ListItemIcon, ListItemText, TextField, Toolbar,
     Typography, CssBaseline,
@@ -10,7 +10,7 @@ import { // Importing Material-UI components
     CircularProgress, LinearProgress,
     Paper, Stack, Alert, AlertTitle
 } from '@mui/material';
-import { // Importing Material-UI icons
+import {
     Home as HomeIcon, Download as DownloadIcon, QueueMusic as QueueMusicIcon,
     VideoLibrary as VideoLibraryIcon, Coffee as CoffeeIcon,
     Cookie as CookieIcon,
@@ -22,9 +22,8 @@ import { // Importing Material-UI icons
     Folder as FolderIcon
  } from '@mui/icons-material';
 
-const drawerWidth = 240; // Define the width of the drawer
+const drawerWidth = 240;
 
-// Your custom theme is preserved exactly as you designed it.
 const customTheme = createTheme({
     palette: {
         mode: 'light',
@@ -45,12 +44,6 @@ const customTheme = createTheme({
     },
 });
 
-// --- HELPER COMPONENTS ---
-// These are defined outside the main component to prevent re-declarations on each render.
-
-/**
- * The Welcome page, displayed on first load.
- */
 function WelcomePage({ isElectron }) {
     const downloadUrl = "https://github.com/Steven-Ou/yt-link/releases/latest";
     return (
@@ -64,7 +57,7 @@ function WelcomePage({ isElectron }) {
             <Typography variant="h3" component="h1" gutterBottom fontWeight="bold">YT Link Converter</Typography>
             <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>Welcome!</Typography>
             <Typography variant="body1" color="text.secondary" sx={{ mt: 2, mb: 4, maxWidth: '600px', mx: 'auto' }}>
-                Please download the app if you're on the Website! The web version does not support downloads. Select a download option, choose where to save the file, and wait for it to finish.
+                Please download the app if you're on the Website! The web version does not support downloads. Select a download option and the files will be saved to your default Downloads folder.
             </Typography>
             <Paper elevation={0} variant="outlined" sx={{ mt: 4, p: { xs: 2, sm: 4 }, borderRadius: 4, backgroundColor: '#fafafa' }}>
                 <Typography variant="h5" component="h2" gutterBottom align="center" fontWeight="bold">Download the Desktop App</Typography>
@@ -80,16 +73,11 @@ function WelcomePage({ isElectron }) {
     );
 }
 
-/**
- * Displays the status of a single job, including progress and messages.
- */
 const JobStatusDisplay = ({ jobInfo }) => {
     if (!jobInfo || !jobInfo.status || jobInfo.status === 'idle') return null;
-
     let icon = <HourglassEmptyIcon />;
     let color = "text.secondary";
     let showProgressBar = false;
-
     switch (jobInfo.status) {
         case 'completed':
             icon = <CheckCircleOutlineIcon color="success" />;
@@ -106,10 +94,8 @@ const JobStatusDisplay = ({ jobInfo }) => {
             color = "info.main";
             showProgressBar = true;
             break;
-        default:
-             break;
+        default: break;
     }
-
     const handleOpenFolder = async () => {
         if (window.electron && jobInfo.downloadPath) {
             await window.electron.openFolder(jobInfo.downloadPath);
@@ -117,7 +103,6 @@ const JobStatusDisplay = ({ jobInfo }) => {
             alert("Could not determine the download folder.");
         }
     };
-
     return (
         <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
             <Typography variant="subtitle1" sx={{display: 'flex', alignItems: 'center', color: color}}>
@@ -134,9 +119,6 @@ const JobStatusDisplay = ({ jobInfo }) => {
     );
 };
 
-/**
- * A reusable input field for YouTube cookie data.
- */
 const CookieInputField = ({ value, onChange, disabled }) => (
     <TextField
         label="Paste YouTube Cookies Here (Optional)"
@@ -160,38 +142,29 @@ const CookieInputField = ({ value, onChange, disabled }) => (
     />
 );
 
-
-// --- MAIN HOME COMPONENT ---
 export default function Home() {
     const [currentView, setCurrentView] = useState('welcome');
-    // State for each input field
     const [url, setUrl] = useState('');
     const [playlistUrl, setPlaylistUrl] = useState('');
     const [combineVideoUrl, setCombineVideoUrl] = useState('');
     const [cookieData, setCookieData] = useState('');
-    // Central state object to track all active jobs by their type
     const [activeJobs, setActiveJobs] = useState({});
     const pollingIntervals = useRef({});
     const [isElectron, setIsElectron] = useState(false);
     const [expandedDownloads, setExpandedDownloads] = useState(true);
 
-    // Check if the app is running in Electron on component mount
     useEffect(() => {
         setIsElectron(!!(window && window.electron));
     }, []);
 
-    // Helper function to check if any job is currently active
     const isAnyJobLoading = () => Object.values(activeJobs).some(job =>
         job.status === 'queued' || job.status === 'downloading' || job.status === 'processing'
     );
 
-    // A memoized version of the polling function to prevent re-creation
     const pollJobStatus = useCallback((jobId, jobType) => {
-        // Clear any old interval for this job ID just in case
         if (pollingIntervals.current[jobId]) {
             clearInterval(pollingIntervals.current[jobId]);
         }
-        
         pollingIntervals.current[jobId] = setInterval(async () => {
             try {
                 if (!window.electron) {
@@ -199,20 +172,14 @@ export default function Home() {
                     return;
                 }
                 const data = await window.electron.getJobStatus(jobId);
-
                 if (data.error) { throw new Error(data.error); }
-                
-                // Update the state for the specific job type
                 setActiveJobs(prev => {
                     const currentJob = prev[jobType];
-                    // Defensive check to ensure we are updating the correct job
                     if (currentJob && currentJob.id === jobId) {
                         return { ...prev, [jobType]: { ...currentJob, ...data } };
                     }
                     return prev;
                 });
-                
-                // If the job is finished, stop polling
                 if (data.status === 'completed' || data.status === 'failed' || data.status === 'not_found') {
                     clearInterval(pollingIntervals.current[jobId]);
                     delete pollingIntervals.current[jobId];
@@ -227,17 +194,14 @@ export default function Home() {
                 });
                 clearInterval(pollingIntervals.current[jobId]);
             }
-        }, 2000); // Poll every 2 seconds
-    }, []); // Empty dependency array means this function is created only once
+        }, 2000);
+    }, []);
 
-    // Starts a job by calling the Electron backend and then initiates polling
     const startJob = async (jobType, startFunction, payload, operationName) => {
-        setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...`, type: jobType, downloadPath: payload.downloadPath } }));
+        setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...`, type: jobType } }));
         try {
             const result = await startFunction(payload);
             if (result.error) { throw new Error(result.error); }
-
-            // This is the key fix: The backend sends `job_id`, but we now correctly use `jobId`.
             if (result.jobId) {
                 setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], id: result.jobId, status: 'queued', message: 'Job started, waiting for worker...' } }));
                 pollJobStatus(result.jobId, jobType);
@@ -249,30 +213,24 @@ export default function Home() {
         }
     };
 
-    // Cleanup intervals on component unmount
     useEffect(() => {
         const intervals = pollingIntervals.current;
         return () => { Object.values(intervals).forEach(clearInterval); };
     }, []);
 
-    // Generic handler to request a job
     const handleJobRequest = async (urlValue, jobType, operationName, urlKey = 'url') => {
         if (!urlValue) {
             alert(`Please enter a YouTube URL for: ${operationName}`);
             return;
         }
-
         if (!window.electron) {
             alert("This feature is only available in the desktop application.");
             return;
         }
 
-        const selectedPath = await window.electron.selectDirectory();
-        if (!selectedPath) return; // User cancelled the directory selection
-
+        // FIX: The payload no longer needs a downloadPath because main.js handles it.
         const payload = {
             [urlKey]: urlValue,
-            downloadPath: selectedPath,
             cookiesPath: cookieData || null
         };
         
@@ -286,7 +244,6 @@ export default function Home() {
         startJob(jobType, startFunction, payload, operationName);
     };
     
-    // --- Specific Job Handlers ---
     const downloadMP3 = () => handleJobRequest(url, 'singleMp3', 'Single MP3 Download');
     const downloadPlaylistZip = () => handleJobRequest(playlistUrl, 'playlistZip', 'Playlist Zip Download', 'playlistUrl');
     const downloadCombinedPlaylistMp3 = () => handleJobRequest(combineVideoUrl, 'combineMp3', 'Combine Playlist to MP3', 'playlistUrl');
@@ -296,7 +253,6 @@ export default function Home() {
         return status === 'queued' || status === 'downloading' || status === 'processing';
     };
 
-    // Renders the main content based on the current view state
     const renderContent = () => {
         const anyJobLoading = isAnyJobLoading();
         switch (currentView) {
@@ -316,7 +272,7 @@ export default function Home() {
             case 'zip': return (
                 <Container maxWidth="sm" sx={{ mt: 4 }}>
                     <Typography variant='h6' gutterBottom>Download Playlist as Zip</Typography>
-                    <TextField label="YouTube Playlist URL (for Zip)" variant='outlined' fullWidth value={playlistUrl} onChange={(e)=> setPlaylistUrl(e.target.value)} style={{marginBottom: 16}} disabled={anyJobLoading} />
+                    <TextField label="YouTube Playlist URL" variant='outlined' fullWidth value={playlistUrl} onChange={(e)=> setPlaylistUrl(e.target.value)} style={{marginBottom: 16}} disabled={anyJobLoading} />
                      <CookieInputField value={cookieData} onChange={e => setCookieData(e.target.value)} disabled={anyJobLoading}/>
                     <Button variant='contained' color='secondary' onClick={downloadPlaylistZip} fullWidth style={{marginBottom: 16}} disabled={isLoading('playlistZip') || (anyJobLoading && !isLoading('playlistZip'))}>
                         {isLoading('playlistZip') && <CircularProgress size={24} sx={{mr:1}} />}
@@ -328,7 +284,7 @@ export default function Home() {
             case 'combine': return (
                 <Container maxWidth="sm" sx={{ mt: 4 }}>
                     <Typography variant='h6' gutterBottom>Convert Playlist to Single MP3</Typography>
-                    <TextField label="YouTube Playlist URL (for Single MP3)" variant='outlined' fullWidth value={combineVideoUrl} onChange={(e)=> setCombineVideoUrl(e.target.value)} style={{marginBottom: 16}} disabled={anyJobLoading} />
+                    <TextField label="YouTube Playlist URL" variant='outlined' fullWidth value={combineVideoUrl} onChange={(e)=> setCombineVideoUrl(e.target.value)} style={{marginBottom: 16}} disabled={anyJobLoading} />
                      <CookieInputField value={cookieData} onChange={e => setCookieData(e.target.value)} disabled={anyJobLoading}/>
                     <Button variant='contained' color='warning' onClick={downloadCombinedPlaylistMp3} fullWidth style={{marginBottom: 16}} disabled={isLoading('combineMp3') || (anyJobLoading && !isLoading('combineMp3'))}>
                         {isLoading('combineMp3') && <CircularProgress size={24} sx={{mr:1}} />}
