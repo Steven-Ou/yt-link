@@ -22,30 +22,47 @@ jobs = {}
 
 def get_ffmpeg_path():
     """
-    Determines the correct path for the ffmpeg executable based on the OS
-    and whether the app is running in a packaged (frozen) state.
+    Determines the correct, robust path for the ffmpeg executable,
+    handling both development and packaged (production) environments.
     """
-    base_path = ""
-    # Check if the application is running in a bundled executable
-    if getattr(sys, 'frozen', False):
-        base_path = os.path.dirname(sys.executable)
-    else:
-        base_path = os.path.dirname(os.path.abspath(__file__))
-
     ffmpeg_exe = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
-    
-    # Path when running from the 'service' directory
-    ffmpeg_path = os.path.join(base_path, "ffmpeg", "bin", ffmpeg_exe)
-    
-    # Fallback for different CWD
-    if not os.path.exists(ffmpeg_path):
-         ffmpeg_path = os.path.join(os.getcwd(), "service", "ffmpeg", "bin", ffmpeg_exe)
 
-    if os.path.exists(ffmpeg_path):
-        return ffmpeg_path
+    # --- Packaged App (Production) ---
+    if getattr(sys, 'frozen', False):
+        # In a packaged app, sys.executable is the path to the backend executable.
+        # e.g., /Applications/YT Link.app/Contents/Resources/backend/yt-link-backend
+        base_dir = os.path.dirname(sys.executable)
         
-    # Final fallback to system's PATH
-    return "ffmpeg"
+        # Based on the 'extraResources' config in package.json, ffmpeg is in a sibling 'bin' folder.
+        # We go up one level from the executable's folder ('backend') to 'Resources', then down into 'bin'.
+        ffmpeg_path = os.path.join(base_dir, '..', 'bin', 'ffmpeg', 'bin', ffmpeg_exe)
+        
+        # Absolute path normalization for safety
+        ffmpeg_path = os.path.abspath(ffmpeg_path)
+
+        if os.path.exists(ffmpeg_path):
+            print(f"INFO: Found packaged ffmpeg at: {ffmpeg_path}")
+            return ffmpeg_path
+        else:
+            # This is a critical packaging error.
+            raise FileNotFoundError(f"FATAL: Packaged ffmpeg not found at expected path: {ffmpeg_path}")
+
+    # --- Development Environment ---
+    else:
+        # In dev, this script is in the 'service' folder. We find ffmpeg relative to it.
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # The 'bin' folder is in the project root, one level above the 'service' folder.
+        ffmpeg_path = os.path.join(base_dir, '..', 'bin', 'ffmpeg', 'bin', ffmpeg_exe)
+
+        if os.path.exists(ffmpeg_path):
+            print(f"INFO: Found dev ffmpeg at: {ffmpeg_path}")
+            return ffmpeg_path
+        else:
+            # Fallback to system PATH if not found in the project structure for convenience.
+            print("WARNING: ffmpeg not found in project 'bin' folder, falling back to system PATH.", file=sys.stderr)
+            return "ffmpeg"
+
 
 def create_cookie_file(job_id, cookies_string):
     """Creates a temporary cookie file from a string to pass to yt-dlp."""
