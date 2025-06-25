@@ -223,7 +223,8 @@ ipcMain.handle('get-job-status', async (event, jobId) => {
             throw new Error(`Python API Error: ${response.status} - ${errorText}`);
         }
         return await response.json();
-    } catch (error).        console.error(`[Electron] Error getting job status for ${jobId}:`, error);
+    } catch (error) {
+        console.error(`[Electron] Error getting job status for ${jobId}:`, error);
         return { error: error.message };
     }
 });
