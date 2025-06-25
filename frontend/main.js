@@ -231,18 +231,11 @@ ipcMain.handle('download-file', async (event, jobId) => {
              return { error: 'File is not ready for download or filename is missing.' };
         }
         
-        const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
-            title: 'Save MP3 File',
-            defaultPath: path.join(app.getPath('downloads'), job.file_name),
-            filters: [
-                { name: 'Audio Files', extensions: ['mp3', 'zip'] },
-                { name: 'All Files', extensions: ['*'] }
-            ]
-        });
-
-        if (canceled || !filePath) {
-            return { canceled: true };
-        }
+        // MODIFICATION: Save directly to the downloads folder without a dialog.
+        const downloadsPath = app.getPath('downloads');
+        const filePath = path.join(downloadsPath, job.file_name);
+        
+        console.log(`[Electron] Automatically saving file to: ${filePath}`);
 
         const downloadUrl = `http://127.0.0.1:${pyPort}/download/${jobId}`;
         const downloadResponse = await fetch(downloadUrl);
@@ -259,6 +252,7 @@ ipcMain.handle('download-file', async (event, jobId) => {
             fileStream.on("finish", resolve);
         });
 
+        // The 'path' returned here is the full path to the saved file.
         return { success: true, path: filePath };
 
     } catch(error) {
@@ -270,10 +264,19 @@ ipcMain.handle('download-file', async (event, jobId) => {
 
 
 ipcMain.handle('open-folder', (event, folderPath) => {
-    shell.openPath(folderPath).catch(err => {
-        console.error(`[Electron] Failed to open folder: ${folderPath}`, err);
-        dialog.showErrorBox('Error', `Could not open the folder at: ${folderPath}`);
-    });
+    // If a full file path is provided, open the containing folder.
+    if (folderPath && path.extname(folderPath) !== '') {
+        shell.showItemInFolder(folderPath);
+    } else if (folderPath) { // Otherwise, open the folder path directly.
+        shell.openPath(folderPath).catch(err => {
+            console.error(`[Electron] Failed to open folder: ${folderPath}`, err);
+            dialog.showErrorBox('Error', `Could not open the folder at: ${folderPath}`);
+        });
+    } else { // Fallback to just opening the downloads folder if no path is given
+         shell.openPath(app.getPath('downloads')).catch(err => {
+            console.error(`[Electron] Failed to open downloads folder`, err);
+        });
+    }
 });
 
 // Expose the downloads path to the renderer
