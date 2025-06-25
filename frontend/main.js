@@ -4,15 +4,14 @@ const { spawn } = require('child_process');
 const portfinder = require('portfinder');
 const fetch = require('node-fetch');
 const fs = require('fs');
-const os = require('os'); // Required for handling temporary files
+const os = require('os');
 
 let pythonProcess = null;
 let mainWindow = null;
 let pyPort = null;
 let isBackendReady = false;
 
-// Helper function to wait for the backend to be ready
-function waitForBackend(timeout = 10000) { // Increased timeout to 10 seconds for safety
+function waitForBackend(timeout = 10000) {
     return new Promise((resolve, reject) => {
         if (isBackendReady) return resolve(true);
         const startTime = Date.now();
@@ -89,23 +88,16 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 app.on('quit', () => { if (pythonProcess) pythonProcess.kill(); });
 app.on('activate', () => { if (mainWindow === null) createWindow(); });
 
-// --- IPC Handlers ---
-
-// FIX: This is the core of the solution. It saves the cookie string to a temp file.
 function handleCookiePayload(payload) {
     if (payload.cookiesPath && payload.cookiesPath.trim().length > 0) {
         try {
-            // Create a temporary file path
             const tempDir = app.getPath('temp');
             const cookieFilePath = path.join(tempDir, `yt-link-cookies-${Date.now()}.txt`);
-            // Write the cookie string to the file
             fs.writeFileSync(cookieFilePath, payload.cookiesPath);
             console.log(`[Electron] Saved cookies to temporary file: ${cookieFilePath}`);
-            // Update the payload to use the file path instead of the raw string
             payload.cookiesPath = cookieFilePath;
         } catch (error) {
             console.error('[Electron] Failed to write temporary cookie file:', error);
-            // If it fails, nullify the path so it doesn't cause a crash
             payload.cookiesPath = null;
         }
     } else {
@@ -123,8 +115,13 @@ async function proxyToPython(endpoint, payload) {
     }
     if (!pyPort) return { error: 'Python service port not assigned.' };
 
-    // Handle the cookie data before sending the payload to Python
-    const finalPayload = handleCookiePayload(payload);
+    let finalPayload = handleCookiePayload(payload);
+
+    // FIX: This is the critical change. It automatically gets the user's
+    // default "Downloads" folder and adds it to the payload for the backend.
+    const downloadPath = app.getPath('downloads');
+    finalPayload.downloadPath = downloadPath;
+    console.log(`[Electron] Automatically setting download path to: ${downloadPath}`);
 
     try {
         const url = `http://127.0.0.1:${pyPort}/${endpoint}`;
@@ -170,6 +167,7 @@ ipcMain.handle('get-job-status', async (event, jobId) => {
     }
 });
 
+// The select-directory handler is no longer needed for downloads, but can be kept for other purposes.
 ipcMain.handle('select-directory', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
         properties: ['openDirectory']
