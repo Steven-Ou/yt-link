@@ -24,6 +24,7 @@ import {
 
 const drawerWidth = 240;
 
+// Your customTheme remains unchanged.
 const customTheme = createTheme({
     palette: {
         mode: 'light',
@@ -44,6 +45,7 @@ const customTheme = createTheme({
     },
 });
 
+// Your WelcomePage component remains unchanged.
 function WelcomePage({ isElectron }) {
     const downloadUrl = "https://github.com/Steven-Ou/yt-link/releases/latest";
     return (
@@ -73,11 +75,13 @@ function WelcomePage({ isElectron }) {
     );
 }
 
+// MODIFICATION: The 'downloadPath' property is now 'savedFilePath'.
 const JobStatusDisplay = ({ jobInfo }) => {
     if (!jobInfo || !jobInfo.status || jobInfo.status === 'idle') return null;
     let icon = <HourglassEmptyIcon />;
     let color = "text.secondary";
     let showProgressBar = false;
+
     switch (jobInfo.status) {
         case 'completed':
             icon = <CheckCircleOutlineIcon color="success" />;
@@ -91,34 +95,38 @@ const JobStatusDisplay = ({ jobInfo }) => {
         case 'downloading':
         case 'processing':
             icon = <CircularProgress size={20} sx={{ mr: 1}} color="inherit" />;
-            color = "info.main";
+            color = "primary.main"; // Changed to primary for better visibility
             showProgressBar = true;
             break;
         default: break;
     }
-    const handleOpenFolder = async () => {
-        if (window.electron && jobInfo.downloadPath) {
-            await window.electron.openFolder(jobInfo.downloadPath);
+
+    const handleOpenFolder = () => {
+        // Now uses 'savedFilePath' which is the final path of the downloaded file.
+        if (window.electron && jobInfo.savedFilePath) {
+            window.electron.openFolder(jobInfo.savedFilePath);
         } else {
-            alert("Could not determine the download folder.");
+            console.error("Could not determine the download folder or file path.");
         }
     };
+    
     return (
-        <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-            <Typography variant="subtitle1" sx={{display: 'flex', alignItems: 'center', color: color}}>
+        <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1, backgroundColor: 'background.paper' }}>
+            <Typography variant="subtitle1" sx={{display: 'flex', alignItems: 'center', color: color, fontWeight: 'medium'}}>
                 {icon}
                 <Box component="span" sx={{ml:1}}>{jobInfo.message || `Status: ${jobInfo.status}`}</Box>
             </Typography>
-            {showProgressBar && <LinearProgress variant={jobInfo.progress ? "determinate" : "indeterminate"} value={jobInfo.progress ? parseFloat(jobInfo.progress) : 0} color="info" sx={{mt:1, mb:1}}/>}
-            {jobInfo.status === 'completed' && jobInfo.downloadPath && (
-                <Button variant="contained" color="success" onClick={handleOpenFolder} sx={{ mt: 1 }} startIcon={<FolderIcon />}>
-                    Open Download Folder
+            {showProgressBar && <LinearProgress variant={jobInfo.progress ? "determinate" : "indeterminate"} value={jobInfo.progress ? parseFloat(jobInfo.progress) : 0} color="primary" sx={{mt:1, mb:1}}/>}
+            {jobInfo.status === 'completed' && jobInfo.savedFilePath && (
+                <Button variant="contained" color="success" onClick={handleOpenFolder} sx={{ mt: 1, textTransform: 'none' }} startIcon={<FolderIcon />}>
+                    Show File in Folder
                 </Button>
             )}
         </Box>
     );
 };
 
+// Your CookieInputField component remains unchanged.
 const CookieInputField = ({ value, onChange, disabled }) => (
     <TextField
         label="Paste YouTube Cookies Here (Optional)"
@@ -158,13 +166,15 @@ export default function Home() {
     }, []);
 
     const isAnyJobLoading = () => Object.values(activeJobs).some(job =>
-        job.status === 'queued' || job.status === 'downloading' || job.status === 'processing'
+        ['queued', 'downloading', 'processing'].includes(job.status)
     );
 
+    // MODIFICATION: The polling logic is updated to handle the new download flow.
     const pollJobStatus = useCallback((jobId, jobType) => {
         if (pollingIntervals.current[jobId]) {
             clearInterval(pollingIntervals.current[jobId]);
         }
+
         pollingIntervals.current[jobId] = setInterval(async () => {
             try {
                 if (!window.electron) {
@@ -172,87 +182,102 @@ export default function Home() {
                     return;
                 }
                 const data = await window.electron.getJobStatus(jobId);
+
                 if (data.error) { throw new Error(data.error); }
-                setActiveJobs(prev => {
-                    const currentJob = prev[jobType];
-                    if (currentJob && currentJob.id === jobId) {
-                        return { ...prev, [jobType]: { ...currentJob, ...data } };
-                    }
-                    return prev;
-                });
-                if (data.status === 'completed' || data.status === 'failed' || data.status === 'not_found') {
+                
+                // If job is completed, trigger the download from the main process.
+                if (data.status === 'completed') {
                     clearInterval(pollingIntervals.current[jobId]);
                     delete pollingIntervals.current[jobId];
+
+                    setActiveJobs(prev => ({
+                        ...prev,
+                        [jobType]: { ...prev[jobType], status: 'completed', message: 'Download successful. Saving file...' }
+                    }));
+
+                    const downloadResult = await window.electron.downloadFile(jobId);
+
+                    if (downloadResult.error) {
+                        throw new Error(downloadResult.error);
+                    }
+                    
+                    // Update UI with the final file path for the "Show File" button.
+                    setActiveJobs(prev => ({
+                        ...prev,
+                        [jobType]: { ...prev[jobType], status: 'completed', message: 'File saved successfully!', savedFilePath: downloadResult.path }
+                    }));
+
+                } else if (data.status === 'failed' || data.status === 'not_found') {
+                    clearInterval(pollingIntervals.current[jobId]);
+                    delete pollingIntervals.current[jobId];
+                     setActiveJobs(prev => ({
+                        ...prev,
+                        [jobType]: { ...prev[jobType], ...data, message: data.error || `Job ${data.status}.` }
+                    }));
+                } else {
+                     // Update progress for running jobs
+                    setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], ...data } }));
                 }
+
             } catch (error) {
-                setActiveJobs(prev => {
-                     const currentJob = prev[jobType];
-                     if (currentJob && currentJob.id === jobId) {
-                         return { ...prev, [jobType]: { ...currentJob, status: 'failed', message: `Error checking status: ${error.message}` } };
-                     }
-                     return prev;
-                });
                 clearInterval(pollingIntervals.current[jobId]);
+                delete pollingIntervals.current[jobId];
+                setActiveJobs(prev => ({
+                     ...prev,
+                     [jobType]: { ...prev[jobType], status: 'failed', message: `Error: ${error.message}` }
+                }));
             }
         }, 2000);
     }, []);
 
-    const startJob = async (jobType, startFunction, payload, operationName) => {
-        setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...`, type: jobType } }));
+    // MODIFICATION: Logic now uses the unified `startJob` function.
+    const startJob = async (jobType, urlValue, operationName) => {
+        setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...` } }));
         try {
-            const result = await startFunction(payload);
+            const payload = { jobType, url: urlValue, cookies: cookieData || null };
+            const result = await window.electron.startJob(payload);
+
             if (result.error) { throw new Error(result.error); }
+            
             if (result.jobId) {
-                setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], id: result.jobId, status: 'queued', message: 'Job started, waiting for worker...' } }));
+                setActiveJobs(prev => ({ ...prev, [jobType]: { id: result.jobId, status: 'queued', message: 'Job started, waiting for worker...' } }));
                 pollJobStatus(result.jobId, jobType);
             } else {
-                throw new Error("Failed to get Job ID from server.");
+                throw new Error("Failed to get Job ID from the backend.");
             }
         } catch (error) {
-            setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], status: 'failed', message: `Error: ${error.message}` } }));
+            setActiveJobs(prev => ({ ...prev, [jobType]: { status: 'failed', message: `Error: ${error.message}` } }));
         }
     };
-
+    
     useEffect(() => {
         const intervals = pollingIntervals.current;
         return () => { Object.values(intervals).forEach(clearInterval); };
     }, []);
 
-    const handleJobRequest = async (urlValue, jobType, operationName, urlKey = 'url') => {
+    const handleJobRequest = (urlValue, jobType, operationName) => {
         if (!urlValue) {
             alert(`Please enter a YouTube URL for: ${operationName}`);
             return;
         }
-        if (!window.electron) {
+        if (!isElectron) {
             alert("This feature is only available in the desktop application.");
             return;
         }
-
-        // FIX: The payload no longer needs a downloadPath because main.js handles it.
-        const payload = {
-            [urlKey]: urlValue,
-            cookiesPath: cookieData || null
-        };
-        
-        let startFunction;
-        switch(jobType) {
-            case 'singleMp3': startFunction = window.electron.startSingleMp3Job; break;
-            case 'playlistZip': startFunction = window.electron.startPlaylistZipJob; break;
-            case 'combineMp3': startFunction = window.electron.startCombinePlaylistMp3Job; break;
-            default: alert('Unknown job type'); return;
-        }
-        startJob(jobType, startFunction, payload, operationName);
+        startJob(jobType, urlValue, operationName);
     };
     
     const downloadMP3 = () => handleJobRequest(url, 'singleMp3', 'Single MP3 Download');
-    const downloadPlaylistZip = () => handleJobRequest(playlistUrl, 'playlistZip', 'Playlist Zip Download', 'playlistUrl');
-    const downloadCombinedPlaylistMp3 = () => handleJobRequest(combineVideoUrl, 'combineMp3', 'Combine Playlist to MP3', 'playlistUrl');
+    const downloadPlaylistZip = () => handleJobRequest(playlistUrl, 'playlistZip', 'Playlist Zip Download');
+    const downloadCombinedPlaylistMp3 = () => handleJobRequest(combineVideoUrl, 'combineMp3', 'Combine Playlist to MP3');
 
     const isLoading = (jobType) => {
         const status = activeJobs[jobType]?.status;
         return status === 'queued' || status === 'downloading' || status === 'processing';
     };
 
+    // The renderContent function and the main return JSX remain unchanged.
+    // They will work correctly with the updated state logic.
     const renderContent = () => {
         const anyJobLoading = isAnyJobLoading();
         switch (currentView) {
