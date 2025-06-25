@@ -26,10 +26,8 @@ def get_ffmpeg_path():
     """Determines the path to the ffmpeg executable directory."""
     if getattr(sys, 'frozen', False):
         base_path = os.path.dirname(sys.executable)
-        # In the packaged app, ffmpeg is in a sibling 'bin' directory to the 'backend' dir
         return os.path.join(base_path, '..', 'bin')
     else:
-        # In development, it's in the root 'bin' directory
         base_path = os.path.dirname(os.path.abspath(__file__))
         return os.path.join(base_path, '..', 'bin')
 
@@ -68,9 +66,11 @@ def download_video_task(job_id, job_type, url, download_path, cookies_path=None)
                 'ffmpeg_location': get_ffmpeg_path(),
                 'cookiefile': cookies_path, 'progress_hooks': [lambda d: progress_hook(d, job_id)],
                 'nocheckcertificate': True, 'ignoreerrors': True,
-                'outtmpl': os.path.join(download_path, '%(title)s.%(ext)s'), # Download with original ext first
+                # FIX: This is the critical change. It tells yt-dlp to ignore the playlist ID
+                # in the URL and only download the single video specified.
+                'noplaylist': True,
+                'outtmpl': os.path.join(download_path, '%(title)s.%(ext)s'),
                 'format': 'bestaudio/best',
-                # FIX: Use a two-step post-processor to ensure a clean MP3
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
                     'preferredcodec': 'mp3',
@@ -94,7 +94,6 @@ def download_video_task(job_id, job_type, url, download_path, cookies_path=None)
                 'ffmpeg_location': get_ffmpeg_path(),
                 'cookiefile': cookies_path, 'progress_hooks': [lambda d: progress_hook(d, job_id)],
                 'nocheckcertificate': True, 'ignoreerrors': True,
-                # FIX: This format string plus the post-processor ensures audio/video are merged
                 'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
                 'outtmpl': os.path.join(playlist_folder, '%(playlist_index)s - %(title)s.%(ext)s'),
                 'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
@@ -122,7 +121,6 @@ def download_video_task(job_id, job_type, url, download_path, cookies_path=None)
                 'cookiefile': cookies_path, 'progress_hooks': [lambda d: progress_hook(d, job_id)],
                 'nocheckcertificate': True, 'ignoreerrors': True,
                 'format': 'bestaudio/best',
-                # Download as wav for stable concatenation
                 'outtmpl': os.path.join(temp_dir, '%(playlist_index)03d_%(id)s.%(ext)s'),
                 'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'wav'}]
             }
@@ -139,11 +137,10 @@ def download_video_task(job_id, job_type, url, download_path, cookies_path=None)
                     f.write(f"file '{safe_path}'\n")
             output_mp3_path = os.path.join(download_path, f"{playlist_title} (Combined).mp3")
             ffmpeg_executable = os.path.join(get_ffmpeg_path(), 'ffmpeg')
-            # FIX: Use a robust ffmpeg command to concatenate and convert to MP3
             command = [
                 ffmpeg_executable, '-y',
                 '-f', 'concat', '-safe', '0', '-i', list_file_path,
-                '-ab', '192k', # Set audio bitrate for MP3
+                '-ab', '192k',
                 output_mp3_path
             ]
             result = subprocess.run(command, capture_output=True, text=True)
