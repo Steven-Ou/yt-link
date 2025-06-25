@@ -67,6 +67,20 @@ def create_cookie_file(job_id, cookies_string):
         
     return cookie_file_path
 
+def get_playlist_index(filename):
+    """
+    A robust helper function to extract the numerical prefix from a filename for sorting.
+    Returns a large number if no prefix is found, sorting those files last.
+    """
+    try:
+        # Splits '12 - Song Title.mp3' into ['12', '-', 'Song', 'Title.mp3']
+        # and safely converts '12' to an integer.
+        return int(filename.split(' ')[0])
+    except (ValueError, IndexError):
+        # Handles filenames that don't start with a number (e.g., 'Intro.mp3')
+        # or have unexpected formats.
+        return float('inf') # Sorts these files to the end.
+
 # --- Core Download Logic ---
 
 def download_thread(url, ydl_opts, job_id, download_type, cookies_path):
@@ -142,10 +156,10 @@ def post_download_processing(job_id, temp_dir, download_type, playlist_title="do
                 raise FileNotFoundError("No MP3 files were created for the playlist.")
         
         elif download_type == "combine_playlist_mp3":
-            # FIX: Sort files numerically based on the playlist index prefix.
+            # FIX: Use the robust helper function for sorting to prevent crashes.
             mp3_files = sorted(
                 [f for f in os.listdir(temp_dir) if f.endswith('.mp3')],
-                key=lambda x: int(x.split(' ')[0]) if x.split(' ')[0].isdigit() else 0
+                key=get_playlist_index
             )
 
             if not mp3_files:
