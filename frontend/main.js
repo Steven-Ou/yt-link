@@ -11,9 +11,11 @@ let mainWindow = null;
 let pyPort = null;
 let isBackendReady = false;
 
-function waitForBackend(timeout = 10000) {
+// Promise to ensure the backend is ready before proceeding
+function waitForBackend(timeout = 15000) { // Increased timeout for slower machines
     return new Promise((resolve, reject) => {
         if (isBackendReady) return resolve(true);
+
         const startTime = Date.now();
         const interval = setInterval(() => {
             if (isBackendReady) {
@@ -21,7 +23,13 @@ function waitForBackend(timeout = 10000) {
                 resolve(true);
             } else if (Date.now() - startTime > timeout) {
                 clearInterval(interval);
-                reject(new Error('Backend service failed to start in time.'));
+                // Try to provide more info on why it might have failed
+                const errorLogPath = path.join(app.getPath('userData'), 'backend-error.log');
+                let errorDetails = `Check the log for details: ${errorLogPath}`;
+                if (pythonProcess && pythonProcess.exitCode !== null) {
+                    errorDetails = `Python process exited with code ${pythonProcess.exitCode}.`;
+                }
+                reject(new Error(`Backend service failed to start in time. ${errorDetails}`));
             }
         }, 250);
     });
@@ -32,132 +40,172 @@ function createWindow() {
         width: 1200,
         height: 800,
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
+            preload: path.join(__dirname, '..', 'frontend', 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
         },
+        title: "YT Link"
     });
 
     portfinder.getPortPromise({ port: 5001 })
         .then(freePort => {
             pyPort = freePort;
             console.log(`[Electron] Found free port for Python service: ${pyPort}`);
-            const isDev = !app.isPackaged;
-            const backendExecutableName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
-            const pyServicePath = isDev
-                ? path.join(app.getAppPath(), 'service/dist', backendExecutableName)
-                : path.join(process.resourcesPath, 'backend', backendExecutableName);
-            console.log(`[Electron] Attempting to start Python service at: ${pyServicePath}`);
-            if (!fs.existsSync(pyServicePath)) {
-                console.error('[Electron] Python service executable not found at path:', pyServicePath);
-                dialog.showErrorBox('Backend Error', `The backend service executable could not be found at: ${pyServicePath}`);
-                return app.quit();
-            }
-            pythonProcess = spawn(pyServicePath, [pyPort.toString()]);
-            pythonProcess.stdout.on('data', (data) => {
-                const output = data.toString();
-                console.log(`[Python] stdout: ${output}`);
-                if (output.includes('Flask-Backend-Ready')) {
-                    console.log('[Electron] Python backend has signaled it is ready.');
-                    isBackendReady = true;
-                }
-            });
-            pythonProcess.stderr.on('data', (data) => {
-                console.error(`[Python] stderr: ${data}`);
-            });
-            pythonProcess.on('close', (code) => {
-                console.log(`[Python] process exited with code ${code}`);
-                isBackendReady = false;
-            });
+            startPythonBackend(pyPort);
         })
         .catch(err => {
-            console.error('[Electron] Could not find a free port:', err);
-            dialog.showErrorBox('Backend Error', 'Could not find a free port to start the backend service.');
+            console.error('[Electron] Could not find a free port for the backend.', err);
+            dialog.showErrorBox('Startup Error', 'Could not find a free port to start the backend service.');
             app.quit();
         });
 
-    const startUrl = app.isPackaged 
-        ? `file://${path.join(__dirname, 'out/index.html')}`
-        : 'http://localhost:3000';
+    const startUrl = app.isPackaged ?
+        `file://${path.join(__dirname, '..', 'frontend', 'out', 'index.html')}` :
+        'http://localhost:3000';
+
     mainWindow.loadURL(startUrl);
-    mainWindow.on('closed', () => { mainWindow = null; });
+
+    mainWindow.on('closed', () => {
+        mainWindow = null;
+    });
 }
 
-app.on('ready', createWindow);
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('quit', () => { if (pythonProcess) pythonProcess.kill(); });
-app.on('activate', () => { if (mainWindow === null) createWindow(); });
+function startPythonBackend(port) {
+    const isDev = !app.isPackaged;
+    let backendScriptPath;
 
-function handleCookiePayload(payload) {
-    if (payload.cookiesPath && payload.cookiesPath.trim().length > 0) {
-        try {
-            const tempDir = app.getPath('temp');
-            const cookieFilePath = path.join(tempDir, `yt-link-cookies-${Date.now()}.txt`);
-            fs.writeFileSync(cookieFilePath, payload.cookiesPath);
-            console.log(`[Electron] Saved cookies to temporary file: ${cookieFilePath}`);
-            payload.cookiesPath = cookieFilePath;
-        } catch (error) {
-            console.error('[Electron] Failed to write temporary cookie file:', error);
-            payload.cookiesPath = null;
-        }
+    if (isDev) {
+        backendScriptPath = path.join(__dirname, '..', 'service', 'app.py');
     } else {
-        payload.cookiesPath = null;
+        const platform = process.platform;
+        const arch = process.arch;
+        let exeName = 'yt-link-backend';
+        if (platform === 'win32') exeName += '.exe';
+        
+        // Path to the backend executable in the packaged app
+        backendScriptPath = path.join(path.dirname(app.getAppPath()), '..', 'service', 'dist', exeName);
     }
-    return payload;
+    
+    console.log(`[Electron] Starting Python backend from: ${backendScriptPath}`);
+    
+    // Log file for backend stdout/stderr
+    const logPath = path.join(app.getPath('userData'), 'backend.log');
+    const errorLogPath = path.join(app.getPath('userData'), 'backend-error.log');
+    const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+    const errorLogStream = fs.createWriteStream(errorLogPath, { flags: 'a' });
+
+    const executable = isDev ? (process.platform === 'win32' ? 'python' : 'python3') : backendScriptPath;
+    const scriptArgs = isDev ? [backendScriptPath, port.toString()] : [port.toString()];
+
+    pythonProcess = spawn(executable, scriptArgs);
+
+    pythonProcess.stdout.on('data', (data) => {
+        const output = data.toString();
+        console.log(`[Python] ${output}`);
+        logStream.write(output);
+        if (output.includes(`Flask-Backend-Ready:${port}`)) {
+            console.log('[Electron] Python backend has signaled it is ready.');
+            isBackendReady = true;
+        }
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+        const errorOutput = data.toString();
+        console.error(`[Python] stderr: ${errorOutput}`);
+        errorLogStream.write(errorOutput);
+    });
+    
+    pythonProcess.on('close', (code) => {
+        console.log(`[Electron] Python process exited with code ${code}`);
+        pythonProcess = null;
+        isBackendReady = false;
+        // If the window is still open, notify the user.
+        if (mainWindow) {
+            mainWindow.webContents.send('backend-status', { status: 'disconnected', message: `Backend service stopped unexpectedly (code: ${code}).` });
+        }
+    });
 }
 
+// Unified function to proxy requests to the Python backend
 async function proxyToPython(endpoint, payload) {
     try {
         await waitForBackend();
     } catch (error) {
         console.error(`[Electron] ${error.message}`);
+        // This error message is now more informative and will be shown to the user.
         return { error: 'Backend service failed to start. Please try restarting the application.' };
     }
+
     if (!pyPort) return { error: 'Python service port not assigned.' };
-
-    let finalPayload = handleCookiePayload(payload);
-
-    // FIX: This is the critical change. It automatically gets the user's
-    // default "Downloads" folder and adds it to the payload for the backend.
-    const downloadPath = app.getPath('downloads');
-    finalPayload.downloadPath = downloadPath;
-    console.log(`[Electron] Automatically setting download path to: ${downloadPath}`);
 
     try {
         const url = `http://127.0.0.1:${pyPort}/${endpoint}`;
+        console.log(`[Electron] Forwarding request to Python: ${url} with payload:`, payload);
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(finalPayload),
+            body: JSON.stringify(payload),
         });
+
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`Python API Error: ${response.status} - ${errorText}`);
+            throw new Error(`Python API Error (${response.status}): ${errorText}`);
         }
         return await response.json();
     } catch (error) {
-        console.error(`[Electron] Error invoking remote method '${endpoint}':`, error);
-        return { error: error.message };
+        console.error(`[Electron] Error proxying to Python for endpoint ${endpoint}:`, error);
+        return { error: `Communication with the backend service failed: ${error.message}` };
     }
 }
 
-ipcMain.handle('start-single-mp3-job', (event, payload) => proxyToPython('start-single-mp3-job', payload));
-ipcMain.handle('start-playlist-zip-job', (event, payload) => proxyToPython('start-playlist-zip-job', payload));
-ipcMain.handle('start-combine-playlist-mp3-job', (event, payload) => proxyToPython('start-combine-playlist-mp3-job', payload));
+
+app.on('ready', createWindow);
+
+app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+        app.quit();
+    }
+});
+
+app.on('activate', () => {
+    if (mainWindow === null) {
+        createWindow();
+    }
+});
+
+app.on('quit', () => {
+    if (pythonProcess) {
+        console.log('[Electron] Terminating Python backend process.');
+        pythonProcess.kill();
+    }
+});
+
+// --- IPC Handlers ---
+
+// A single, robust handler for starting any job type.
+ipcMain.handle('start-job', (event, { jobType, url, cookies }) => {
+    if (!jobType || !url) {
+        return { error: 'Job type and URL are required.' };
+    }
+    const payload = { jobType, url, cookies };
+    return proxyToPython('start-job', payload);
+});
+
 
 ipcMain.handle('get-job-status', async (event, jobId) => {
-    try {
-        await waitForBackend();
-    } catch (error) {
-        console.error(`[Electron] ${error.message}`);
-        return { error: 'Backend service failed to start. Please try restarting the application.' };
+    // No need to wait for backend here, if it's not running, we should know.
+    if (!isBackendReady || !pyPort) {
+        return { status: 'failed', message: 'Backend service is not running.' };
     }
-    if (!pyPort) return { error: 'Python service port not assigned.' };
     try {
         const url = `http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`;
         const response = await fetch(url);
         if (!response.ok) {
             const errorText = await response.text();
+            // It's common for a job to 404 if it's cleaned up, handle it gracefully.
+            if(response.status === 404){
+                return { status: 'not_found', message: `Job ${jobId} not found.` };
+            }
             throw new Error(`Python API Error: ${response.status} - ${errorText}`);
         }
         return await response.json();
@@ -167,12 +215,68 @@ ipcMain.handle('get-job-status', async (event, jobId) => {
     }
 });
 
-// The select-directory handler is no longer needed for downloads, but can be kept for other purposes.
-ipcMain.handle('select-directory', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-        properties: ['openDirectory']
-    });
-    return canceled ? null : filePaths[0];
+// New handler to manage the download process from the main process
+ipcMain.handle('download-file', async (event, jobId) => {
+    if (!isBackendReady || !pyPort) {
+        return { error: 'Backend service is not running.' };
+    }
+
+    try {
+        const jobStatusUrl = `http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`;
+        const statusResponse = await fetch(jobStatusUrl);
+        if(!statusResponse.ok) throw new Error('Could not get job status before download.');
+        
+        const job = await statusResponse.json();
+        if(job.status !== 'completed' || !job.file_name) {
+             return { error: 'File is not ready for download or filename is missing.' };
+        }
+        
+        const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+            title: 'Save MP3 File',
+            defaultPath: path.join(app.getPath('downloads'), job.file_name),
+            filters: [
+                { name: 'Audio Files', extensions: ['mp3', 'zip'] },
+                { name: 'All Files', extensions: ['*'] }
+            ]
+        });
+
+        if (canceled || !filePath) {
+            return { canceled: true };
+        }
+
+        const downloadUrl = `http://127.0.0.1:${pyPort}/download/${jobId}`;
+        const downloadResponse = await fetch(downloadUrl);
+
+        if (!downloadResponse.ok) {
+            const errorText = await downloadResponse.text();
+            throw new Error(`Failed to download file from backend: ${errorText}`);
+        }
+
+        const fileStream = fs.createWriteStream(filePath);
+        await new Promise((resolve, reject) => {
+            downloadResponse.body.pipe(fileStream);
+            downloadResponse.body.on("error", reject);
+            fileStream.on("finish", resolve);
+        });
+
+        return { success: true, path: filePath };
+
+    } catch(error) {
+        console.error(`[Electron] Failed to download file for job ${jobId}:`, error);
+        dialog.showErrorBox('Download Error', `Could not download the file. Reason: ${error.message}`);
+        return { error: error.message };
+    }
 });
 
-ipcMain.handle('open-folder', (event, folderPath) => shell.openPath(folderPath));
+
+ipcMain.handle('open-folder', (event, folderPath) => {
+    shell.openPath(folderPath).catch(err => {
+        console.error(`[Electron] Failed to open folder: ${folderPath}`, err);
+        dialog.showErrorBox('Error', `Could not open the folder at: ${folderPath}`);
+    });
+});
+
+// Expose the downloads path to the renderer
+ipcMain.handle('get-downloads-path', () => {
+    return app.getPath('downloads');
+});
