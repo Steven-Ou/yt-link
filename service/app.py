@@ -1,5 +1,6 @@
 import os
 import shutil
+import sys
 import threading
 import time
 import uuid
@@ -17,26 +18,58 @@ CORS(app)
 # In-memory dictionary to store job status and results
 jobs = {}
 
-# --- FFmpeg Path Helper ---
+# --- Helper Functions ---
+
 def get_ffmpeg_path():
     """
-    Determines the correct path for the ffmpeg executable based on the OS.
-    This helper function is crucial for yt-dlp's post-processing to work correctly.
+    Determines the correct path for the ffmpeg executable based on the OS
+    and whether the app is running in a packaged (frozen) state.
     """
-    if platform.system() == "Windows":
-        # The path should point to the executable itself
-        return os.path.join(os.getcwd(), "service", "ffmpeg", "bin", "ffmpeg.exe")
+    base_path = ""
+    # Check if the application is running in a bundled executable
+    if getattr(sys, 'frozen', False):
+        base_path = os.path.dirname(sys.executable)
     else:
-        # For Mac/Linux, we assume ffmpeg might be in the PATH,
-        # but we provide a bundled path as a fallback.
-        local_ffmpeg_path = os.path.join(os.getcwd(), "service", "ffmpeg", "bin", "ffmpeg")
-        if os.path.exists(local_ffmpeg_path):
-            return local_ffmpeg_path
-        # If not found locally, rely on it being in the system's PATH
-        return "ffmpeg"
+        base_path = os.path.dirname(os.path.abspath(__file__))
+
+    ffmpeg_exe = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
+    
+    # Path when running from the 'service' directory
+    ffmpeg_path = os.path.join(base_path, "ffmpeg", "bin", ffmpeg_exe)
+    
+    # Fallback for different CWD
+    if not os.path.exists(ffmpeg_path):
+         ffmpeg_path = os.path.join(os.getcwd(), "service", "ffmpeg", "bin", ffmpeg_exe)
+
+    if os.path.exists(ffmpeg_path):
+        return ffmpeg_path
+        
+    # Final fallback to system's PATH
+    return "ffmpeg"
+
+def create_cookie_file(job_id, cookies_string):
+    """Creates a temporary cookie file from a string to pass to yt-dlp."""
+    if not cookies_string or not cookies_string.strip():
+        return None
+    
+    cookie_dir = os.path.join('temp', str(job_id))
+    os.makedirs(cookie_dir, exist_ok=True)
+    
+    cookie_file_path = os.path.join(cookie_dir, 'cookies.txt')
+    
+    # yt-dlp requires the Netscape HTTP Cookie File format header
+    header = "# Netscape HTTP Cookie File"
+    if not cookies_string.lstrip().startswith(header):
+        cookies_string = f"{header}\n{cookies_string}"
+        
+    with open(cookie_file_path, 'w', encoding='utf-8') as f:
+        f.write(cookies_string)
+        
+    return cookie_file_path
 
 # --- Core Download Logic ---
-def download_thread(url, ydl_opts, job_id, download_type):
+
+def download_thread(url, ydl_opts, job_id, download_type, cookies_path):
     """
     This function runs in a separate thread to handle the download process
     without blocking the main server. It now includes robust cleanup.
@@ -46,6 +79,10 @@ def download_thread(url, ydl_opts, job_id, download_type):
     
     jobs[job_id]['temp_dir'] = temp_dir
     ydl_opts['outtmpl'] = os.path.join(temp_dir, ydl_opts['outtmpl'])
+
+    # Add cookie file to options if it was created
+    if cookies_path:
+        ydl_opts['cookiefile'] = cookies_path
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -58,14 +95,14 @@ def download_thread(url, ydl_opts, job_id, download_type):
         post_download_processing(job_id, temp_dir, download_type, playlist_title)
 
     except Exception as e:
-        print(f"Error in download_thread for job {job_id}: {e}")
+        print(f"Error in download_thread for job {job_id}: {e}", file=sys.stderr)
         jobs[job_id]['status'] = 'failed'
         jobs[job_id]['error'] = str(e)
     finally:
+        # On failure, ensure the temporary directory is removed
         if jobs.get(job_id, {}).get('status') != 'completed':
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
-
 
 def post_download_processing(job_id, temp_dir, download_type, playlist_title="download"):
     """
@@ -114,9 +151,9 @@ def post_download_processing(job_id, temp_dir, download_type, playlist_title="do
             with open(list_file_path, 'w', encoding='utf-8') as f:
                 for file in mp3_files:
                     full_path = os.path.abspath(os.path.join(temp_dir, file))
-                    f.write(f"file '{full_path}'\n")
+                    f.write(f"file '{full_path.replace(\"'\", \"'\\\\''\")}'\n")
 
-            output_filename = f"{playlist_title}.mp3"
+            output_filename = f"{playlist_title} (Combined).mp3"
             output_filepath = os.path.join("temp", output_filename)
 
             command = [
@@ -132,45 +169,56 @@ def post_download_processing(job_id, temp_dir, download_type, playlist_title="do
             shutil.rmtree(temp_dir, ignore_errors=True)
 
     except Exception as e:
-        print(f"Error in post_download_processing for job {job_id}: {e}")
+        print(f"Error in post_download_processing for job {job_id}: {e}", file=sys.stderr)
         jobs[job_id]['status'] = 'failed'
         jobs[job_id]['error'] = str(e)
 
 
-# --- Job Progress Hook ---
 def progress_hook(d):
+    """This hook provides real-time progress updates for the job."""
     job_id = d['info_dict'].get('job_id')
     if job_id and job_id in jobs:
         if d['status'] == 'downloading':
             jobs[job_id]['status'] = 'downloading'
-            jobs[job_id]['progress'] = d.get('_percent_str', '0%')
-            jobs[job_id]['eta'] = d.get('_eta_str', 'N/A')
-            jobs[job_id]['speed'] = d.get('_speed_str', 'N/A')
+            jobs[job_id]['progress'] = d.get('_percent_str', '0%').replace('%','').strip()
         elif d['status'] == 'finished':
             jobs[job_id]['status'] = 'processing'
 
 def create_job(url):
+    """Initializes a new job entry."""
     job_id = str(uuid.uuid4())
-    jobs[job_id] = {'status': 'starting', 'url': url, 'progress': '0%'}
+    jobs[job_id] = {'status': 'starting', 'url': url, 'progress': '0'}
     return job_id
 
 # --- API Endpoints ---
-def start_job_runner(job_type):
-    """A helper to reduce code duplication in the start job routes."""
-    url = request.json['url']
-    job_id = create_job(url)
 
-    # Base options for all jobs
+@app.route('/start-job', methods=['POST'])
+def start_job():
+    """Single endpoint to handle starting any type of download job."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Invalid JSON request'}), 400
+        
+    url = data.get('url')
+    job_type = data.get('jobType') # e.g., 'single_mp3', 'playlist_zip'
+    cookies = data.get('cookies')
+    
+    if not all([url, job_type]):
+        return jsonify({'error': 'Missing url or jobType in request body'}), 400
+
+    job_id = create_job(url)
+    cookies_path = create_cookie_file(job_id, cookies)
+
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
         'ffmpeg_location': get_ffmpeg_path(),
         'progress_hooks': [lambda d: progress_hook(d)],
         'verbose': True,
-        'info_dict': {'job_id': job_id}
+        'info_dict': {'job_id': job_id},
+        'nocheckcertificate': True
     }
 
-    # Job-specific options
     if job_type in ["playlist_zip", "combine_playlist_mp3"]:
         ydl_opts['outtmpl'] = '%(playlist_index)s - %(title)s.%(ext)s'
         ydl_opts['ignoreerrors'] = True
@@ -178,27 +226,14 @@ def start_job_runner(job_type):
         ydl_opts['outtmpl'] = '%(title)s.%(ext)s'
         ydl_opts['noplaylist'] = True
 
-
-    thread = threading.Thread(target=download_thread, args=(url, ydl_opts, job_id, job_type))
+    thread = threading.Thread(target=download_thread, args=(url, ydl_opts, job_id, job_type, cookies_path))
+    thread.daemon = True # Allows main thread to exit even if downloads are running
     thread.start()
-    # FIX: Return 'jobId' in camelCase to match the frontend JavaScript
+    
     return jsonify({'jobId': job_id})
-
-@app.route('/start-single-mp3-job', methods=['POST'])
-def start_single_mp3_job():
-    return start_job_runner('single_mp3')
-
-@app.route('/start-playlist-zip-job', methods=['POST'])
-def start_playlist_zip_job():
-    return start_job_runner('playlist_zip')
-
-@app.route('/start-combine-playlist-mp3-job', methods=['POST'])
-def start_combine_playlist_mp3_job():
-    return start_job_runner('combine_playlist_mp3')
 
 @app.route('/job-status', methods=['GET'])
 def get_job_status():
-    # FIX: Get 'jobId' from query arguments to match frontend
     job_id = request.args.get('jobId')
     if not job_id:
         return jsonify({'status': 'not_found', 'error': 'jobId parameter is missing'}), 400
@@ -233,17 +268,20 @@ def download_file(job_id):
 
 
 if __name__ == '__main__':
-    # --- STARTUP DIAGNOSTICS ---
     try:
         if not os.path.exists('temp'):
             os.makedirs('temp')
-        print("--- Flask app starting on http://127.0.0.1:5001 ---")
-        print("--- Quit the server with CTRL-C ---")
-        # Running on port 5001 as expected by the Next.js API routes
-        app.run(debug=True, port=5001)
+            
+        # Get port from command line arguments, default to 5001
+        port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001
+        
+        # CRITICAL: This print statement is the signal your Electron app is waiting for.
+        print(f"Flask-Backend-Ready:{port}", flush=True)
+        
+        # Run the app, listening only on localhost
+        app.run(host='127.0.0.1', port=port, debug=False)
+
     except Exception as e:
-        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        print("!!!    AN ERROR OCCURRED ON STARTUP, CANNOT RUN    !!!")
-        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        print(f"ERROR: {e}")
-        input("Press ENTER to exit...")
+        # Log any startup errors to stderr for the Electron process to catch
+        print(f"FATAL: {e}", file=sys.stderr)
+        sys.exit(1)
