@@ -312,7 +312,19 @@ def download_file(job_id):
 
 
 if __name__ == '__main__':
-    # Create temp directory if it doesn't exist
-    if not os.path.exists('temp'):
-        os.makedirs('temp')
-    app.run(debug=True, port=5001)
+    # --- STARTUP DIAGNOSTICS ---
+    # This block will catch any error that happens when the script tries to run.
+    try:
+        # Create temp directory if it doesn't exist
+        if not os.path.exists('temp'):
+            os.makedirs('temp')
+        print("--- Flask app starting on http://127.0.0.1:5001 ---")
+        print("--- Quit the server with CTRL-C ---")
+        app.run(debug=True, port=5001)
+    except Exception as e:
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        print("!!!    AN ERROR OCCURRED ON STARTUP, CANNOT RUN    !!!")
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        print(f"ERROR: {e}")
+        # Keep the console window open to see the error message.
+        input("Press ENTER to exit...")
