@@ -54,6 +54,7 @@
         "from": "bin",
         "to": "bin"
       }
-    ]
+    ],
+    "afterPack": "./scripts/afterPack.js"
   }
 }
