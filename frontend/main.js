@@ -59,15 +59,16 @@ function createWindow() {
             app.quit();
         });
 
-    // FIX: Use loadFile for packaged apps and correct the path.
+    // FINAL FIX: This logic correctly handles paths for both development and production.
     if (app.isPackaged) {
-        // Based on your package.json, main.js is at 'frontend/main.js'.
-        // The 'out' dir is at 'frontend/out'.
-        // So, the path from __dirname (which is .../app/frontend) is correct.
+        // In a packaged app, the main.js file is inside the 'resources/app/frontend' directory.
+        // The 'out' directory is at 'resources/app/frontend/out'.
+        // So, the path from __dirname is correct.
         const filePath = path.join(__dirname, 'out', 'index.html');
         console.log(`[Electron] Loading packaged frontend from: ${filePath}`);
         mainWindow.loadFile(filePath);
     } else {
+        // In development, load from the Next.js dev server.
         const url = 'http://localhost:3000';
         console.log(`[Electron] Loading dev frontend from: ${url}`);
         mainWindow.loadURL(url);
@@ -222,8 +223,7 @@ ipcMain.handle('get-job-status', async (event, jobId) => {
             throw new Error(`Python API Error: ${response.status} - ${errorText}`);
         }
         return await response.json();
-    } catch (error) {
-        console.error(`[Electron] Error getting job status for ${jobId}:`, error);
+    } catch (error).        console.error(`[Electron] Error getting job status for ${jobId}:`, error);
         return { error: error.message };
     }
 });
