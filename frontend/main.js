@@ -60,7 +60,7 @@ function createWindow() {
             app.quit();
         });
 
-    // FIX: The path to the frontend is relative to the main.js file.
+    // The path to the frontend is relative to the main.js file's location in the package.
     const startUrl = app.isPackaged ?
         `file://${path.join(__dirname, '..', 'out', 'index.html')}` :
         'http://localhost:3000';
@@ -82,11 +82,10 @@ function startPythonBackend(port) {
         // In development, we run the python script directly.
         backendExecutablePath = path.join(__dirname, '..', '..', 'service', 'app.py');
     } else {
-        // In production, the executable is packaged.
+        // In production, the executable is packaged inside the 'resources' folder.
         const exeName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
-        // 'process.resourcesPath' is the reliable way to get the resources directory in a packaged app.
-        // This assumes your packager puts the backend executable in 'resources/service/dist'.
-        backendExecutablePath = path.join(process.resourcesPath, 'service', 'dist', exeName);
+        // FIX: This path now correctly matches the 'to: "backend"' setting in your package.json extraResources.
+        backendExecutablePath = path.join(process.resourcesPath, 'backend', exeName);
     }
     
     // --- Enhanced Logging & Debugging ---
@@ -94,7 +93,7 @@ function startPythonBackend(port) {
     
     // Check if the file actually exists before trying to spawn it.
     if (!fs.existsSync(backendExecutablePath)) {
-        const errorMsg = `Backend executable not found at path: ${backendExecutablePath}. This is a packaging error. Ensure the backend is built and included in the 'extraResources' of your electron-builder config.`;
+        const errorMsg = `Backend executable not found at path: ${backendExecutablePath}. This is a packaging error. Ensure the backend is built and that the 'extraResources' path in your root package.json is correct.`;
         console.error(`[Electron] FATAL: ${errorMsg}`);
         dialog.showErrorBox('Fatal Error', errorMsg);
         app.quit();
