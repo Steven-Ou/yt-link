@@ -1,6 +1,7 @@
 import os
 import shutil
 import sys
+import traceback
 import threading
 import time
 import uuid
@@ -24,46 +25,52 @@ def get_ffmpeg_path():
     """
     Determines the correct, robust path for the FFMPEG directory,
     handling both development and packaged (production) environments.
-    This is the definitive, corrected function.
+    This version includes extensive logging for debugging.
     """
+    print("--- DEBUG: Starting get_ffmpeg_path() ---")
+    
     # --- Packaged App (Production) ---
-    # getattr(sys, 'frozen', False) is the standard way to check if running in a PyInstaller bundle.
     if getattr(sys, 'frozen', False):
-        # In the packaged app, main.js reliably sets the Current Working Directory (cwd)
-        # to the 'backend' folder within the app's resources.
-        # e.g., /Applications/YT Link.app/Contents/Resources/backend
-        # We use this as our stable anchor to find sibling folders.
-        current_dir = os.getcwd()
-        
-        # Based on your package.json `extraResources`, the 'bin' folder is a sibling to the 'backend' folder.
-        # We navigate up one level from `current_dir` to the main `Resources` folder, then into `bin`.
-        ffmpeg_dir = os.path.join(current_dir, '..', 'bin')
-        
-        # Absolute path normalization for safety and logging.
-        ffmpeg_dir = os.path.abspath(ffmpeg_dir)
-
-        # Critical check: if the directory isn't where we expect it, the app cannot function.
-        if not os.path.isdir(ffmpeg_dir):
-            error_message = f"FATAL: Packaged ffmpeg directory not found at expected path: {ffmpeg_dir}"
-            print(error_message, file=sys.stderr)
-            raise FileNotFoundError(error_message)
+        print("--- DEBUG: Running in PACKAGED mode (sys.frozen is True) ---")
+        try:
+            # In the packaged app, main.js reliably sets the Current Working Directory (cwd)
+            # to the 'backend' folder within the app's resources.
+            current_dir = os.getcwd()
+            print(f"--- DEBUG: Current Working Directory (os.getcwd()): {current_dir}")
             
-        print(f"INFO: [Packaged Mode] Using ffmpeg directory: {ffmpeg_dir}")
-        return ffmpeg_dir
+            # Navigate up one level to the main `Resources` folder, then into `bin`.
+            ffmpeg_dir = os.path.join(current_dir, '..', 'bin')
+            ffmpeg_dir = os.path.abspath(ffmpeg_dir)
+            print(f"--- DEBUG: Constructed ffmpeg path: {ffmpeg_dir}")
+
+            if not os.path.isdir(ffmpeg_dir):
+                error_message = f"FATAL: Packaged ffmpeg directory NOT FOUND at expected path: {ffmpeg_dir}"
+                print(error_message, file=sys.stderr)
+                # Log directory contents for diagnosis
+                parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
+                print(f"--- DEBUG: Contents of parent directory '{parent_dir}': {os.listdir(parent_dir)}", file=sys.stderr)
+                raise FileNotFoundError(error_message)
+            
+            print(f"--- DEBUG: SUCCESS: Found ffmpeg directory at: {ffmpeg_dir}")
+            print(f"--- DEBUG: Contents of ffmpeg directory: {os.listdir(ffmpeg_dir)}")
+            return ffmpeg_dir
+
+        except Exception as e:
+            print(f"--- DEBUG: An unexpected error occurred while finding packaged ffmpeg: {e}", file=sys.stderr)
+            raise e
 
     # --- Development Environment ---
     else:
-        # In dev, this script is in the 'service' folder. We find ffmpeg relative to the project root.
+        print("--- DEBUG: Running in DEVELOPMENT mode (sys.frozen is False) ---")
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
         ffmpeg_dir = os.path.join(project_root, 'bin')
 
         if os.path.isdir(ffmpeg_dir):
-            print(f"INFO: [Dev Mode] Using ffmpeg directory: {ffmpeg_dir}")
+            print(f"--- DEBUG: SUCCESS: Found dev ffmpeg directory: {ffmpeg_dir}")
             return ffmpeg_dir
         else:
-            # Fallback to system PATH only if not found in the project structure for local dev convenience.
-            print("WARNING: ffmpeg not found in project 'bin' folder, falling back to system PATH.", file=sys.stderr)
-            return None # Let yt-dlp search the PATH by default
+            print("--- DEBUG: WARNING: ffmpeg not found in project 'bin' folder, falling back to system PATH.", file=sys.stderr)
+            return None
 
 
 def create_cookie_file(job_id, cookies_string):
@@ -106,18 +113,28 @@ def download_thread(url, ydl_opts, job_id, download_type, cookies_path):
         ydl_opts['cookiefile'] = cookies_path
 
     try:
+        print(f"--- DEBUG: [Job {job_id}] Starting download with yt-dlp options: {ydl_opts}")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=False)
             playlist_title = info_dict.get('title', 'playlist')
             jobs[job_id]['playlist_title'] = playlist_title
             
+            print(f"--- DEBUG: [Job {job_id}] Title found: {playlist_title}. Starting actual download.")
             ydl.download([url])
+            print(f"--- DEBUG: [Job {job_id}] yt-dlp download completed. Starting post-processing.")
 
         post_download_processing(job_id, temp_dir, download_type, playlist_title)
+        print(f"--- DEBUG: [Job {job_id}] Post-processing finished successfully.")
 
     except Exception as e:
-        print(f"ERROR in download_thread for job {job_id}: {e}", file=sys.stderr)
-        # Provide the actual error message to the frontend for better debugging.
+        # Enhanced error logging
+        print(f"--- DEBUG: ERROR in download_thread for job {job_id} ---", file=sys.stderr)
+        print(f"Error Type: {type(e).__name__}", file=sys.stderr)
+        print(f"Error Message: {e}", file=sys.stderr)
+        print("--- Full Traceback ---", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        print("--------------------", file=sys.stderr)
+        
         jobs[job_id]['status'] = 'failed'
         jobs[job_id]['error'] = str(e)
         if os.path.exists(temp_dir):
@@ -277,6 +294,14 @@ def download_file(job_id):
 
 if __name__ == '__main__':
     try:
+        # Create a log file to capture stdout and stderr
+        log_file_path = os.path.join(os.path.expanduser("~"), "yt_link_backend.log")
+        print(f"--- Backend starting, logging to {log_file_path} ---")
+        
+        # Redirect stdout and stderr
+        sys.stdout = open(log_file_path, 'a')
+        sys.stderr = sys.stdout
+
         if not os.path.exists('temp'):
             os.makedirs('temp')
             
@@ -284,8 +309,11 @@ if __name__ == '__main__':
         
         print(f"Flask-Backend-Ready:{port}", flush=True)
         
+        # The 'app.run' logs will now go to the file.
         app.run(host='127.0.0.1', port=port, debug=False)
 
     except Exception as e:
+        # This will also be logged to the file.
         print(f"FATAL: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         sys.exit(1)
