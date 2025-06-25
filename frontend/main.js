@@ -59,9 +59,12 @@ function createWindow() {
             app.quit();
         });
 
-    // FIX: Use loadFile for packaged apps to avoid local resource loading errors.
+    // FIX: Use loadFile for packaged apps and correct the path.
     if (app.isPackaged) {
-        const filePath = path.join(__dirname, '..', 'out', 'index.html');
+        // Based on your package.json, main.js is at 'frontend/main.js'.
+        // The 'out' dir is at 'frontend/out'.
+        // So, the path from __dirname (which is .../app/frontend) is correct.
+        const filePath = path.join(__dirname, 'out', 'index.html');
         console.log(`[Electron] Loading packaged frontend from: ${filePath}`);
         mainWindow.loadFile(filePath);
     } else {
@@ -82,7 +85,7 @@ function startPythonBackend(port) {
     // Determine the path to the backend executable
     if (isDev) {
         // In development, we run the python script directly.
-        backendExecutablePath = path.join(__dirname, '..', '..', 'service', 'app.py');
+        backendExecutablePath = path.join(__dirname, '..', 'service', 'app.py');
     } else {
         // In production, the executable is packaged inside the 'resources' folder.
         const exeName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
@@ -114,7 +117,10 @@ function startPythonBackend(port) {
     
     console.log(`[Electron] Spawning command: '${command}' with args: [${args.join(', ')}]`);
 
-    pythonProcess = spawn(command, args);
+    pythonProcess = spawn(command, args, {
+        // Important for packaged apps on macOS/Linux to find bundled executables
+        cwd: isDev ? undefined : path.dirname(backendExecutablePath) 
+    });
 
     pythonProcess.on('error', (err) => {
         // This will catch errors like EPERM or other OS-level spawn errors.
