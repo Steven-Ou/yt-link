@@ -22,46 +22,48 @@ jobs = {}
 
 def get_ffmpeg_path():
     """
-    Determines the correct, robust path for the ffmpeg executable,
+    Determines the correct, robust path for the FFMPEG directory,
     handling both development and packaged (production) environments.
+    This is the definitive, corrected function.
     """
-    ffmpeg_exe = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
-
     # --- Packaged App (Production) ---
+    # getattr(sys, 'frozen', False) is the standard way to check if running in a PyInstaller bundle.
     if getattr(sys, 'frozen', False):
-        # In a packaged app, sys.executable is the path to the backend executable.
+        # When packaged, sys._MEIPASS is the path to the temporary folder where PyInstaller unpacks data.
+        # However, for finding resources packaged by Electron-Builder, we must start from sys.executable.
+        # sys.executable is the path to your `yt-link-backend` executable.
         # e.g., /Applications/YT Link.app/Contents/Resources/backend/yt-link-backend
-        base_dir = os.path.dirname(sys.executable)
+        backend_dir = os.path.dirname(sys.executable)
         
-        # Based on the 'extraResources' config in package.json, ffmpeg is in a sibling 'bin' folder.
-        # We go up one level from the executable's folder ('backend') to 'Resources', then down into 'bin'.
-        ffmpeg_path = os.path.join(base_dir, '..', 'bin', 'ffmpeg', 'bin', ffmpeg_exe)
+        # Based on your package.json `extraResources`, the 'bin' folder is a sibling to the 'backend' folder.
+        # We navigate up one level from `backend_dir` to the main `Resources` folder, then into `bin`.
+        ffmpeg_dir = os.path.join(backend_dir, '..', 'bin')
         
-        # Absolute path normalization for safety
-        ffmpeg_path = os.path.abspath(ffmpeg_path)
+        # Absolute path normalization for safety and logging.
+        ffmpeg_dir = os.path.abspath(ffmpeg_dir)
 
-        if os.path.exists(ffmpeg_path):
-            print(f"INFO: Found packaged ffmpeg at: {ffmpeg_path}")
-            return ffmpeg_path
-        else:
-            # This is a critical packaging error.
-            raise FileNotFoundError(f"FATAL: Packaged ffmpeg not found at expected path: {ffmpeg_path}")
+        # Critical check: if the directory isn't where we expect it, the app cannot function.
+        if not os.path.isdir(ffmpeg_dir):
+            error_message = f"FATAL: Packaged ffmpeg directory not found at expected path: {ffmpeg_dir}"
+            print(error_message, file=sys.stderr)
+            raise FileNotFoundError(error_message)
+            
+        print(f"INFO: [Packaged Mode] Using ffmpeg directory: {ffmpeg_dir}")
+        return ffmpeg_dir
 
     # --- Development Environment ---
     else:
-        # In dev, this script is in the 'service' folder. We find ffmpeg relative to it.
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        
-        # The 'bin' folder is in the project root, one level above the 'service' folder.
-        ffmpeg_path = os.path.join(base_dir, '..', 'bin', 'ffmpeg', 'bin', ffmpeg_exe)
+        # In dev, this script is in the 'service' folder. We find ffmpeg relative to the project root.
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        ffmpeg_dir = os.path.join(project_root, 'bin')
 
-        if os.path.exists(ffmpeg_path):
-            print(f"INFO: Found dev ffmpeg at: {ffmpeg_path}")
-            return ffmpeg_path
+        if os.path.isdir(ffmpeg_dir):
+            print(f"INFO: [Dev Mode] Using ffmpeg directory: {ffmpeg_dir}")
+            return ffmpeg_dir
         else:
-            # Fallback to system PATH if not found in the project structure for convenience.
+            # Fallback to system PATH only if not found in the project structure for local dev convenience.
             print("WARNING: ffmpeg not found in project 'bin' folder, falling back to system PATH.", file=sys.stderr)
-            return "ffmpeg"
+            return None # Let yt-dlp search the PATH by default
 
 
 def create_cookie_file(job_id, cookies_string):
@@ -74,7 +76,6 @@ def create_cookie_file(job_id, cookies_string):
     
     cookie_file_path = os.path.join(cookie_dir, 'cookies.txt')
     
-    # yt-dlp requires the Netscape HTTP Cookie File format header
     header = "# Netscape HTTP Cookie File"
     if not cookies_string.lstrip().startswith(header):
         cookies_string = f"{header}\n{cookies_string}"
@@ -85,30 +86,19 @@ def create_cookie_file(job_id, cookies_string):
     return cookie_file_path
 
 def get_playlist_index(filename):
-    """
-    A robust helper function to extract the numerical prefix from a filename for sorting.
-    Returns a large number if no prefix is found, sorting those files last.
-    """
+    """Robustly extracts a numerical prefix from a filename for sorting."""
     try:
-        # Splits '12 - Song Title.mp3' into ['12', '-', 'Song', 'Title.mp3']
-        # and safely converts '12' to an integer.
         return int(filename.split(' ')[0])
     except (ValueError, IndexError):
-        # Handles filenames that don't start with a number (e.g., 'Intro.mp3')
-        # or have unexpected formats.
-        return float('inf') # Sorts these files to the end.
+        return float('inf')
 
 # --- Core Download Logic ---
 
 def download_thread(url, ydl_opts, job_id, download_type, cookies_path):
-    """
-    This function runs in a separate thread to handle the download process.
-    Cleanup is now handled either on failure here, or on success in the /download endpoint.
-    """
+    """Runs the download process in a separate thread."""
     temp_dir = os.path.join("temp", str(job_id))
     os.makedirs(temp_dir, exist_ok=True)
     
-    # Store temp_dir in the job so it can be cleaned up later
     jobs[job_id]['temp_dir'] = temp_dir
     ydl_opts['outtmpl'] = os.path.join(temp_dir, ydl_opts['outtmpl'])
 
@@ -126,33 +116,26 @@ def download_thread(url, ydl_opts, job_id, download_type, cookies_path):
         post_download_processing(job_id, temp_dir, download_type, playlist_title)
 
     except Exception as e:
-        # If any part of the download/processing fails, clean up the temp directory.
-        print(f"Error in download_thread for job {job_id}: {e}", file=sys.stderr)
+        print(f"ERROR in download_thread for job {job_id}: {e}", file=sys.stderr)
+        # Provide the actual error message to the frontend for better debugging.
         jobs[job_id]['status'] = 'failed'
         jobs[job_id]['error'] = str(e)
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 def post_download_processing(job_id, temp_dir, download_type, playlist_title="download"):
-    """
-    Handles file operations after the download is complete.
-    This function NO LONGER handles temp directory cleanup.
-    """
-    # This entire block is wrapped in the download_thread's try/except
+    """Handles file operations after download completion."""
     if download_type == "single_mp3":
         files = os.listdir(temp_dir)
         mp3_files = [f for f in files if f.endswith('.mp3')]
-        if mp3_files:
-            file_path = os.path.join(temp_dir, mp3_files[0])
-            jobs[job_id]['file_path'] = file_path
-            jobs[job_id]['file_name'] = os.path.basename(file_path)
-            jobs[job_id]['status'] = 'completed'
-        else:
+        if not mp3_files:
             raise FileNotFoundError("MP3 conversion failed. The MP3 file was not created.")
+        
+        file_path = os.path.join(temp_dir, mp3_files[0])
+        jobs[job_id].update({'file_path': file_path, 'file_name': os.path.basename(file_path), 'status': 'completed'})
 
     elif download_type == "playlist_zip":
         zip_filename = f"{playlist_title}.zip"
-        # Place the final zip in the main temp folder, not the job-specific one.
         zip_path = os.path.join("temp", f"{job_id}.zip")
 
         mp3_files_found = False
@@ -163,18 +146,13 @@ def post_download_processing(job_id, temp_dir, download_type, playlist_title="do
                     zipf.write(file_path, arcname=file)
                     mp3_files_found = True
         
-        if mp3_files_found:
-            jobs[job_id]['file_path'] = zip_path
-            jobs[job_id]['file_name'] = zip_filename
-            jobs[job_id]['status'] = 'completed'
-        else:
+        if not mp3_files_found:
             raise FileNotFoundError("No MP3 files were created for the playlist.")
+        
+        jobs[job_id].update({'file_path': zip_path, 'file_name': zip_filename, 'status': 'completed'})
     
     elif download_type == "combine_playlist_mp3":
-        mp3_files = sorted(
-            [f for f in os.listdir(temp_dir) if f.endswith('.mp3')],
-            key=get_playlist_index
-        )
+        mp3_files = sorted([f for f in os.listdir(temp_dir) if f.endswith('.mp3')], key=get_playlist_index)
 
         if not mp3_files:
             raise FileNotFoundError("No MP3 files were downloaded to combine.")
@@ -183,28 +161,24 @@ def post_download_processing(job_id, temp_dir, download_type, playlist_title="do
         with open(list_file_path, 'w', encoding='utf-8') as f:
             for file in mp3_files:
                 full_path = os.path.abspath(os.path.join(temp_dir, file))
-                # FIX: Correctly escape single quotes for the ffmpeg concat file format.
                 safe_path = full_path.replace("'", "'\\''")
                 f.write(f"file '{safe_path}'\n")
 
         output_filename = f"{playlist_title} (Combined).mp3"
-        # Place the final file in the main temp folder.
         output_filepath = os.path.join("temp", output_filename)
 
-        command = [
-            get_ffmpeg_path(), '-f', 'concat', '-safe', '0', 
-            '-i', list_file_path, '-c', 'copy', '-y', output_filepath
-        ]
+        ffmpeg_path = get_ffmpeg_path()
+        if not ffmpeg_path:
+             raise FileNotFoundError("Could not locate the ffmpeg directory.")
 
+        command = [os.path.join(ffmpeg_path, 'ffmpeg'), '-f', 'concat', '-safe', '0', '-i', list_file_path, '-c', 'copy', '-y', output_filepath]
         subprocess.run(command, check=True, capture_output=True, text=True)
         
-        jobs[job_id]['file_path'] = output_filepath
-        jobs[job_id]['file_name'] = output_filename
-        jobs[job_id]['status'] = 'completed'
+        jobs[job_id].update({'file_path': output_filepath, 'file_name': output_filename, 'status': 'completed'})
 
 def progress_hook(d):
-    """This hook provides real-time progress updates for the job."""
-    job_id = d['info_dict'].get('job_id')
+    """Provides real-time progress updates for the job."""
+    job_id = d.get('info_dict', {}).get('job_id')
     if job_id and job_id in jobs:
         if d['status'] == 'downloading':
             jobs[job_id]['status'] = 'downloading'
@@ -279,7 +253,7 @@ def download_file(job_id):
 
     file_path = job.get('file_path')
     file_name = job.get('file_name')
-    temp_dir = job.get('temp_dir') # Get the temp dir path for cleanup
+    temp_dir = job.get('temp_dir') 
 
     if not file_path or not os.path.exists(file_path):
         return jsonify({'error': 'File not found'}), 404
@@ -289,8 +263,6 @@ def download_file(job_id):
             with open(file_path, 'rb') as f:
                 yield from f
         finally:
-            # Robust cleanup after the file is sent.
-            # This is the single point of cleanup for successful jobs.
             if os.path.exists(file_path):
                  os.remove(file_path)
             if temp_dir and os.path.exists(temp_dir):
