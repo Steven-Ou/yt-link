@@ -29,15 +29,15 @@ def get_ffmpeg_path():
     # --- Packaged App (Production) ---
     # getattr(sys, 'frozen', False) is the standard way to check if running in a PyInstaller bundle.
     if getattr(sys, 'frozen', False):
-        # When packaged, sys._MEIPASS is the path to the temporary folder where PyInstaller unpacks data.
-        # However, for finding resources packaged by Electron-Builder, we must start from sys.executable.
-        # sys.executable is the path to your `yt-link-backend` executable.
-        # e.g., /Applications/YT Link.app/Contents/Resources/backend/yt-link-backend
-        backend_dir = os.path.dirname(sys.executable)
+        # In the packaged app, main.js reliably sets the Current Working Directory (cwd)
+        # to the 'backend' folder within the app's resources.
+        # e.g., /Applications/YT Link.app/Contents/Resources/backend
+        # We use this as our stable anchor to find sibling folders.
+        current_dir = os.getcwd()
         
         # Based on your package.json `extraResources`, the 'bin' folder is a sibling to the 'backend' folder.
-        # We navigate up one level from `backend_dir` to the main `Resources` folder, then into `bin`.
-        ffmpeg_dir = os.path.join(backend_dir, '..', 'bin')
+        # We navigate up one level from `current_dir` to the main `Resources` folder, then into `bin`.
+        ffmpeg_dir = os.path.join(current_dir, '..', 'bin')
         
         # Absolute path normalization for safety and logging.
         ffmpeg_dir = os.path.abspath(ffmpeg_dir)
@@ -167,11 +167,12 @@ def post_download_processing(job_id, temp_dir, download_type, playlist_title="do
         output_filename = f"{playlist_title} (Combined).mp3"
         output_filepath = os.path.join("temp", output_filename)
 
-        ffmpeg_path = get_ffmpeg_path()
-        if not ffmpeg_path:
+        ffmpeg_dir = get_ffmpeg_path()
+        if not ffmpeg_dir:
              raise FileNotFoundError("Could not locate the ffmpeg directory.")
 
-        command = [os.path.join(ffmpeg_path, 'ffmpeg'), '-f', 'concat', '-safe', '0', '-i', list_file_path, '-c', 'copy', '-y', output_filepath]
+        ffmpeg_exe = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
+        command = [os.path.join(ffmpeg_dir, ffmpeg_exe), '-f', 'concat', '-safe', '0', '-i', list_file_path, '-c', 'copy', '-y', output_filepath]
         subprocess.run(command, check=True, capture_output=True, text=True)
         
         jobs[job_id].update({'file_path': output_filepath, 'file_name': output_filename, 'status': 'completed'})
