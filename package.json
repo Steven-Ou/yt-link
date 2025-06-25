@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Desktop app to download youtube videos and playlist as mp3 files",
   "author": "Steven Ou",
-  "main": "frontend/main.js",
+  "main": "main.js",
   "scripts": {
     "start": "electron .",
     "dev": "concurrently \"npm run dev:next\" \"npm run dev:electron\"",
@@ -32,10 +32,10 @@
       "output": "dist"
     },
     "files": [
+      "main.js",
+      "preload.js",
       "frontend/out/**/*",
-      "frontend/main.js",
-      "frontend/preload.js",
-      "frontend/package.json"
+      "package.json"
     ],
     "mac": {
       "target": "dmg",
