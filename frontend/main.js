@@ -40,7 +40,6 @@ function createWindow() {
         width: 1200,
         height: 800,
         webPreferences: {
-            // FIX: Correctly reference the preload script's location relative to this file
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
@@ -60,13 +59,16 @@ function createWindow() {
             app.quit();
         });
 
-    // The path to the frontend is relative to the main.js file's location in the package.
-    const startUrl = app.isPackaged ?
-        `file://${path.join(__dirname, '..', 'out', 'index.html')}` :
-        'http://localhost:3000';
-    
-    console.log(`[Electron] Loading frontend from: ${startUrl}`);
-    mainWindow.loadURL(startUrl);
+    // FIX: Use loadFile for packaged apps to avoid local resource loading errors.
+    if (app.isPackaged) {
+        const filePath = path.join(__dirname, '..', 'out', 'index.html');
+        console.log(`[Electron] Loading packaged frontend from: ${filePath}`);
+        mainWindow.loadFile(filePath);
+    } else {
+        const url = 'http://localhost:3000';
+        console.log(`[Electron] Loading dev frontend from: ${url}`);
+        mainWindow.loadURL(url);
+    }
 
     mainWindow.on('closed', () => {
         mainWindow = null;
@@ -84,7 +86,7 @@ function startPythonBackend(port) {
     } else {
         // In production, the executable is packaged inside the 'resources' folder.
         const exeName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
-        // FIX: This path now correctly matches the 'to: "backend"' setting in your package.json extraResources.
+        // This path now correctly matches the 'to: "backend"' setting in your package.json extraResources.
         backendExecutablePath = path.join(process.resourcesPath, 'backend', exeName);
     }
     
