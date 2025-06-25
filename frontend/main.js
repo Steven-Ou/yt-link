@@ -23,13 +23,13 @@ function waitForBackend(timeout = 15000) { // Increased timeout for slower machi
                 resolve(true);
             } else if (Date.now() - startTime > timeout) {
                 clearInterval(interval);
-                // Try to provide more info on why it might have failed
-                const errorLogPath = path.join(app.getPath('userData'), 'backend-error.log');
-                let errorDetails = `Check the log for details: ${errorLogPath}`;
-                if (pythonProcess && pythonProcess.exitCode !== null) {
-                    errorDetails = `Python process exited with code ${pythonProcess.exitCode}.`;
-                }
-                reject(new Error(`Backend service failed to start in time. ${errorDetails}`));
+                // FIX: This error message is now much more informative and points to the correct log file.
+                const logPath = path.join(os.homedir(), 'yt_link_backend_debug.log');
+                const errorMsg = `The Python backend service failed to start. This is a critical error.
+
+Please check the debug log file for details:
+${logPath}`;
+                reject(new Error(errorMsg));
             }
         }, 250);
     });
@@ -59,16 +59,11 @@ function createWindow() {
             app.quit();
         });
 
-    // FINAL FIX: This logic correctly handles paths for both development and production.
     if (app.isPackaged) {
-        // In a packaged app, the main.js file is inside the 'resources/app/frontend' directory.
-        // The 'out' directory is at 'resources/app/frontend/out'.
-        // So, the path from __dirname is correct.
         const filePath = path.join(__dirname, 'out', 'index.html');
         console.log(`[Electron] Loading packaged frontend from: ${filePath}`);
         mainWindow.loadFile(filePath);
     } else {
-        // In development, load from the Next.js dev server.
         const url = 'http://localhost:3000';
         console.log(`[Electron] Loading dev frontend from: ${url}`);
         mainWindow.loadURL(url);
@@ -83,66 +78,44 @@ function startPythonBackend(port) {
     const isDev = !app.isPackaged;
     let backendExecutablePath;
 
-    // Determine the path to the backend executable
     if (isDev) {
-        // In development, we run the python script directly.
         backendExecutablePath = path.join(__dirname, '..', 'service', 'app.py');
     } else {
-        // In production, the executable is packaged inside the 'resources' folder.
         const exeName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
-        // This path now correctly matches the 'to: "backend"' setting in your package.json extraResources.
         backendExecutablePath = path.join(process.resourcesPath, 'backend', exeName);
     }
     
-    // --- Enhanced Logging & Debugging ---
     console.log(`[Electron] Attempting to start backend from: ${backendExecutablePath}`);
     
-    // Check if the file actually exists before trying to spawn it.
     if (!fs.existsSync(backendExecutablePath)) {
-        const errorMsg = `Backend executable not found at path: ${backendExecutablePath}. This is a packaging error. Ensure the backend is built and that the 'extraResources' path in your root package.json is correct.`;
+        const errorMsg = `Backend executable not found at path: ${backendExecutablePath}. This is a packaging error.`;
         console.error(`[Electron] FATAL: ${errorMsg}`);
         dialog.showErrorBox('Fatal Error', errorMsg);
         app.quit();
         return;
     }
-    // --- End Enhanced Logging ---
 
-    const logPath = path.join(app.getPath('userData'), 'backend.log');
-    const errorLogPath = path.join(app.getPath('userData'), 'backend-error.log');
-    const logStream = fs.createWriteStream(logPath, { flags: 'a' });
-    const errorLogStream = fs.createWriteStream(errorLogPath, { flags: 'a' });
-
-    // In dev, the command is 'python', in prod, it's the executable itself.
     const command = isDev ? (process.platform === 'win32' ? 'python' : 'python3') : backendExecutablePath;
     const args = isDev ? [backendExecutablePath, port.toString()] : [port.toString()];
     
     console.log(`[Electron] Spawning command: '${command}' with args: [${args.join(', ')}]`);
 
     pythonProcess = spawn(command, args, {
-        // Important for packaged apps on macOS/Linux to find bundled executables
         cwd: isDev ? undefined : path.dirname(backendExecutablePath) 
     });
 
-    pythonProcess.on('error', (err) => {
-        // This will catch errors like EPERM or other OS-level spawn errors.
-        console.error(`[Electron] Failed to start Python process. Error: ${err.message}`);
-        dialog.showErrorBox('Backend Error', `Failed to start the backend process: ${err.message}`);
+    // This listener is crucial. It captures any immediate errors from the Python process.
+    pythonProcess.stderr.on('data', (data) => {
+        console.error(`[Python STDERR]: ${data}`);
     });
 
     pythonProcess.stdout.on('data', (data) => {
         const output = data.toString();
-        console.log(`[Python STDOUT] ${output}`);
-        logStream.write(output);
+        console.log(`[Python STDOUT]: ${output}`);
         if (output.includes(`Flask-Backend-Ready:${port}`)) {
             console.log('[Electron] Python backend has signaled it is ready.');
             isBackendReady = true;
         }
-    });
-
-    pythonProcess.stderr.on('data', (data) => {
-        const errorOutput = data.toString();
-        console.error(`[Python STDERR] ${errorOutput}`);
-        errorLogStream.write(errorOutput);
     });
     
     pythonProcess.on('close', (code) => {
@@ -178,10 +151,7 @@ app.on('quit', () => {
     }
 });
 
-// --- IPC Handlers (No changes needed here from previous version) ---
-// This assumes you are using the unified 'start-job' and 'download-file' handlers
-
-// A single, robust handler for starting any job type.
+// --- IPC Handlers ---
 ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
     if (!jobType || !url) {
         return { error: 'Job type and URL are required.' };
