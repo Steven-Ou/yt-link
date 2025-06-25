@@ -142,7 +142,11 @@ def post_download_processing(job_id, temp_dir, download_type, playlist_title="do
                 raise FileNotFoundError("No MP3 files were created for the playlist.")
         
         elif download_type == "combine_playlist_mp3":
-            mp3_files = sorted([f for f in os.listdir(temp_dir) if f.endswith('.mp3')])
+            # FIX: Sort files numerically based on the playlist index prefix.
+            mp3_files = sorted(
+                [f for f in os.listdir(temp_dir) if f.endswith('.mp3')],
+                key=lambda x: int(x.split(' ')[0]) if x.split(' ')[0].isdigit() else 0
+            )
 
             if not mp3_files:
                 raise FileNotFoundError("No MP3 files were downloaded to combine.")
