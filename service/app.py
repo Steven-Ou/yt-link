@@ -53,21 +53,19 @@ try:
         """
         print("--- DEBUG: Starting get_ffmpeg_path() ---", flush=True)
         
-        # In both dev and packaged mode, the most reliable anchor is the Current Working Directory (cwd),
+        # The most reliable anchor is the Current Working Directory (cwd),
         # which is set by main.js when it spawns this process.
         current_dir = os.getcwd()
         print(f"--- DEBUG: Current Working Directory (os.getcwd()): {current_dir}", flush=True)
         
-        # For Packaged App: cwd is /.../Resources/backend. ffmpeg is in /.../Resources/bin
-        # For Dev: cwd is the project root. ffmpeg is in /bin
-        
         ffmpeg_dir = None
+        # In a packaged app, the cwd is set to the 'backend' dir in Resources.
+        # We navigate up and over to the sibling 'bin' directory.
         if getattr(sys, 'frozen', False):
-            # We are in the 'backend' dir, so we go up one level and then into 'bin'
             ffmpeg_dir = os.path.join(current_dir, '..', 'bin')
-        else: # Development mode
-            # We are at the project root, so we just go into 'bin'
-             ffmpeg_dir = os.path.join(current_dir, 'service', '..', 'bin') # Go up from service to root, then bin
+        # In development, the cwd is the project root.
+        else:
+             ffmpeg_dir = os.path.join(current_dir, 'bin')
 
         ffmpeg_dir = os.path.abspath(ffmpeg_dir)
         print(f"--- DEBUG: Constructed ffmpeg directory path: {ffmpeg_dir}", flush=True)
@@ -75,7 +73,6 @@ try:
         if not os.path.isdir(ffmpeg_dir):
             error_message = f"FATAL: FFMPEG directory NOT FOUND at expected path: {ffmpeg_dir}"
             print(error_message, file=sys.stderr, flush=True)
-            # Log directory contents for diagnosis
             parent_dir_to_check = os.path.abspath(os.path.join(current_dir, '..'))
             if os.path.exists(parent_dir_to_check):
                 print(f"--- DEBUG: Contents of parent directory '{parent_dir_to_check}': {os.listdir(parent_dir_to_check)}", file=sys.stderr, flush=True)
