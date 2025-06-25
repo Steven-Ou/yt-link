@@ -85,16 +85,16 @@ def get_playlist_index(filename):
 
 def download_thread(url, ydl_opts, job_id, download_type, cookies_path):
     """
-    This function runs in a separate thread to handle the download process
-    without blocking the main server. It now includes robust cleanup.
+    This function runs in a separate thread to handle the download process.
+    Cleanup is now handled either on failure here, or on success in the /download endpoint.
     """
     temp_dir = os.path.join("temp", str(job_id))
     os.makedirs(temp_dir, exist_ok=True)
     
+    # Store temp_dir in the job so it can be cleaned up later
     jobs[job_id]['temp_dir'] = temp_dir
     ydl_opts['outtmpl'] = os.path.join(temp_dir, ydl_opts['outtmpl'])
 
-    # Add cookie file to options if it was created
     if cookies_path:
         ydl_opts['cookiefile'] = cookies_path
 
@@ -109,88 +109,81 @@ def download_thread(url, ydl_opts, job_id, download_type, cookies_path):
         post_download_processing(job_id, temp_dir, download_type, playlist_title)
 
     except Exception as e:
+        # If any part of the download/processing fails, clean up the temp directory.
         print(f"Error in download_thread for job {job_id}: {e}", file=sys.stderr)
         jobs[job_id]['status'] = 'failed'
         jobs[job_id]['error'] = str(e)
-    finally:
-        # On failure, ensure the temporary directory is removed
-        if jobs.get(job_id, {}).get('status') != 'completed':
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir, ignore_errors=True)
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 def post_download_processing(job_id, temp_dir, download_type, playlist_title="download"):
     """
-    Handles file operations after the download is complete, such as zipping
-    or combining files.
+    Handles file operations after the download is complete.
+    This function NO LONGER handles temp directory cleanup.
     """
-    try:
-        if download_type == "single_mp3":
-            files = os.listdir(temp_dir)
-            mp3_files = [f for f in files if f.endswith('.mp3')]
-            if mp3_files:
-                file_path = os.path.join(temp_dir, mp3_files[0])
-                jobs[job_id]['file_path'] = file_path
-                jobs[job_id]['file_name'] = os.path.basename(file_path)
-                jobs[job_id]['status'] = 'completed'
-            else:
-                raise FileNotFoundError("MP3 conversion failed. The MP3 file was not created.")
-
-        elif download_type == "playlist_zip":
-            zip_filename = f"{playlist_title}.zip"
-            zip_path = os.path.join("temp", f"{job_id}.zip")
-
-            mp3_files_found = False
-            with zipfile.ZipFile(zip_path, 'w') as zipf:
-                for file in os.listdir(temp_dir):
-                    if file.endswith('.mp3'):
-                        file_path = os.path.join(temp_dir, file)
-                        zipf.write(file_path, arcname=file)
-                        mp3_files_found = True
-            
-            if mp3_files_found:
-                jobs[job_id]['file_path'] = zip_path
-                jobs[job_id]['file_name'] = zip_filename
-                jobs[job_id]['status'] = 'completed'
-                shutil.rmtree(temp_dir, ignore_errors=True)
-            else:
-                raise FileNotFoundError("No MP3 files were created for the playlist.")
-        
-        elif download_type == "combine_playlist_mp3":
-            # FIX: Use the robust helper function for sorting to prevent crashes.
-            mp3_files = sorted(
-                [f for f in os.listdir(temp_dir) if f.endswith('.mp3')],
-                key=get_playlist_index
-            )
-
-            if not mp3_files:
-                raise FileNotFoundError("No MP3 files were downloaded to combine.")
-
-            list_file_path = os.path.join(temp_dir, 'filelist.txt')
-            with open(list_file_path, 'w', encoding='utf-8') as f:
-                for file in mp3_files:
-                    full_path = os.path.abspath(os.path.join(temp_dir, file))
-                    f.write(f"file '{full_path.replace(\"'\", \"'\\\\''\")}'\n")
-
-            output_filename = f"{playlist_title} (Combined).mp3"
-            output_filepath = os.path.join("temp", output_filename)
-
-            command = [
-                get_ffmpeg_path(), '-f', 'concat', '-safe', '0', 
-                '-i', list_file_path, '-c', 'copy', '-y', output_filepath
-            ]
-
-            subprocess.run(command, check=True, capture_output=True, text=True)
-            
-            jobs[job_id]['file_path'] = output_filepath
-            jobs[job_id]['file_name'] = output_filename
+    # This entire block is wrapped in the download_thread's try/except
+    if download_type == "single_mp3":
+        files = os.listdir(temp_dir)
+        mp3_files = [f for f in files if f.endswith('.mp3')]
+        if mp3_files:
+            file_path = os.path.join(temp_dir, mp3_files[0])
+            jobs[job_id]['file_path'] = file_path
+            jobs[job_id]['file_name'] = os.path.basename(file_path)
             jobs[job_id]['status'] = 'completed'
-            shutil.rmtree(temp_dir, ignore_errors=True)
+        else:
+            raise FileNotFoundError("MP3 conversion failed. The MP3 file was not created.")
 
-    except Exception as e:
-        print(f"Error in post_download_processing for job {job_id}: {e}", file=sys.stderr)
-        jobs[job_id]['status'] = 'failed'
-        jobs[job_id]['error'] = str(e)
+    elif download_type == "playlist_zip":
+        zip_filename = f"{playlist_title}.zip"
+        # Place the final zip in the main temp folder, not the job-specific one.
+        zip_path = os.path.join("temp", f"{job_id}.zip")
 
+        mp3_files_found = False
+        with zipfile.ZipFile(zip_path, 'w') as zipf:
+            for file in os.listdir(temp_dir):
+                if file.endswith('.mp3'):
+                    file_path = os.path.join(temp_dir, file)
+                    zipf.write(file_path, arcname=file)
+                    mp3_files_found = True
+        
+        if mp3_files_found:
+            jobs[job_id]['file_path'] = zip_path
+            jobs[job_id]['file_name'] = zip_filename
+            jobs[job_id]['status'] = 'completed'
+        else:
+            raise FileNotFoundError("No MP3 files were created for the playlist.")
+    
+    elif download_type == "combine_playlist_mp3":
+        mp3_files = sorted(
+            [f for f in os.listdir(temp_dir) if f.endswith('.mp3')],
+            key=get_playlist_index
+        )
+
+        if not mp3_files:
+            raise FileNotFoundError("No MP3 files were downloaded to combine.")
+
+        list_file_path = os.path.join(temp_dir, 'filelist.txt')
+        with open(list_file_path, 'w', encoding='utf-8') as f:
+            for file in mp3_files:
+                full_path = os.path.abspath(os.path.join(temp_dir, file))
+                # FIX: Correctly escape single quotes for the ffmpeg concat file format.
+                safe_path = full_path.replace("'", "'\\''")
+                f.write(f"file '{safe_path}'\n")
+
+        output_filename = f"{playlist_title} (Combined).mp3"
+        # Place the final file in the main temp folder.
+        output_filepath = os.path.join("temp", output_filename)
+
+        command = [
+            get_ffmpeg_path(), '-f', 'concat', '-safe', '0', 
+            '-i', list_file_path, '-c', 'copy', '-y', output_filepath
+        ]
+
+        subprocess.run(command, check=True, capture_output=True, text=True)
+        
+        jobs[job_id]['file_path'] = output_filepath
+        jobs[job_id]['file_name'] = output_filename
+        jobs[job_id]['status'] = 'completed'
 
 def progress_hook(d):
     """This hook provides real-time progress updates for the job."""
@@ -218,7 +211,7 @@ def start_job():
         return jsonify({'error': 'Invalid JSON request'}), 400
         
     url = data.get('url')
-    job_type = data.get('jobType') # e.g., 'single_mp3', 'playlist_zip'
+    job_type = data.get('jobType') 
     cookies = data.get('cookies')
     
     if not all([url, job_type]):
@@ -245,7 +238,7 @@ def start_job():
         ydl_opts['noplaylist'] = True
 
     thread = threading.Thread(target=download_thread, args=(url, ydl_opts, job_id, job_type, cookies_path))
-    thread.daemon = True # Allows main thread to exit even if downloads are running
+    thread.daemon = True 
     thread.start()
     
     return jsonify({'jobId': job_id})
@@ -269,6 +262,8 @@ def download_file(job_id):
 
     file_path = job.get('file_path')
     file_name = job.get('file_name')
+    temp_dir = job.get('temp_dir') # Get the temp dir path for cleanup
+
     if not file_path or not os.path.exists(file_path):
         return jsonify({'error': 'File not found'}), 404
 
@@ -277,7 +272,12 @@ def download_file(job_id):
             with open(file_path, 'rb') as f:
                 yield from f
         finally:
-            os.remove(file_path)
+            # Robust cleanup after the file is sent.
+            # This is the single point of cleanup for successful jobs.
+            if os.path.exists(file_path):
+                 os.remove(file_path)
+            if temp_dir and os.path.exists(temp_dir):
+                 shutil.rmtree(temp_dir, ignore_errors=True)
             jobs.pop(job_id, None)
 
     return Response(file_sender(),
@@ -290,16 +290,12 @@ if __name__ == '__main__':
         if not os.path.exists('temp'):
             os.makedirs('temp')
             
-        # Get port from command line arguments, default to 5001
         port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001
         
-        # CRITICAL: This print statement is the signal your Electron app is waiting for.
         print(f"Flask-Backend-Ready:{port}", flush=True)
         
-        # Run the app, listening only on localhost
         app.run(host='127.0.0.1', port=port, debug=False)
 
     except Exception as e:
-        # Log any startup errors to stderr for the Electron process to catch
         print(f"FATAL: {e}", file=sys.stderr)
         sys.exit(1)
