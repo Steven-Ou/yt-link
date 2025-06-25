@@ -40,7 +40,8 @@ function createWindow() {
         width: 1200,
         height: 800,
         webPreferences: {
-            preload: path.join(__dirname, '..', 'frontend', 'preload.js'),
+            // FIX: Correctly reference the preload script's location relative to this file
+            preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
         },
@@ -59,10 +60,12 @@ function createWindow() {
             app.quit();
         });
 
+    // FIX: The path to the frontend is relative to the main.js file.
     const startUrl = app.isPackaged ?
-        `file://${path.join(__dirname, '..', 'frontend', 'out', 'index.html')}` :
+        `file://${path.join(__dirname, '..', 'out', 'index.html')}` :
         'http://localhost:3000';
-
+    
+    console.log(`[Electron] Loading frontend from: ${startUrl}`);
     mainWindow.loadURL(startUrl);
 
     mainWindow.on('closed', () => {
@@ -72,36 +75,55 @@ function createWindow() {
 
 function startPythonBackend(port) {
     const isDev = !app.isPackaged;
-    let backendScriptPath;
+    let backendExecutablePath;
 
+    // Determine the path to the backend executable
     if (isDev) {
-        backendScriptPath = path.join(__dirname, '..', 'service', 'app.py');
+        // In development, we run the python script directly.
+        backendExecutablePath = path.join(__dirname, '..', '..', 'service', 'app.py');
     } else {
-        const platform = process.platform;
-        const arch = process.arch;
-        let exeName = 'yt-link-backend';
-        if (platform === 'win32') exeName += '.exe';
-        
-        // Path to the backend executable in the packaged app
-        backendScriptPath = path.join(path.dirname(app.getAppPath()), '..', 'service', 'dist', exeName);
+        // In production, the executable is packaged.
+        const exeName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
+        // 'process.resourcesPath' is the reliable way to get the resources directory in a packaged app.
+        // This assumes your packager puts the backend executable in 'resources/service/dist'.
+        backendExecutablePath = path.join(process.resourcesPath, 'service', 'dist', exeName);
     }
     
-    console.log(`[Electron] Starting Python backend from: ${backendScriptPath}`);
+    // --- Enhanced Logging & Debugging ---
+    console.log(`[Electron] Attempting to start backend from: ${backendExecutablePath}`);
     
-    // Log file for backend stdout/stderr
+    // Check if the file actually exists before trying to spawn it.
+    if (!fs.existsSync(backendExecutablePath)) {
+        const errorMsg = `Backend executable not found at path: ${backendExecutablePath}. This is a packaging error. Ensure the backend is built and included in the 'extraResources' of your electron-builder config.`;
+        console.error(`[Electron] FATAL: ${errorMsg}`);
+        dialog.showErrorBox('Fatal Error', errorMsg);
+        app.quit();
+        return;
+    }
+    // --- End Enhanced Logging ---
+
     const logPath = path.join(app.getPath('userData'), 'backend.log');
     const errorLogPath = path.join(app.getPath('userData'), 'backend-error.log');
     const logStream = fs.createWriteStream(logPath, { flags: 'a' });
     const errorLogStream = fs.createWriteStream(errorLogPath, { flags: 'a' });
 
-    const executable = isDev ? (process.platform === 'win32' ? 'python' : 'python3') : backendScriptPath;
-    const scriptArgs = isDev ? [backendScriptPath, port.toString()] : [port.toString()];
+    // In dev, the command is 'python', in prod, it's the executable itself.
+    const command = isDev ? (process.platform === 'win32' ? 'python' : 'python3') : backendExecutablePath;
+    const args = isDev ? [backendExecutablePath, port.toString()] : [port.toString()];
+    
+    console.log(`[Electron] Spawning command: '${command}' with args: [${args.join(', ')}]`);
 
-    pythonProcess = spawn(executable, scriptArgs);
+    pythonProcess = spawn(command, args);
+
+    pythonProcess.on('error', (err) => {
+        // This will catch errors like EPERM or other OS-level spawn errors.
+        console.error(`[Electron] Failed to start Python process. Error: ${err.message}`);
+        dialog.showErrorBox('Backend Error', `Failed to start the backend process: ${err.message}`);
+    });
 
     pythonProcess.stdout.on('data', (data) => {
         const output = data.toString();
-        console.log(`[Python] ${output}`);
+        console.log(`[Python STDOUT] ${output}`);
         logStream.write(output);
         if (output.includes(`Flask-Backend-Ready:${port}`)) {
             console.log('[Electron] Python backend has signaled it is ready.');
@@ -111,7 +133,7 @@ function startPythonBackend(port) {
 
     pythonProcess.stderr.on('data', (data) => {
         const errorOutput = data.toString();
-        console.error(`[Python] stderr: ${errorOutput}`);
+        console.error(`[Python STDERR] ${errorOutput}`);
         errorLogStream.write(errorOutput);
     });
     
@@ -119,46 +141,14 @@ function startPythonBackend(port) {
         console.log(`[Electron] Python process exited with code ${code}`);
         pythonProcess = null;
         isBackendReady = false;
-        // If the window is still open, notify the user.
         if (mainWindow) {
             mainWindow.webContents.send('backend-status', { status: 'disconnected', message: `Backend service stopped unexpectedly (code: ${code}).` });
         }
     });
 }
 
-// Unified function to proxy requests to the Python backend
-async function proxyToPython(endpoint, payload) {
-    try {
-        await waitForBackend();
-    } catch (error) {
-        console.error(`[Electron] ${error.message}`);
-        // This error message is now more informative and will be shown to the user.
-        return { error: 'Backend service failed to start. Please try restarting the application.' };
-    }
 
-    if (!pyPort) return { error: 'Python service port not assigned.' };
-
-    try {
-        const url = `http://127.0.0.1:${pyPort}/${endpoint}`;
-        console.log(`[Electron] Forwarding request to Python: ${url} with payload:`, payload);
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Python API Error (${response.status}): ${errorText}`);
-        }
-        return await response.json();
-    } catch (error) {
-        console.error(`[Electron] Error proxying to Python for endpoint ${endpoint}:`, error);
-        return { error: `Communication with the backend service failed: ${error.message}` };
-    }
-}
-
-
+// --- App Lifecycle Events ---
 app.on('ready', createWindow);
 
 app.on('window-all-closed', () => {
@@ -180,20 +170,37 @@ app.on('quit', () => {
     }
 });
 
-// --- IPC Handlers ---
+// --- IPC Handlers (No changes needed here from previous version) ---
+// This assumes you are using the unified 'start-job' and 'download-file' handlers
 
 // A single, robust handler for starting any job type.
-ipcMain.handle('start-job', (event, { jobType, url, cookies }) => {
+ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
     if (!jobType || !url) {
         return { error: 'Job type and URL are required.' };
     }
     const payload = { jobType, url, cookies };
-    return proxyToPython('start-job', payload);
+    
+    try {
+        await waitForBackend();
+        const url = `http://127.0.0.1:${pyPort}/start-job`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Python API Error (${response.status}): ${errorText}`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error(`[Electron] Error starting job:`, error);
+        return { error: `Communication with the backend service failed: ${error.message}` };
+    }
 });
 
 
 ipcMain.handle('get-job-status', async (event, jobId) => {
-    // No need to wait for backend here, if it's not running, we should know.
     if (!isBackendReady || !pyPort) {
         return { status: 'failed', message: 'Backend service is not running.' };
     }
@@ -201,11 +208,10 @@ ipcMain.handle('get-job-status', async (event, jobId) => {
         const url = `http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`;
         const response = await fetch(url);
         if (!response.ok) {
-            const errorText = await response.text();
-            // It's common for a job to 404 if it's cleaned up, handle it gracefully.
-            if(response.status === 404){
+            if (response.status === 404) {
                 return { status: 'not_found', message: `Job ${jobId} not found.` };
             }
+            const errorText = await response.text();
             throw new Error(`Python API Error: ${response.status} - ${errorText}`);
         }
         return await response.json();
@@ -215,12 +221,10 @@ ipcMain.handle('get-job-status', async (event, jobId) => {
     }
 });
 
-// New handler to manage the download process from the main process
 ipcMain.handle('download-file', async (event, jobId) => {
     if (!isBackendReady || !pyPort) {
         return { error: 'Backend service is not running.' };
     }
-
     try {
         const jobStatusUrl = `http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`;
         const statusResponse = await fetch(jobStatusUrl);
@@ -231,18 +235,14 @@ ipcMain.handle('download-file', async (event, jobId) => {
              return { error: 'File is not ready for download or filename is missing.' };
         }
         
-        // MODIFICATION: Save directly to the downloads folder without a dialog.
         const downloadsPath = app.getPath('downloads');
         const filePath = path.join(downloadsPath, job.file_name);
         
-        console.log(`[Electron] Automatically saving file to: ${filePath}`);
-
         const downloadUrl = `http://127.0.0.1:${pyPort}/download/${jobId}`;
         const downloadResponse = await fetch(downloadUrl);
 
         if (!downloadResponse.ok) {
-            const errorText = await downloadResponse.text();
-            throw new Error(`Failed to download file from backend: ${errorText}`);
+            throw new Error(`Failed to download file from backend: ${await downloadResponse.text()}`);
         }
 
         const fileStream = fs.createWriteStream(filePath);
@@ -252,7 +252,6 @@ ipcMain.handle('download-file', async (event, jobId) => {
             fileStream.on("finish", resolve);
         });
 
-        // The 'path' returned here is the full path to the saved file.
         return { success: true, path: filePath };
 
     } catch(error) {
@@ -262,24 +261,16 @@ ipcMain.handle('download-file', async (event, jobId) => {
     }
 });
 
-
 ipcMain.handle('open-folder', (event, folderPath) => {
-    // If a full file path is provided, open the containing folder.
     if (folderPath && path.extname(folderPath) !== '') {
         shell.showItemInFolder(folderPath);
-    } else if (folderPath) { // Otherwise, open the folder path directly.
+    } else if (folderPath) {
         shell.openPath(folderPath).catch(err => {
             console.error(`[Electron] Failed to open folder: ${folderPath}`, err);
-            dialog.showErrorBox('Error', `Could not open the folder at: ${folderPath}`);
-        });
-    } else { // Fallback to just opening the downloads folder if no path is given
-         shell.openPath(app.getPath('downloads')).catch(err => {
-            console.error(`[Electron] Failed to open downloads folder`, err);
         });
     }
 });
 
-// Expose the downloads path to the renderer
 ipcMain.handle('get-downloads-path', () => {
     return app.getPath('downloads');
 });
