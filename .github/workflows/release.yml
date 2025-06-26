@@ -44,7 +44,14 @@ jobs:
             curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-win32-x64.exe -o bin/ffmpeg.exe
             curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-win32-x64.exe -o bin/ffprobe.exe
           fi
-          chmod +x bin/ffmpeg*
+          
+          # DEFINITIVE FIX: Explicitly set executable permissions on both files.
+          # This was the root cause of the "ffmpeg not found" error on macOS.
+          if [ "${{ runner.os }}" != "Windows" ]; then
+            chmod +x bin/ffmpeg
+            chmod +x bin/ffprobe
+          fi
+
 
       - name: Build Electron app (without publishing)
         run: npm run dist
@@ -79,7 +86,6 @@ jobs:
     permissions:
       contents: write 
     steps:
-      # FIX: Check out the repository so the gh command has the necessary git context.
       - name: Check out repository
         uses: actions/checkout@v4
 
