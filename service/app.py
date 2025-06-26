@@ -13,27 +13,21 @@ import platform
 import subprocess
 
 # --- Absolute First Thing: Setup Indestructible Logging ---
-# This setup will capture any error, even during imports or basic setup.
 LOG_FILE_PATH = os.path.join(os.path.expanduser("~"), "yt_link_backend_debug.log")
 ORIGINAL_STDOUT = sys.stdout
 ORIGINAL_STDERR = sys.stderr
 
 try:
-    # 'w' for write to clear the log on each run.
-    log_file = open(LOG_FILE_PATH, 'w', encoding='utf-8', buffering=1) # Use line buffering
+    log_file = open(LOG_FILE_PATH, 'w', encoding='utf-8', buffering=1)
     sys.stdout = log_file
     sys.stderr = log_file
     print("--- Log file initialized ---", flush=True)
 except Exception as e:
-    # If logging fails, we can't do much, but let's try to print to the original stderr.
     print(f"CRITICAL: Failed to initialize log file at {LOG_FILE_PATH}. Error: {e}", file=ORIGINAL_STDERR, flush=True)
 
 # --- Main Application Logic inside a try...except block ---
-# This ensures that ANY crash, at any point, is logged.
 try:
     print("--- Starting main application block ---", flush=True)
-    print("Importing modules...", flush=True)
-    
     app = Flask(__name__)
     CORS(app)
     jobs = {}
@@ -44,7 +38,7 @@ try:
     def get_ffmpeg_path():
         """
         Determines the correct, robust path for the FFMPEG directory.
-        This is the definitive, corrected function.
+        This is the definitive, corrected function that works for both dev and packaged modes.
         """
         print("--- DEBUG: Starting get_ffmpeg_path() ---", flush=True)
         
@@ -61,7 +55,7 @@ try:
         # In development, the cwd is set by main.js to the project root.
         else:
             # We navigate from the project root into 'bin'.
-             ffmpeg_dir = os.path.join(current_dir, 'bin')
+            ffmpeg_dir = os.path.join(current_dir, 'bin')
 
         ffmpeg_dir = os.path.abspath(ffmpeg_dir)
         print(f"--- DEBUG: Constructed ffmpeg directory path: {ffmpeg_dir}", flush=True)
@@ -145,8 +139,7 @@ try:
             list_file_path = os.path.join(temp_dir, 'filelist.txt')
             with open(list_file_path, 'w', encoding='utf-8') as f:
                 for file in mp3_files:
-                    safe_path = os.path.abspath(os.path.join(temp_dir, file))
-                    safe_path = safe_path.replace("'", "'\\''")
+                    safe_path = os.path.abspath(os.path.join(temp_dir, file)).replace("'", "'\\''")
                     f.write(f"file '{safe_path}'\n")
             output_filename = f"{playlist_title} (Combined).mp3"
             output_filepath = os.path.join("temp", output_filename)
