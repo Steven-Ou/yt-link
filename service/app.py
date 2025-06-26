@@ -1,10 +1,19 @@
-# --- Absolute First Thing: Setup Indestructible Logging ---
-# This setup will capture any error, even during imports or basic setup.
 import os
+import shutil
 import sys
 import traceback
+import threading
+import time
+import uuid
+import zipfile
+from flask import Flask, request, jsonify, send_file, Response
+from flask_cors import CORS
+import yt_dlp
+import platform
+import subprocess
 
-# Define a predictable log file path in the user's home directory.
+# --- Absolute First Thing: Setup Indestructible Logging ---
+# This setup will capture any error, even during imports or basic setup.
 LOG_FILE_PATH = os.path.join(os.path.expanduser("~"), "yt_link_backend_debug.log")
 ORIGINAL_STDOUT = sys.stdout
 ORIGINAL_STDERR = sys.stderr
@@ -24,46 +33,30 @@ except Exception as e:
 try:
     print("--- Starting main application block ---", flush=True)
     print("Importing modules...", flush=True)
-    import shutil
-    import threading
-    import time
-    import uuid
-    import zipfile
-    from flask import Flask, request, jsonify, send_file, Response
-    from flask_cors import CORS
-    import yt_dlp
-    import platform
-    import subprocess
-    print("--- Module imports successful ---", flush=True)
-
-    # --- Flask App Initialization ---
+    
     app = Flask(__name__)
     CORS(app)
-    print("--- Flask app initialized ---", flush=True)
-
-    # In-memory dictionary to store job status and results
     jobs = {}
-
+    print("--- Module imports and app initialization successful ---", flush=True)
+    
     # --- Helper Functions ---
 
     def get_ffmpeg_path():
         """
         Determines the correct, robust path for the FFMPEG directory.
-        This is the definitive, corrected function that uses the Current Working Directory.
+        This function is now simplified to work with the corrected project structure.
         """
         print("--- DEBUG: Starting get_ffmpeg_path() ---", flush=True)
         
-        # The most reliable anchor is the Current Working Directory (cwd),
-        # which is set by main.js when it spawns this process.
+        # The Current Working Directory (cwd) is our reliable anchor.
         current_dir = os.getcwd()
         print(f"--- DEBUG: Current Working Directory (os.getcwd()): {current_dir}", flush=True)
         
         ffmpeg_dir = None
-        # In a packaged app, the cwd is set to the 'backend' dir in Resources.
-        # We navigate up and over to the sibling 'bin' directory.
+        # In a packaged app, the cwd is set by main.js to the 'backend' dir in Resources.
         if getattr(sys, 'frozen', False):
             ffmpeg_dir = os.path.join(current_dir, '..', 'bin')
-        # In development, the cwd is the project root.
+        # In development, main.js sets the cwd to the project root.
         else:
              ffmpeg_dir = os.path.join(current_dir, 'bin')
 
@@ -73,15 +66,9 @@ try:
         if not os.path.isdir(ffmpeg_dir):
             error_message = f"FATAL: FFMPEG directory NOT FOUND at expected path: {ffmpeg_dir}"
             print(error_message, file=sys.stderr, flush=True)
-            parent_dir_to_check = os.path.abspath(os.path.join(current_dir, '..'))
-            if os.path.exists(parent_dir_to_check):
-                print(f"--- DEBUG: Contents of parent directory '{parent_dir_to_check}': {os.listdir(parent_dir_to_check)}", file=sys.stderr, flush=True)
-            else:
-                print(f"--- DEBUG: Parent directory '{parent_dir_to_check}' does not exist.", file=sys.stderr, flush=True)
             raise FileNotFoundError(error_message)
         
         print(f"--- DEBUG: SUCCESS: Found ffmpeg directory at: {ffmpeg_dir}", flush=True)
-        print(f"--- DEBUG: Contents of ffmpeg directory: {os.listdir(ffmpeg_dir)}", flush=True)
         return ffmpeg_dir
 
 
@@ -119,13 +106,9 @@ try:
                 info_dict = ydl.extract_info(url, download=False)
                 playlist_title = info_dict.get('title', 'playlist')
                 jobs[job_id]['playlist_title'] = playlist_title
-                print(f"--- DEBUG: [Job {job_id}] Title found: {playlist_title}. Starting actual download.", flush=True)
                 ydl.download([url])
-                print(f"--- DEBUG: [Job {job_id}] yt-dlp download completed. Starting post-processing.", flush=True)
             post_download_processing(job_id, temp_dir, download_type, playlist_title)
-            print(f"--- DEBUG: [Job {job_id}] Post-processing finished successfully.", flush=True)
         except Exception as e:
-            print(f"--- DEBUG: ERROR in download_thread for job {job_id} ---", file=sys.stderr, flush=True)
             traceback.print_exc(file=sys.stderr)
             jobs[job_id]['status'] = 'failed'
             jobs[job_id]['error'] = str(e)
@@ -159,7 +142,9 @@ try:
             list_file_path = os.path.join(temp_dir, 'filelist.txt')
             with open(list_file_path, 'w', encoding='utf-8') as f:
                 for file in mp3_files:
-                    f.write(f"file '{os.path.abspath(os.path.join(temp_dir, file)).replace("'", "'\\''")}'\n")
+                    # FIX for SyntaxError
+                    safe_path = os.path.abspath(os.path.join(temp_dir, file)).replace("'", "'\\''")
+                    f.write(f"file '{safe_path}'\n")
             output_filename = f"{playlist_title} (Combined).mp3"
             output_filepath = os.path.join("temp", output_filename)
             ffmpeg_dir = get_ffmpeg_path()
