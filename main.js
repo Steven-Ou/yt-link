@@ -76,26 +76,29 @@ function createWindow() {
 function startPythonBackend(port) {
     const isDev = !app.isPackaged;
     let command;
-    let args = [port.toString()]; // The only argument needed is the port number.
+    let args;
     let spawnOptions = {};
 
     if (isDev) {
         command = (process.platform === 'win32' ? 'python' : 'python3');
         const scriptPath = path.join(__dirname, 'service', 'app.py');
-        args.unshift(scriptPath); // Add the script path for the python interpreter
-        spawnOptions.cwd = __dirname; // In dev, the CWD is the project root.
+        const ffmpegPath = path.join(__dirname, 'bin'); // Path to ffmpeg dir in dev
+        // Pass the script path to the python interpreter, then the port, then the ffmpeg path.
+        args = [scriptPath, port.toString(), ffmpegPath];
+        spawnOptions.cwd = __dirname;
     } else {
         const exeName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
         command = path.join(process.resourcesPath, 'backend', exeName);
-        // DEFINITIVE FIX: Set the CWD to the main resources directory.
-        // This is the stable "root" from which the Python script can find the 'bin' folder.
-        spawnOptions.cwd = process.resourcesPath;
+        const ffmpegPath = path.join(process.resourcesPath, 'bin'); // Absolute path to ffmpeg dir in prod
+        // Pass the port and ffmpeg path directly to the bundled executable.
+        args = [port.toString(), ffmpegPath];
+        spawnOptions.cwd = path.dirname(command);
     }
     
     console.log(`[Electron] Attempting to start backend...`);
     console.log(`[Electron] Command: ${command}`);
     console.log(`[Electron] Arguments: ${JSON.stringify(args)}`);
-    console.log(`[Electron] Spawn CWD: ${spawnOptions.cwd}`);
+    console.log(`[Electron] Spawn Options: ${JSON.stringify(spawnOptions)}`);
     
     if (!fs.existsSync(command)) {
         dialog.showErrorBox('Fatal Error', `Backend executable not found at path: ${command}.`);
