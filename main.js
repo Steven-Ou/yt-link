@@ -76,27 +76,26 @@ function createWindow() {
 function startPythonBackend(port) {
     const isDev = !app.isPackaged;
     let command;
-    let args;
+    let args = [port.toString()]; // The only argument needed is the port number.
     let spawnOptions = {};
 
     if (isDev) {
         command = (process.platform === 'win32' ? 'python' : 'python3');
         const scriptPath = path.join(__dirname, 'service', 'app.py');
-        const ffmpegPath = path.join(__dirname, 'bin');
-        args = [scriptPath, port.toString(), ffmpegPath];
-        spawnOptions.cwd = __dirname;
+        args.unshift(scriptPath); // Add the script path for the python interpreter
+        spawnOptions.cwd = __dirname; // In dev, the CWD is the project root.
     } else {
         const exeName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
         command = path.join(process.resourcesPath, 'backend', exeName);
-        const ffmpegPath = path.join(process.resourcesPath, 'bin');
-        args = [port.toString(), ffmpegPath];
-        spawnOptions.cwd = path.dirname(command);
+        // DEFINITIVE FIX: Set the CWD to the main resources directory.
+        // This is the stable "root" from which the Python script can find the 'bin' folder.
+        spawnOptions.cwd = process.resourcesPath;
     }
     
     console.log(`[Electron] Attempting to start backend...`);
     console.log(`[Electron] Command: ${command}`);
     console.log(`[Electron] Arguments: ${JSON.stringify(args)}`);
-    console.log(`[Electron] Spawn Options: ${JSON.stringify(spawnOptions)}`);
+    console.log(`[Electron] Spawn CWD: ${spawnOptions.cwd}`);
     
     if (!fs.existsSync(command)) {
         dialog.showErrorBox('Fatal Error', `Backend executable not found at path: ${command}.`);
