@@ -28,45 +28,32 @@ except Exception as e:
 # --- Main Application Logic inside a try...except block ---
 try:
     print("--- Starting main application block ---", flush=True)
+    
     app = Flask(__name__)
     CORS(app)
     jobs = {}
+    
+    # DEFINITIVE FIX: Get the ffmpeg path from the command-line arguments provided by main.js.
+    # This removes all guesswork.
+    FFMPEG_PATH_FROM_MAIN = sys.argv[2] if len(sys.argv) > 2 else None
+    
     print("--- Module imports and app initialization successful ---", flush=True)
+    print(f"--- FFMPEG path received from main.js: {FFMPEG_PATH_FROM_MAIN} ---", flush=True)
     
     # --- Helper Functions ---
 
     def get_ffmpeg_path():
         """
-        Determines the correct, robust path for the FFMPEG directory.
-        This is the definitive, corrected function that works for both dev and packaged modes.
+        This function now simply returns the path passed by main.js.
+        It is simple, robust, and has no complex logic.
         """
-        print("--- DEBUG: Starting get_ffmpeg_path() ---", flush=True)
-        
-        # The Current Working Directory (cwd) is our reliable anchor.
-        # It is set by main.js when the process is spawned.
-        current_dir = os.getcwd()
-        print(f"--- DEBUG: Current Working Directory (os.getcwd()): {current_dir}", flush=True)
-        
-        ffmpeg_dir = None
-        # In a packaged app, the cwd is set by main.js to the 'backend' dir in Resources.
-        if getattr(sys, 'frozen', False):
-            # We navigate up one level from 'backend' to 'Resources', then into 'bin'.
-            ffmpeg_dir = os.path.join(current_dir, '..', 'bin')
-        # In development, the cwd is set by main.js to the project root.
-        else:
-            # We navigate from the project root into 'bin'.
-            ffmpeg_dir = os.path.join(current_dir, 'bin')
-
-        ffmpeg_dir = os.path.abspath(ffmpeg_dir)
-        print(f"--- DEBUG: Constructed ffmpeg directory path: {ffmpeg_dir}", flush=True)
-        
-        if not os.path.isdir(ffmpeg_dir):
-            error_message = f"FATAL: FFMPEG directory NOT FOUND at expected path: {ffmpeg_dir}"
+        if not FFMPEG_PATH_FROM_MAIN or not os.path.isdir(FFMPEG_PATH_FROM_MAIN):
+            error_message = f"FATAL: FFMPEG path provided by main.js is invalid or not a directory: '{FFMPEG_PATH_FROM_MAIN}'"
             print(error_message, file=sys.stderr, flush=True)
             raise FileNotFoundError(error_message)
         
-        print(f"--- DEBUG: SUCCESS: Found ffmpeg directory at: {ffmpeg_dir}", flush=True)
-        return ffmpeg_dir
+        print(f"--- DEBUG: Providing this ffmpeg path to yt-dlp: {FFMPEG_PATH_FROM_MAIN}", flush=True)
+        return FFMPEG_PATH_FROM_MAIN
 
 
     def create_cookie_file(job_id, cookies_string):
@@ -225,7 +212,9 @@ try:
         print("--- Starting main execution block (if __name__ == '__main__') ---", flush=True)
         if not os.path.exists('temp'):
             os.makedirs('temp')
+        
         port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001
+        
         # This signal must go to the original stdout so Electron can see it.
         print(f"Flask-Backend-Ready:{port}", file=ORIGINAL_STDOUT, flush=True)
         print(f"--- Starting Flask server on host 127.0.0.1, port {port} ---", flush=True)
