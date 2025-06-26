@@ -46,7 +46,7 @@ try:
         current_dir = os.getcwd()
         print(f"--- DEBUG: Current Working Directory (os.getcwd()): {current_dir}", flush=True)
         
-        # The 'bin' folder containing ffmpeg is always inside the CWD.
+        # In both dev and packaged mode, the 'bin' folder is in the CWD.
         ffmpeg_dir = os.path.join(current_dir, 'bin')
 
         ffmpeg_dir = os.path.abspath(ffmpeg_dir)
