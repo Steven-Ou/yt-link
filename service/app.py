@@ -28,32 +28,39 @@ except Exception as e:
 # --- Main Application Logic inside a try...except block ---
 try:
     print("--- Starting main application block ---", flush=True)
-    
     app = Flask(__name__)
     CORS(app)
     jobs = {}
-    
-    # DEFINITIVE FIX: Get the ffmpeg path from the command-line arguments provided by main.js.
-    # This removes all guesswork.
-    FFMPEG_PATH_FROM_MAIN = sys.argv[2] if len(sys.argv) > 2 else None
-    
     print("--- Module imports and app initialization successful ---", flush=True)
-    print(f"--- FFMPEG path received from main.js: {FFMPEG_PATH_FROM_MAIN} ---", flush=True)
     
     # --- Helper Functions ---
 
     def get_ffmpeg_path():
         """
-        This function now simply returns the path passed by main.js.
-        It is simple, robust, and has no complex logic.
+        This function now reliably finds the ffmpeg directory using the
+        Current Working Directory (CWD) set by main.js. This removes all guesswork.
         """
-        if not FFMPEG_PATH_FROM_MAIN or not os.path.isdir(FFMPEG_PATH_FROM_MAIN):
-            error_message = f"FATAL: FFMPEG path provided by main.js is invalid or not a directory: '{FFMPEG_PATH_FROM_MAIN}'"
+        print("--- DEBUG: Starting get_ffmpeg_path() ---", flush=True)
+        
+        # The CWD is our stable anchor, set reliably by main.js.
+        current_dir = os.getcwd()
+        print(f"--- DEBUG: Current Working Directory (os.getcwd()): {current_dir}", flush=True)
+        
+        # The 'bin' folder containing ffmpeg is always inside the CWD.
+        ffmpeg_dir = os.path.join(current_dir, 'bin')
+
+        ffmpeg_dir = os.path.abspath(ffmpeg_dir)
+        print(f"--- DEBUG: Constructed ffmpeg directory path: {ffmpeg_dir}", flush=True)
+        
+        if not os.path.isdir(ffmpeg_dir):
+            error_message = f"FATAL: FFMPEG directory NOT FOUND at expected path: {ffmpeg_dir}"
             print(error_message, file=sys.stderr, flush=True)
+            # Log CWD contents for diagnosis
+            print(f"--- DEBUG: Contents of CWD '{current_dir}': {os.listdir(current_dir)}", file=sys.stderr, flush=True)
             raise FileNotFoundError(error_message)
         
-        print(f"--- DEBUG: Providing this ffmpeg path to yt-dlp: {FFMPEG_PATH_FROM_MAIN}", flush=True)
-        return FFMPEG_PATH_FROM_MAIN
+        print(f"--- DEBUG: SUCCESS: Found ffmpeg directory at: {ffmpeg_dir}", flush=True)
+        return ffmpeg_dir
 
 
     def create_cookie_file(job_id, cookies_string):
