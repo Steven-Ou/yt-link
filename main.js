@@ -39,7 +39,6 @@ function createWindow() {
         width: 1200,
         height: 800,
         webPreferences: {
-            // With main.js in the root, the path to preload.js is direct.
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
@@ -60,7 +59,6 @@ function createWindow() {
         });
 
     if (app.isPackaged) {
-        // With main.js in the root of the packaged app, we go into the 'frontend/out' dir.
         const filePath = path.join(__dirname, 'frontend', 'out', 'index.html');
         console.log(`[Electron] Loading packaged frontend from: ${filePath}`);
         mainWindow.loadFile(filePath);
@@ -78,32 +76,38 @@ function createWindow() {
 function startPythonBackend(port) {
     const isDev = !app.isPackaged;
     let backendExecutablePath;
+    let ffmpegPath;
     let spawnOptions = {};
 
     if (isDev) {
-        // In dev, run the python script from the root of the project.
         backendExecutablePath = path.join(__dirname, 'service', 'app.py');
-        spawnOptions.cwd = __dirname; // Set cwd to project root in dev
+        ffmpegPath = path.join(__dirname, 'bin'); // Path to ffmpeg dir in dev
+        spawnOptions.cwd = __dirname;
     } else {
-        // In production, the executable is packaged inside the 'resources' folder.
         const exeName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
         backendExecutablePath = path.join(process.resourcesPath, 'backend', exeName);
-        // Set the cwd for the python process to its own directory.
+        ffmpegPath = path.join(process.resourcesPath, 'bin'); // Path to ffmpeg dir in prod
         spawnOptions.cwd = path.dirname(backendExecutablePath);
     }
     
     console.log(`[Electron] Attempting to start backend from: ${backendExecutablePath}`);
+    console.log(`[Electron] Providing ffmpeg path: ${ffmpegPath}`);
     console.log(`[Electron] Setting spawn CWD to: ${spawnOptions.cwd}`);
     
     if (!fs.existsSync(backendExecutablePath)) {
-        const errorMsg = `Backend executable not found at path: ${backendExecutablePath}. This is a packaging error.`;
-        dialog.showErrorBox('Fatal Error', errorMsg);
+        dialog.showErrorBox('Fatal Error', `Backend executable not found at path: ${backendExecutablePath}.`);
+        app.quit();
+        return;
+    }
+    if (!fs.existsSync(ffmpegPath)) {
+        dialog.showErrorBox('Fatal Error', `FFmpeg directory not found at path: ${ffmpegPath}.`);
         app.quit();
         return;
     }
 
     const command = isDev ? (process.platform === 'win32' ? 'python' : 'python3') : backendExecutablePath;
-    const args = isDev ? [backendExecutablePath, port.toString()] : [port.toString()];
+    // DEFINITIVE FIX: Pass the port AND the absolute path to the ffmpeg directory to the python script.
+    const args = [port.toString(), ffmpegPath];
     
     console.log(`[Electron] Spawning command: '${command}' with args: [${args.join(', ')}]`);
 
