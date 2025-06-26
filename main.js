@@ -75,42 +75,35 @@ function createWindow() {
 
 function startPythonBackend(port) {
     const isDev = !app.isPackaged;
-    let backendExecutablePath;
-    let ffmpegPath;
+    let command;
+    let args;
     let spawnOptions = {};
 
     if (isDev) {
-        backendExecutablePath = path.join(__dirname, 'service', 'app.py');
-        ffmpegPath = path.join(__dirname, 'bin'); // Path to ffmpeg dir in dev
+        command = (process.platform === 'win32' ? 'python' : 'python3');
+        const scriptPath = path.join(__dirname, 'service', 'app.py');
+        const ffmpegPath = path.join(__dirname, 'bin');
+        args = [scriptPath, port.toString(), ffmpegPath];
         spawnOptions.cwd = __dirname;
     } else {
         const exeName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
-        backendExecutablePath = path.join(process.resourcesPath, 'backend', exeName);
-        ffmpegPath = path.join(process.resourcesPath, 'bin'); // Path to ffmpeg dir in prod
-        spawnOptions.cwd = path.dirname(backendExecutablePath);
+        command = path.join(process.resourcesPath, 'backend', exeName);
+        const ffmpegPath = path.join(process.resourcesPath, 'bin');
+        args = [port.toString(), ffmpegPath];
+        spawnOptions.cwd = path.dirname(command);
     }
     
-    console.log(`[Electron] Attempting to start backend from: ${backendExecutablePath}`);
-    console.log(`[Electron] Providing ffmpeg path: ${ffmpegPath}`);
-    console.log(`[Electron] Setting spawn CWD to: ${spawnOptions.cwd}`);
+    console.log(`[Electron] Attempting to start backend...`);
+    console.log(`[Electron] Command: ${command}`);
+    console.log(`[Electron] Arguments: ${JSON.stringify(args)}`);
+    console.log(`[Electron] Spawn Options: ${JSON.stringify(spawnOptions)}`);
     
-    if (!fs.existsSync(backendExecutablePath)) {
-        dialog.showErrorBox('Fatal Error', `Backend executable not found at path: ${backendExecutablePath}.`);
+    if (!fs.existsSync(command)) {
+        dialog.showErrorBox('Fatal Error', `Backend executable not found at path: ${command}.`);
         app.quit();
         return;
     }
-    if (!fs.existsSync(ffmpegPath)) {
-        dialog.showErrorBox('Fatal Error', `FFmpeg directory not found at path: ${ffmpegPath}.`);
-        app.quit();
-        return;
-    }
-
-    const command = isDev ? (process.platform === 'win32' ? 'python' : 'python3') : backendExecutablePath;
-    // DEFINITIVE FIX: Pass the port AND the absolute path to the ffmpeg directory to the python script.
-    const args = [port.toString(), ffmpegPath];
     
-    console.log(`[Electron] Spawning command: '${command}' with args: [${args.join(', ')}]`);
-
     pythonProcess = spawn(command, args, spawnOptions);
 
     pythonProcess.stderr.on('data', (data) => {
