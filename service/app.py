@@ -44,20 +44,23 @@ try:
     def get_ffmpeg_path():
         """
         Determines the correct, robust path for the FFMPEG directory.
-        This function is now simplified to work with the corrected project structure.
+        This is the definitive, corrected function.
         """
         print("--- DEBUG: Starting get_ffmpeg_path() ---", flush=True)
         
         # The Current Working Directory (cwd) is our reliable anchor.
+        # It is set by main.js when the process is spawned.
         current_dir = os.getcwd()
         print(f"--- DEBUG: Current Working Directory (os.getcwd()): {current_dir}", flush=True)
         
         ffmpeg_dir = None
         # In a packaged app, the cwd is set by main.js to the 'backend' dir in Resources.
         if getattr(sys, 'frozen', False):
+            # We navigate up one level from 'backend' to 'Resources', then into 'bin'.
             ffmpeg_dir = os.path.join(current_dir, '..', 'bin')
-        # In development, main.js sets the cwd to the project root.
+        # In development, the cwd is set by main.js to the project root.
         else:
+            # We navigate from the project root into 'bin'.
              ffmpeg_dir = os.path.join(current_dir, 'bin')
 
         ffmpeg_dir = os.path.abspath(ffmpeg_dir)
@@ -142,8 +145,6 @@ try:
             list_file_path = os.path.join(temp_dir, 'filelist.txt')
             with open(list_file_path, 'w', encoding='utf-8') as f:
                 for file in mp3_files:
-                    # DEFINITIVE FIX for the SyntaxError
-                    # This correctly handles file paths with apostrophes.
                     safe_path = os.path.abspath(os.path.join(temp_dir, file))
                     safe_path = safe_path.replace("'", "'\\''")
                     f.write(f"file '{safe_path}'\n")
