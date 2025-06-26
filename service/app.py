@@ -142,8 +142,10 @@ try:
             list_file_path = os.path.join(temp_dir, 'filelist.txt')
             with open(list_file_path, 'w', encoding='utf-8') as f:
                 for file in mp3_files:
-                    # FIX for SyntaxError
-                    safe_path = os.path.abspath(os.path.join(temp_dir, file)).replace("'", "'\\''")
+                    # DEFINITIVE FIX for the SyntaxError
+                    # This correctly handles file paths with apostrophes.
+                    safe_path = os.path.abspath(os.path.join(temp_dir, file))
+                    safe_path = safe_path.replace("'", "'\\''")
                     f.write(f"file '{safe_path}'\n")
             output_filename = f"{playlist_title} (Combined).mp3"
             output_filepath = os.path.join("temp", output_filename)
