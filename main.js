@@ -40,7 +40,7 @@ function createWindow() {
         });
 
     const urlToLoad = app.isPackaged
-        ? `file://${path.join(__dirname, 'frontend', 'out', 'index.html')}`
+        ? `file://${path.join(__dirname, '..', 'frontend', 'out', 'index.html')}`
         : 'http://localhost:3000';
     
     mainWindow.loadURL(urlToLoad);
@@ -61,25 +61,25 @@ function startPythonBackend(port) {
         ? (process.platform === 'win32' ? 'python' : 'python3') 
         : path.join(process.resourcesPath, 'backend', process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend');
 
+    // Use the `service` directory in dev, and an empty array for packaged app
     const args = isDev 
-        ? [path.join(__dirname, 'service', 'app.py'), port.toString()]
+        ? [path.join(__dirname, 'app.py'), port.toString()]
         : [port.toString()];
     
-    // --- DEFINITIVE FIX: Create a new environment for the child process ---
-    // This reliably provides the path to the bundled binaries.
-    const binPath = isDev ? path.join(__dirname, 'bin') : path.join(process.resourcesPath, 'bin');
+    const binPath = isDev ? path.join(__dirname, '..', 'bin') : path.join(process.resourcesPath, 'bin');
     const newEnv = { ...process.env };
     newEnv.PATH = `${binPath}${path.delimiter}${newEnv.PATH}`;
 
     const options = {
         env: newEnv,
+        // In development, the python script is in the root, not a 'service' subfolder.
+        cwd: isDev ? __dirname : process.resourcesPath,
     };
-    // --- END FIX ---
     
     sendLog(`[Electron] Starting backend: ${command} ${args.join(' ')}`);
+    sendLog(`[Electron] Using CWD: ${options.cwd}`);
     sendLog(`[Electron] Augmenting backend PATH with: ${binPath}`);
     
-    // Pass the corrected environment options to the spawn call
     pythonProcess = spawn(command, args, options);
 
     pythonProcess.stdout.on('data', (data) => {
@@ -112,8 +112,13 @@ ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
         return { error: 'Backend is not ready. Please wait a moment or restart the application.' };
     }
     
-    // The ffmpeg_location is no longer needed in the payload
-    const payload = { jobType, url, cookies };
+    // **FIX**: Determine the correct path to the ffmpeg/ffprobe binaries
+    // and pass it to the Python backend with every job request.
+    const ffmpegPath = app.isPackaged
+        ? path.join(process.resourcesPath, 'bin')
+        : path.join(__dirname, '..', 'bin'); // In dev, 'bin' is in the root
+
+    const payload = { jobType, url, cookies, ffmpeg_location: ffmpegPath };
 
     try {
         sendLog(`[Electron] Sending job to Python: ${JSON.stringify(payload)}`);
