@@ -24,10 +24,7 @@ function waitForBackend(timeout = 15000) {
             } else if (Date.now() - startTime > timeout) {
                 clearInterval(interval);
                 const logPath = path.join(os.homedir(), 'yt_link_backend_debug.log');
-                const errorMsg = `The Python backend service failed to start. This is a critical error.
-
-Please check the debug log file for details:
-${logPath}`;
+                const errorMsg = `The Python backend service failed to start. This is a critical error.\n\nPlease check the debug log file for details:\n${logPath}`;
                 reject(new Error(errorMsg));
             }
         }, 250);
@@ -79,17 +76,20 @@ function startPythonBackend(port) {
     let args;
     let spawnOptions = {};
 
+    // Determine path to ffmpeg binaries
+    const ffmpegPath = isDev 
+        ? path.join(__dirname, 'bin')
+        : path.join(process.resourcesPath, 'bin');
+
     if (isDev) {
         command = (process.platform === 'win32' ? 'python' : 'python3');
         const scriptPath = path.join(__dirname, 'service', 'app.py');
-        const ffmpegPath = path.join(__dirname, 'bin'); // Path to ffmpeg dir in dev
         // Pass the script path to the python interpreter, then the port, then the ffmpeg path.
         args = [scriptPath, port.toString(), ffmpegPath];
         spawnOptions.cwd = __dirname;
     } else {
         const exeName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
         command = path.join(process.resourcesPath, 'backend', exeName);
-        const ffmpegPath = path.join(process.resourcesPath, 'bin'); // Absolute path to ffmpeg dir in prod
         // Pass the port and ffmpeg path directly to the bundled executable.
         args = [port.toString(), ffmpegPath];
         spawnOptions.cwd = path.dirname(command);
@@ -101,7 +101,7 @@ function startPythonBackend(port) {
     console.log(`[Electron] Spawn Options: ${JSON.stringify(spawnOptions)}`);
     
     if (!fs.existsSync(command)) {
-        dialog.showErrorBox('Fatal Error', `Backend executable not found at path: ${command}.`);
+        dialog.showErrorBox('Fatal Error', `Backend executable not found at path: ${command}. The application will now close.`);
         app.quit();
         return;
     }
@@ -125,8 +125,8 @@ function startPythonBackend(port) {
         console.log(`[Electron] Python process exited with code ${code}`);
         pythonProcess = null;
         isBackendReady = false;
-        if (mainWindow) {
-            mainWindow.webContents.send('backend-status', { status: 'disconnected', message: `Backend service stopped unexpectedly (code: ${code}).` });
+        if (mainWindow && !mainWindow.isDestroyed()) {
+             dialog.showErrorBox('Backend Error', `The backend service stopped unexpectedly (code: ${code}). Please restart the application.`);
         }
     });
 }
@@ -155,12 +155,39 @@ app.on('quit', () => {
 });
 
 // --- IPC Handlers ---
+
+// This is the definitive fix for the bug shown in the screenshot.
+// It robustly handles cookie file creation before sending the job to the backend.
 ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
-    const payload = { jobType, url, cookies };
+    const payload = { jobType, url }; 
+    
+    // ** BUG FIX START **
+    // Securely handle the cookie string by writing it to a proper temporary file.
+    // This prevents the ENOENT error by using the OS's designated temp directory.
+    if (cookies && cookies.trim() !== '') {
+        try {
+            // Create a unique temporary file path
+            const cookieFile = path.join(os.tmpdir(), `yt-link-cookies-${Date.now()}.txt`);
+            // Write the cookies to that file
+            fs.writeFileSync(cookieFile, cookies, 'utf-8');
+            // Add the file path to the payload for the Python backend
+            payload.cookies = cookieFile;
+            console.log(`[Electron] Cookie file created successfully at: ${cookieFile}`);
+        } catch (err) {
+            console.error('[Electron] FATAL: Failed to write cookie file:', err);
+            dialog.showErrorBox(
+              'Cookie File Error',
+              `Failed to write the temporary cookie file. The download will proceed without cookies, but may fail for private or age-restricted videos.\n\nError: ${err.message}`
+            );
+            // Do not add the cookies property to the payload if it fails
+        }
+    }
+    // ** BUG FIX END **
+
     try {
         await waitForBackend();
-        const url = `http://127.0.0.1:${pyPort}/start-job`;
-        const response = await fetch(url, {
+        const fetchUrl = `http://127.0.0.1:${pyPort}/start-job`;
+        const response = await fetch(fetchUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -171,6 +198,7 @@ ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
         }
         return await response.json();
     } catch (error) {
+        console.error(`[Electron] Error communicating with backend:`, error);
         return { error: `Communication with the backend service failed: ${error.message}` };
     }
 });
@@ -229,11 +257,9 @@ ipcMain.handle('download-file', async (event, jobId) => {
 });
 
 ipcMain.handle('open-folder', (event, folderPath) => {
-    if (folderPath && path.extname(folderPath) !== '') {
+    if (folderPath && fs.existsSync(folderPath)) {
         shell.showItemInFolder(folderPath);
-    } else if (folderPath) {
-        shell.openPath(folderPath).catch(err => {
-            console.error(`[Electron] Failed to open folder: ${folderPath}`, err);
-        });
+    } else {
+        console.error(`[Electron] Attempted to open a path that does not exist: ${folderPath}`);
     }
 });
