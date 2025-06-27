@@ -40,9 +40,7 @@ function createWindow() {
             app.quit();
         });
 
-    // **FIX #1: Frontend Path**
-    // Based on your `package.json`, the "files" array packs `frontend/out/**/*`
-    // into the asar archive. This path correctly loads it.
+    // This path correctly loads the frontend from the asar archive in the packaged app.
     const urlToLoad = app.isPackaged
         ? `file://${path.join(__dirname, 'frontend/out/index.html')}`
         : 'http://localhost:3000';
@@ -70,9 +68,6 @@ function startPythonBackend(port) {
     
     const backendName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
 
-    // **FIX #2: Backend Path**
-    // `extraResources` are placed in the `Resources` directory on macOS/Linux and adjacent to the .exe on Windows.
-    // `process.resourcesPath` is the correct, cross-platform way to get this directory.
     const command = isDev 
         ? (process.platform === 'win32' ? 'python' : 'python3') 
         : path.join(process.resourcesPath, 'backend', backendName);
@@ -83,9 +78,19 @@ function startPythonBackend(port) {
     
     const cwd = isDev ? path.join(__dirname, '..', 'service') : path.dirname(command);
 
-    sendLog(`[Electron] Starting backend: ${command} ${args.join(' ')}`);
+    // **DEFINITIVE FFMPEG FIX**: Modify the environment for the spawned process.
+    // This makes `ffmpeg` and `ffprobe` available directly on the PATH for the Python script.
+    const binPath = isDev
+        ? path.resolve(__dirname, '..', 'bin')
+        : path.join(process.resourcesPath, 'bin');
     
-    pythonProcess = spawn(command, args, { cwd });
+    const newEnv = { ...process.env };
+    newEnv.PATH = `${binPath}${path.delimiter}${newEnv.PATH}`;
+    
+    sendLog(`[Electron] Starting backend: ${command} ${args.join(' ')}`);
+    sendLog(`[Electron] Augmenting backend PATH with: ${binPath}`);
+    
+    pythonProcess = spawn(command, args, { cwd, env: newEnv });
 
     pythonProcess.stdout.on('data', (data) => {
         const log = data.toString().trim();
@@ -122,17 +127,12 @@ ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
         return { error: 'Backend is not ready. Please wait a moment or restart the application.' };
     }
     
-    // **FIX #3: FFMPEG Path**
-    // This is the direct fix for the `ffmpeg not found` error. We find the `bin`
-    // directory inside the packaged app's resources and pass its path to Python.
-    const ffmpegPath = app.isPackaged
-        ? path.join(process.resourcesPath, 'bin')
-        : path.resolve(__dirname, '..', 'bin'); 
-
-    const payload = { jobType, url, cookies, ffmpeg_location: ffmpegPath };
+    // **DEFINITIVE FFMPEG FIX**: The `ffmpeg_location` is no longer needed in the payload
+    // because the backend process is now launched with the correct PATH environment variable.
+    const payload = { jobType, url, cookies };
 
     try {
-        sendLog(`[Electron] Sending job to Python with payload: ${JSON.stringify(payload)}`);
+        sendLog(`[Electron] Sending job to Python: ${JSON.stringify(payload)}`);
         const response = await fetch(`http://127.0.0.1:${pyPort}/start-job`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
