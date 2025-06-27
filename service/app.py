@@ -12,6 +12,25 @@ import yt_dlp
 import platform
 import subprocess
 
+# --- DEFINITIVE FFMPEG FIX ---
+# When running as a PyInstaller bundle, the executable's location is stored in `sys._MEIPASS`.
+# The bundled `ffmpeg` and `ffprobe` binaries are in a `bin` directory relative to the
+# main backend executable in the `extraResources`. We can construct this path and
+# add it to the environment's PATH, making the binaries discoverable by yt-dlp.
+if getattr(sys, 'frozen', False):
+    # This block runs only when the application is a bundled executable
+    try:
+        # The backend executable is in `Resources/backend/`, and ffmpeg is in `Resources/bin/`
+        # So we need to go up one directory from the executable's location.
+        base_path = os.path.dirname(sys.executable)
+        bin_path = os.path.abspath(os.path.join(base_path, '..', 'bin'))
+        
+        print(f"--- FFMPEG SEARCH: Now adding '{bin_path}' to the PATH environment variable. ---", flush=True)
+        os.environ['PATH'] = bin_path + os.pathsep + os.environ.get('PATH', '')
+    except Exception as e:
+        print(f"--- FFMPEG SEARCH: ERROR setting PATH: {e}", file=sys.stderr, flush=True)
+# --- END FIX ---
+
 ORIGINAL_STDOUT = sys.stdout
 ORIGINAL_STDERR = sys.stderr
 
@@ -81,7 +100,6 @@ try:
             output_filename = f"{playlist_title} (Combined).mp3"
             output_filepath = os.path.join(APP_TEMP_DIR, f"{job_id}_combined.mp3")
             
-            # Since ffmpeg is now in the PATH, we can just call it directly.
             ffmpeg_exe = 'ffmpeg.exe' if platform.system() == 'Windows' else 'ffmpeg'
             command = [ffmpeg_exe, '-f', 'concat', '-safe', '0', '-i', list_file_path, '-c', 'copy', '-y', output_filepath]
             
@@ -121,16 +139,11 @@ try:
             'noplaylist': data.get('jobType') == 'singleMp3',
         }
         
-        # **DEFINITIVE FFMPEG FIX**: This is no longer needed. yt-dlp will find ffmpeg
-        # in the PATH environment variable set by the Electron main process.
-        # if data.get('ffmpeg_location'):
-        #     ydl_opts['ffmpeg_location'] = data.get('ffmpeg_location')
-        
         if data.get('jobType') != 'singleMp3':
             ydl_opts['outtmpl'] = '%(playlist_index)s - %(title)s.%(ext)s'
         
         if data.get('cookies'):
-            cookie_file = os.path.join(APP_TEMP_DIR, "yt-link", f"cookies_{job_id}.txt")
+            cookie_file = os.path.join(APP_TEMP_DIR, f"cookies_{job_id}.txt")
             os.makedirs(os.path.dirname(cookie_file), exist_ok=True)
             with open(cookie_file, 'w', encoding='utf-8') as f: f.write(data['cookies'])
             ydl_opts['cookiefile'] = cookie_file
