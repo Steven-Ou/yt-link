@@ -20,7 +20,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20' # Using a modern LTS version of Node.js
+          node-version: '20'
           cache: 'npm'
 
       - name: Set up Python
@@ -35,28 +35,27 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
-      - name: Download FFmpeg and FFprobe
+      # --- BUG FIX: Only download the correct binaries for the target OS ---
+      - name: Download FFmpeg and FFprobe for macOS
+        if: runner.os == 'macOS'
         shell: bash
         run: |
           mkdir -p bin
-          if [ "${{ runner.os }}" == "macOS" ]; then
-            # Use the arm64 version for modern macOS runners
-            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-mac-arm64 -o bin/ffmpeg
-            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-mac-arm64 -o bin/ffprobe
-          elif [ "${{ runner.os }}" == "Windows" ]; then
-            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-win32-x64.exe -o bin/ffmpeg.exe
-            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-win32-x64.exe -o bin/ffprobe.exe
-          fi
-          
-          # This step is a good failsafe, but our afterPack.js script is the definitive solution
-          if [ "${{ runner.os }}" != "Windows" ]; then
-            chmod +x bin/*
-          fi
+          curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-mac-arm64 -o bin/ffmpeg
+          curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-mac-arm64 -o bin/ffprobe
+          chmod +x bin/*
+          echo "Downloaded and set permissions for macOS binaries."
+
+      - name: Download FFmpeg and FFprobe for Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p bin
+          curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-win32-x64.exe -o bin/ffmpeg.exe
+          curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-win32-x64.exe -o bin/ffprobe.exe
+          echo "Downloaded Windows binaries."
 
       - name: Build Electron app
-        # The `npm run dist` command will trigger the scripts in package.json,
-        # which in turn runs electron-builder and our `afterPack.js` hook.
-        # This hook is the most reliable way to set all necessary permissions.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run dist
@@ -88,9 +87,9 @@ jobs:
   # --- Release Job: Creates the final GitHub Release ---
   release:
     runs-on: ubuntu-latest
-    needs: build # This job will only run after the build job for both OSes succeeds
+    needs: build
     permissions:
-      contents: write # This permission is required to create a release
+      contents: write
       
     steps:
       - name: Check out repository
@@ -107,10 +106,8 @@ jobs:
       - name: Create GitHub Release and Upload Assets
         uses: softprops/action-gh-release@v1
         with:
-          # This glob pattern will find the .dmg and .zip files inside their respective folders
           files: |
             artifacts/YT-Link-macOS-dmg/*
             artifacts/YT-Link-Windows-zip/*
         env:
-          # The GITHUB_TOKEN is automatically provided by GitHub Actions
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
