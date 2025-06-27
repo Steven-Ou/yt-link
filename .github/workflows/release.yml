@@ -6,11 +6,13 @@ on:
       - 'v*.*.*'
 
 jobs:
+  # --- Build Job: Creates the app for macOS and Windows ---
   build:
     strategy:
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    
     steps:
       - name: Check out Git repository
         uses: actions/checkout@v4
@@ -18,7 +20,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20' # Using a modern LTS version of Node.js
           cache: 'npm'
 
       - name: Set up Python
@@ -38,6 +40,7 @@ jobs:
         run: |
           mkdir -p bin
           if [ "${{ runner.os }}" == "macOS" ]; then
+            # Use the arm64 version for modern macOS runners
             curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-mac-arm64 -o bin/ffmpeg
             curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-mac-arm64 -o bin/ffprobe
           elif [ "${{ runner.os }}" == "Windows" ]; then
@@ -45,15 +48,17 @@ jobs:
             curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-win32-x64.exe -o bin/ffprobe.exe
           fi
           
-          # DEFINITIVE FIX: Explicitly set executable permissions on both files.
-          # This was the root cause of the "ffmpeg not found" error on macOS.
+          # This step is a good failsafe, but our afterPack.js script is the definitive solution
           if [ "${{ runner.os }}" != "Windows" ]; then
-            chmod +x bin/ffmpeg
-            chmod +x bin/ffprobe
+            chmod +x bin/*
           fi
 
-
-      - name: Build Electron app (without publishing)
+      - name: Build Electron app
+        # The `npm run dist` command will trigger the scripts in package.json,
+        # which in turn runs electron-builder and our `afterPack.js` hook.
+        # This hook is the most reliable way to set all necessary permissions.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run dist
 
       - name: DEBUG - List files in build directory
@@ -80,34 +85,32 @@ jobs:
           name: ${{ env.ARTIFACT_NAME }}
           path: ${{ env.ARTIFACT_PATH }}
 
+  # --- Release Job: Creates the final GitHub Release ---
   release:
     runs-on: ubuntu-latest
-    needs: build
+    needs: build # This job will only run after the build job for both OSes succeeds
     permissions:
-      contents: write 
+      contents: write # This permission is required to create a release
+      
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Download all artifacts
+      - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          path: artifacts/
 
       - name: List downloaded files for verification
         run: ls -R artifacts
 
-      - name: Delete existing release and tag
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release delete ${{ github.ref_name }} --cleanup-tag --yes || true
-
       - name: Create GitHub Release and Upload Assets
         uses: softprops/action-gh-release@v1
         with:
+          # This glob pattern will find the .dmg and .zip files inside their respective folders
           files: |
             artifacts/YT-Link-macOS-dmg/*
             artifacts/YT-Link-Windows-zip/*
         env:
+          # The GITHUB_TOKEN is automatically provided by GitHub Actions
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
