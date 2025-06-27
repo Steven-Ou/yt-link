@@ -12,24 +12,25 @@ import yt_dlp
 import platform
 import subprocess
 
-# --- DEFINITIVE FFMPEG FIX ---
-# When running as a PyInstaller bundle, the executable's location is stored in `sys._MEIPASS`.
-# The bundled `ffmpeg` and `ffprobe` binaries are in a `bin` directory relative to the
-# main backend executable in the `extraResources`. We can construct this path and
-# add it to the environment's PATH, making the binaries discoverable by yt-dlp.
+# --- RELIABLE FFMPEG FIX ---
+# This block makes the Python backend self-sufficient in finding ffmpeg.
+FFMPEG_PATH = None
 if getattr(sys, 'frozen', False):
-    # This block runs only when the application is a bundled executable
+    # This code runs when the app is a packaged executable (PyInstaller bundle).
     try:
-        # The backend executable is in `Resources/backend/`, and ffmpeg is in `Resources/bin/`
-        # So we need to go up one directory from the executable's location.
+        # `sys.executable` points to the backend executable inside `Contents/Resources/backend` on macOS.
+        # The `bin` directory with ffmpeg is at `Contents/Resources/bin`.
+        # So, we navigate from the executable's directory up one level, then into `bin`.
         base_path = os.path.dirname(sys.executable)
-        bin_path = os.path.abspath(os.path.join(base_path, '..', 'bin'))
+        ffmpeg_dir = os.path.abspath(os.path.join(base_path, '..', 'bin'))
         
-        print(f"--- FFMPEG SEARCH: Now adding '{bin_path}' to the PATH environment variable. ---", flush=True)
-        os.environ['PATH'] = bin_path + os.pathsep + os.environ.get('PATH', '')
+        # We store this path in a global variable to be used by yt-dlp.
+        FFMPEG_PATH = ffmpeg_dir
+        print(f"--- FFMPEG SEARCH: Located binaries directory at: '{FFMPEG_PATH}' ---", flush=True)
     except Exception as e:
-        print(f"--- FFMPEG SEARCH: ERROR setting PATH: {e}", file=sys.stderr, flush=True)
+        print(f"--- FFMPEG SEARCH: CRITICAL ERROR while locating ffmpeg: {e}", file=sys.stderr, flush=True)
 # --- END FIX ---
+
 
 ORIGINAL_STDOUT = sys.stdout
 ORIGINAL_STDERR = sys.stderr
@@ -100,8 +101,10 @@ try:
             output_filename = f"{playlist_title} (Combined).mp3"
             output_filepath = os.path.join(APP_TEMP_DIR, f"{job_id}_combined.mp3")
             
-            ffmpeg_exe = 'ffmpeg.exe' if platform.system() == 'Windows' else 'ffmpeg'
-            command = [ffmpeg_exe, '-f', 'concat', '-safe', '0', '-i', list_file_path, '-c', 'copy', '-y', output_filepath]
+            # Use the globally determined FFMPEG_PATH to find the executable
+            ffmpeg_exe_name = 'ffmpeg.exe' if platform.system() == 'Windows' else 'ffmpeg'
+            ffmpeg_full_path = os.path.join(FFMPEG_PATH, ffmpeg_exe_name) if FFMPEG_PATH else ffmpeg_exe_name
+            command = [ffmpeg_full_path, '-f', 'concat', '-safe', '0', '-i', list_file_path, '-c', 'copy', '-y', output_filepath]
             
             subprocess.run(command, check=True, capture_output=True, text=True)
             job.update({'file_path': output_filepath, 'file_name': output_filename})
@@ -138,6 +141,10 @@ try:
             'ignoreerrors': data.get('jobType') != 'singleMp3',
             'noplaylist': data.get('jobType') == 'singleMp3',
         }
+        
+        # If we are in a packaged app, use the path we determined at startup.
+        if FFMPEG_PATH:
+            ydl_opts['ffmpeg_location'] = FFMPEG_PATH
         
         if data.get('jobType') != 'singleMp3':
             ydl_opts['outtmpl'] = '%(playlist_index)s - %(title)s.%(ext)s'
