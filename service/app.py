@@ -22,6 +22,7 @@ try:
     jobs = {}
     APP_TEMP_DIR = tempfile.gettempdir()
     print(f"--- Using system temporary directory: {APP_TEMP_DIR} ---", flush=True)
+    # The PATH is now set by the main.js process, so no setup is needed here.
 
     def get_playlist_index(filename):
         try:
@@ -109,7 +110,6 @@ try:
         job_id = str(uuid.uuid4())
         jobs[job_id] = {'status': 'queued', 'url': data.get('url')}
 
-        # No longer need ffmpeg_location; yt-dlp will find it in the PATH.
         ydl_opts = {
             'format': 'bestaudio/best',
             'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
