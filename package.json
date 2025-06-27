@@ -11,13 +11,14 @@
     "dev-electron": "wait-on http://localhost:3000 && electron .",
     "build:frontend": "cd frontend && npm install && npm run build",
     "build:backend": "cd service && pip install -r requirements.txt && python -m PyInstaller app.py --noconfirm --onefile --name yt-link-backend --distpath ./dist",
-    "dist": "npm run build:frontend && npm run build:backend && electron-builder"
+    "dist": "npm run build:frontend && npm run build:backend && electron-builder --publish never"
   },
   "dependencies": {
     "node-fetch": "^2.6.7",
     "portfinder": "^1.0.32"
   },
   "devDependencies": {
+    "archiver": "^7.0.1",
     "concurrently": "^8.2.2",
     "electron": "^31.2.1",
     "electron-builder": "^24.13.3",
