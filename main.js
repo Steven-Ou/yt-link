@@ -1,5 +1,3 @@
-
-
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -67,9 +65,22 @@ function startPythonBackend(port) {
         ? [path.join(__dirname, 'service', 'app.py'), port.toString()]
         : [port.toString()];
     
-    sendLog(`[Electron] Starting backend: ${command} ${args.join(' ')}`);
+    // --- DEFINITIVE FIX: Create a new environment for the child process ---
+    // This reliably provides the path to the bundled binaries.
+    const binPath = isDev ? path.join(__dirname, 'bin') : path.join(process.resourcesPath, 'bin');
+    const newEnv = { ...process.env };
+    newEnv.PATH = `${binPath}${path.delimiter}${newEnv.PATH}`;
+
+    const options = {
+        env: newEnv,
+    };
+    // --- END FIX ---
     
-    pythonProcess = spawn(command, args);
+    sendLog(`[Electron] Starting backend: ${command} ${args.join(' ')}`);
+    sendLog(`[Electron] Augmenting backend PATH with: ${binPath}`);
+    
+    // Pass the corrected environment options to the spawn call
+    pythonProcess = spawn(command, args, options);
 
     pythonProcess.stdout.on('data', (data) => {
         const log = data.toString().trim();
@@ -90,44 +101,20 @@ function startPythonBackend(port) {
 }
 
 app.on('ready', createWindow);
+app.on('window-all-closed', () => process.platform !== 'darwin' && app.quit());
+app.on('activate', () => BrowserWindow.getAllWindows().length === 0 && createWindow());
+app.on('quit', () => pythonProcess && pythonProcess.kill());
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
+// --- IPC HANDLERS ---
 
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
-});
-
-
-app.on('quit', () => {
-    if (pythonProcess) {
-        sendLog('[Electron] Terminating Python backend on app quit.');
-        pythonProcess.kill();
-    }
-});
-
-// IPC handler to start a job
 ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
     if (!isBackendReady) {
         return { error: 'Backend is not ready. Please wait a moment or restart the application.' };
     }
     
-    const isDev = !app.isPackaged;
-
-    // --- BUG FIX: Correctly and reliably determine the ffmpeg path ---
-    const ffmpegPath = isDev 
-        ? path.join(__dirname, 'bin') 
-        : path.join(process.resourcesPath, 'bin');
-
-    // Add logging to verify the path
-    sendLog(`[Electron] FFMPEG path determined to be: ${ffmpegPath}`);
-
-    const payload = { jobType, url, cookies, ffmpeg_location: ffmpegPath };
+    // --- DEFINITIVE FIX: Remove ffmpeg_location from the payload ---
+    // The path is now handled by the environment variable.
+    const payload = { jobType, url, cookies };
 
     try {
         sendLog(`[Electron] Sending job to Python: ${JSON.stringify(payload)}`);
