@@ -44,7 +44,7 @@ exports.default = async function (context) {
   const ffmpegExeName = 'ffmpeg';
   const ffprobeExeName = 'ffprobe';
   
-  // Define the full paths to the executables within the packaged app, matching the release.yml and package.json config.
+  // Define the full paths to the executables within the packaged app.
   const backendExePath = path.join(resourcesPath, 'backend', backendExeName);
   const ffmpegExePath = path.join(resourcesPath, 'bin', ffmpegExeName);
   const ffprobeExePath = path.join(resourcesPath, 'bin', ffprobeExeName);
