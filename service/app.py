@@ -5,6 +5,7 @@ import traceback
 import threading
 import uuid
 import zipfile
+import tempfile # Import the correct module for handling temporary directories
 from flask import Flask, request, jsonify, send_file, Response
 from flask_cors import CORS
 import yt_dlp
@@ -21,6 +22,12 @@ try:
     CORS(app)
     jobs = {} # In-memory job store
 
+    # **DEFINITIVE FIX**: Get the system's temporary directory ONCE at startup.
+    # All subsequent temporary files and folders will be created here.
+    APP_TEMP_DIR = tempfile.gettempdir()
+    print(f"--- Using system temporary directory: {APP_TEMP_DIR} ---", flush=True)
+
+
     def get_playlist_index(filename):
         try:
             return int(filename.split(' ')[0])
@@ -29,16 +36,16 @@ try:
 
     def download_thread(url, ydl_opts, job_id, download_type):
         """Runs the download in a separate thread."""
-        # The temporary directory for this job's downloads
-        temp_dir = os.path.join(os.getcwd(), "temp", str(job_id))
-        os.makedirs(temp_dir, exist_ok=True)
-        jobs[job_id]['temp_dir'] = temp_dir
+        # **DEFINITIVE FIX**: Create a unique temporary directory for this specific job
+        # inside the main system temporary directory.
+        job_temp_dir = os.path.join(APP_TEMP_DIR, "yt-link", str(job_id))
+        os.makedirs(job_temp_dir, exist_ok=True)
+        jobs[job_id]['temp_dir'] = job_temp_dir
         
-        # Set the output template to save files inside the job's temp directory
-        ydl_opts['outtmpl'] = os.path.join(temp_dir, ydl_opts['outtmpl'])
+        ydl_opts['outtmpl'] = os.path.join(job_temp_dir, ydl_opts['outtmpl'])
         
         try:
-            print(f"--- [Job {job_id}] Starting download with yt-dlp.", flush=True)
+            print(f"--- [Job {job_id}] Starting download...", flush=True)
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info_dict = ydl.extract_info(url, download=False)
                 jobs[job_id]['playlist_title'] = info_dict.get('title', 'yt-link-download')
@@ -56,7 +63,7 @@ try:
         temp_dir = job['temp_dir']
         playlist_title = job.get('playlist_title', 'download')
         
-        print(f"--- [Job {job_id}] Starting post-processing. Type: {download_type}", flush=True)
+        print(f"--- [Job {job_id}] Post-processing. Type: {download_type}", flush=True)
         
         if download_type == "singleMp3":
             mp3_file = next((f for f in os.listdir(temp_dir) if f.endswith('.mp3')), None)
@@ -65,7 +72,8 @@ try:
 
         elif download_type == "playlistZip":
             zip_filename = f"{playlist_title}.zip"
-            zip_path = os.path.join(os.getcwd(), "temp", f"{job_id}.zip")
+            # Create the zip file also in the system temp directory
+            zip_path = os.path.join(APP_TEMP_DIR, "yt-link", f"{job_id}.zip")
             with zipfile.ZipFile(zip_path, 'w') as zipf:
                 for file in os.listdir(temp_dir):
                     if file.endswith('.mp3'):
@@ -82,7 +90,7 @@ try:
                     f.write(f"file '{os.path.abspath(os.path.join(temp_dir, file))}'\n")
             
             output_filename = f"{playlist_title} (Combined).mp3"
-            output_filepath = os.path.join(os.getcwd(), "temp", f"{job_id}_combined.mp3")
+            output_filepath = os.path.join(APP_TEMP_DIR, "yt-link", f"{job_id}_combined.mp3")
             
             ffmpeg_exe = os.path.join(job['ffmpeg_location'], 'ffmpeg.exe' if platform.system() == 'Windows' else 'ffmpeg')
             command = [ffmpeg_exe, '-f', 'concat', '-safe', '0', '-i', list_file_path, '-c', 'copy', '-y', output_filepath]
@@ -111,7 +119,6 @@ try:
             return jsonify({'error': 'Invalid request: Missing required parameters.'}), 400
 
         job_id = str(uuid.uuid4())
-        # Store all necessary info for the job, including the ffmpeg path from the payload
         jobs[job_id] = {'status': 'queued', 'url': data['url'], 'ffmpeg_location': data['ffmpeg_location']}
 
         ydl_opts = {
@@ -130,7 +137,9 @@ try:
             ydl_opts['outtmpl'] = '%(playlist_index)s - %(title)s.%(ext)s'
         
         if data.get('cookies'):
-            cookie_file = os.path.join(os.getcwd(), "temp", f"cookies_{job_id}.txt")
+            # **DEFINITIVE FIX**: Also create the cookie file in the correct temp directory.
+            cookie_file = os.path.join(APP_TEMP_DIR, "yt-link", f"cookies_{job_id}.txt")
+            os.makedirs(os.path.dirname(cookie_file), exist_ok=True)
             with open(cookie_file, 'w', encoding='utf-8') as f: f.write(data['cookies'])
             ydl_opts['cookiefile'] = cookie_file
 
@@ -160,14 +169,11 @@ try:
         return Response(file_generator(), mimetype='application/octet-stream', headers={'Content-Disposition': f'attachment;filename="{job.get("file_name")}"'})
 
     if __name__ == '__main__':
-        if not os.path.exists('temp'): os.makedirs('temp')
-        # **DEFINITIVE FIX**: Only argument is the port number.
+        # **DEFINITIVE FIX**: No longer need to create a 'temp' folder here.
         port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001
-        # This signal MUST go to the original stdout for Electron to detect it.
         print(f"Flask-Backend-Ready:{port}", file=ORIGINAL_STDOUT, flush=True)
         app.run(host='127.0.0.1', port=port, debug=False)
 
 except Exception as e:
-    # This is the final safety net. Any uncaught exception will be printed to the real stderr.
     print(f"--- PYTHON BACKEND FATAL CRASH ---\n{traceback.format_exc()}", file=ORIGINAL_STDERR, flush=True)
     sys.exit(1)
