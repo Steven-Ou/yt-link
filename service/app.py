@@ -16,34 +16,7 @@ import subprocess
 ORIGINAL_STDOUT = sys.stdout
 ORIGINAL_STDERR = sys.stderr
 
-def setup_environment():
-    """
-    Adds the bundled binaries path to the system's PATH environment variable.
-    This is the definitive fix to ensure ffmpeg and ffprobe are found.
-    """
-    if getattr(sys, 'frozen', False):  # True when running as a PyInstaller bundle
-        # In the packaged app, the path is relative to the executable
-        base_path = os.path.dirname(sys.executable)
-        bin_path = os.path.join(base_path, 'bin')
-        
-        # On macOS, the resources path is structured differently inside the .app
-        if platform.system() == "Darwin":
-            bin_path = os.path.join(os.path.dirname(base_path), "Resources", "bin")
-
-        print(f"--- [ENV SETUP] Adding to PATH (Packaged): {bin_path}", flush=True)
-        os.environ["PATH"] = bin_path + os.pathsep + os.environ.get("PATH", "")
-    else:
-        # In local development, the path is relative to this script
-        project_root = os.path.dirname(os.path.abspath(__file__))
-        bin_path = os.path.abspath(os.path.join(project_root, '..', 'bin'))
-        print(f"--- [ENV SETUP] Adding to PATH (Dev): {bin_path}", flush=True)
-        os.environ["PATH"] = bin_path + os.pathsep + os.environ.get("PATH", "")
-
-# --- Main Application Logic ---
 try:
-    # Run the setup function immediately
-    setup_environment()
-    
     app = Flask(__name__)
     CORS(app)
     jobs = {}
@@ -108,7 +81,6 @@ try:
             output_filename = f"{playlist_title} (Combined).mp3"
             output_filepath = os.path.join(APP_TEMP_DIR, "yt-link", f"{job_id}_combined.mp3")
             
-            # Since the bin directory is now in the PATH, we can call ffmpeg directly.
             ffmpeg_exe = 'ffmpeg.exe' if platform.system() == 'Windows' else 'ffmpeg'
             command = [ffmpeg_exe, '-f', 'concat', '-safe', '0', '-i', list_file_path, '-c', 'copy', '-y', output_filepath]
             
@@ -137,8 +109,7 @@ try:
         job_id = str(uuid.uuid4())
         jobs[job_id] = {'status': 'queued', 'url': data.get('url')}
 
-        # We no longer need ffmpeg_location from the client.
-        # It's automatically handled by the PATH setup.
+        # No longer need ffmpeg_location; yt-dlp will find it in the PATH.
         ydl_opts = {
             'format': 'bestaudio/best',
             'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
@@ -159,7 +130,7 @@ try:
             with open(cookie_file, 'w', encoding='utf-8') as f: f.write(data['cookies'])
             ydl_opts['cookiefile'] = cookie_file
 
-        thread = threading.Thread(target=download_thread, args=(data['url'], ydl_opts, job_id, data['jobType']))
+        thread = threading.Thread(target=download_thread, args=(data['url'], ydl_opts, job_id, data.get('jobType')))
         thread.start()
         
         return jsonify({'jobId': job_id})
