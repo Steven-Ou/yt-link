@@ -35,7 +35,7 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
-      # --- BUG FIX: Only download the correct binaries for the target OS ---
+      # --- Platform-Specific Binary Downloads ---
       - name: Download FFmpeg and FFprobe for macOS
         if: runner.os == 'macOS'
         shell: bash
@@ -59,10 +59,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run dist
-
-      - name: DEBUG - List files in build directory
-        shell: bash
-        run: ls -R dist
 
       - name: Prepare Artifacts for Upload
         id: prep_artifacts
@@ -103,9 +99,11 @@ jobs:
       - name: List downloaded files for verification
         run: ls -R artifacts
 
+      # --- BUG FIX: Overwrite existing assets to prevent 422 error ---
       - name: Create GitHub Release and Upload Assets
         uses: softprops/action-gh-release@v1
         with:
+          overwrite: true # This will replace assets if the tag already exists
           files: |
             artifacts/YT-Link-macOS-dmg/*
             artifacts/YT-Link-Windows-zip/*
