@@ -63,6 +63,7 @@ function createWindow() {
         const url = 'http://localhost:3000';
         console.log(`[Electron] Loading dev frontend from: ${url}`);
         mainWindow.loadURL(url);
+        mainWindow.webContents.openDevTools(); // Open dev tools automatically in dev mode
     }
 
     mainWindow.on('closed', () => {
@@ -76,21 +77,37 @@ function startPythonBackend(port) {
     let args;
     let spawnOptions = {};
 
-    // Determine path to ffmpeg binaries
-    const ffmpegPath = isDev 
-        ? path.join(__dirname, 'bin')
-        : path.join(process.resourcesPath, 'bin');
+    // --- FFMPEG PATH DEBUGGING START ---
+    console.log(`[FFMPEG Debug] Is App Packaged? ${!isDev}`);
+    const devFfmpegPath = path.join(__dirname, 'bin');
+    const prodFfmpegPath = path.join(process.resourcesPath, 'bin');
+
+    const ffmpegPath = isDev ? devFfmpegPath : prodFfmpegPath;
+
+    console.log(`[FFMPEG Debug] Final ffmpeg path to be used: ${ffmpegPath}`);
+    // Check if the directory and files actually exist at the determined path
+    if (fs.existsSync(ffmpegPath)) {
+        console.log(`[FFMPEG Debug] SUCCESS: The ffmpeg directory exists at: ${ffmpegPath}`);
+        const ffmpegExe = path.join(ffmpegPath, process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
+        const ffprobeExe = path.join(ffmpegPath, process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe');
+        console.log(`[FFMPEG Debug] Checking for ffmpeg executable at: ${ffmpegExe}`);
+        console.log(`[FFMPEG Debug] Exists? ${fs.existsSync(ffmpegExe)}`);
+        console.log(`[FFMPEG Debug] Checking for ffprobe executable at: ${ffprobeExe}`);
+        console.log(`[FFMPEG Debug] Exists? ${fs.existsSync(ffprobeExe)}`);
+    } else {
+        console.error(`[FFMPEG Debug] ERROR: The ffmpeg directory does NOT exist at: ${ffmpegPath}`);
+    }
+    // --- FFMPEG PATH DEBUGGING END ---
+
 
     if (isDev) {
         command = (process.platform === 'win32' ? 'python' : 'python3');
         const scriptPath = path.join(__dirname, 'service', 'app.py');
-        // Pass the script path to the python interpreter, then the port, then the ffmpeg path.
         args = [scriptPath, port.toString(), ffmpegPath];
         spawnOptions.cwd = __dirname;
     } else {
         const exeName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
         command = path.join(process.resourcesPath, 'backend', exeName);
-        // Pass the port and ffmpeg path directly to the bundled executable.
         args = [port.toString(), ffmpegPath];
         spawnOptions.cwd = path.dirname(command);
     }
@@ -98,7 +115,6 @@ function startPythonBackend(port) {
     console.log(`[Electron] Attempting to start backend...`);
     console.log(`[Electron] Command: ${command}`);
     console.log(`[Electron] Arguments: ${JSON.stringify(args)}`);
-    console.log(`[Electron] Spawn Options: ${JSON.stringify(spawnOptions)}`);
     
     if (!fs.existsSync(command)) {
         dialog.showErrorBox('Fatal Error', `Backend executable not found at path: ${command}. The application will now close.`);
@@ -109,7 +125,7 @@ function startPythonBackend(port) {
     pythonProcess = spawn(command, args, spawnOptions);
 
     pythonProcess.stderr.on('data', (data) => {
-        console.error(`[Python STDERR]: ${data}`);
+        console.error(`[Python STDERR]: ${data.toString()}`);
     });
 
     pythonProcess.stdout.on('data', (data) => {
@@ -155,34 +171,23 @@ app.on('quit', () => {
 });
 
 // --- IPC Handlers ---
-
-// This is the definitive fix for the bug shown in the screenshot.
-// It robustly handles cookie file creation before sending the job to the backend.
 ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
     const payload = { jobType, url }; 
     
-    // ** BUG FIX START **
-    // Securely handle the cookie string by writing it to a proper temporary file.
-    // This prevents the ENOENT error by using the OS's designated temp directory.
     if (cookies && cookies.trim() !== '') {
         try {
-            // Create a unique temporary file path
             const cookieFile = path.join(os.tmpdir(), `yt-link-cookies-${Date.now()}.txt`);
-            // Write the cookies to that file
             fs.writeFileSync(cookieFile, cookies, 'utf-8');
-            // Add the file path to the payload for the Python backend
             payload.cookies = cookieFile;
             console.log(`[Electron] Cookie file created successfully at: ${cookieFile}`);
         } catch (err) {
             console.error('[Electron] FATAL: Failed to write cookie file:', err);
             dialog.showErrorBox(
               'Cookie File Error',
-              `Failed to write the temporary cookie file. The download will proceed without cookies, but may fail for private or age-restricted videos.\n\nError: ${err.message}`
+              `Failed to write the temporary cookie file.\n\nError: ${err.message}`
             );
-            // Do not add the cookies property to the payload if it fails
         }
     }
-    // ** BUG FIX END **
 
     try {
         await waitForBackend();
