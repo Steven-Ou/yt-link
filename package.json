@@ -6,20 +6,18 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "concurrently \"npm run dev:next\" \"npm run dev:electron\"",
-    "dev:next": "cd frontend && npx next dev",
-    "dev:electron": "wait-on http://localhost:3000 && electron .",
-    "build": "npm run build:frontend && npm run build:backend",
-    "build:frontend": "cd frontend && npx next build",
-    "build:backend": "cd service && python -m PyInstaller app.py --noconfirm --onefile --name yt-link-backend --distpath ./dist",
-    "dist": "npm run build && electron-builder --publish never"
+    "dev": "concurrently \"npm:dev-frontend\" \"npm:dev-electron\"",
+    "dev-frontend": "cd frontend && npm install && npm run dev",
+    "dev-electron": "wait-on http://localhost:3000 && electron .",
+    "build:frontend": "cd frontend && npm install && npm run build",
+    "build:backend": "cd service && pip install -r requirements.txt && python -m PyInstaller app.py --noconfirm --onefile --name yt-link-backend --distpath ./dist",
+    "dist": "npm run build:frontend && npm run build:backend && electron-builder"
   },
   "dependencies": {
     "node-fetch": "^2.6.7",
     "portfinder": "^1.0.32"
   },
   "devDependencies": {
-    "archiver": "^7.0.1",
     "concurrently": "^8.2.2",
     "electron": "^31.2.1",
     "electron-builder": "^24.13.3",
@@ -35,7 +33,17 @@
       "main.js",
       "preload.js",
       "frontend/out/**/*",
-      "package.json"
+      "!node_modules/**"
+    ],
+    "extraResources": [
+      {
+        "from": "service/dist/yt-link-backend",
+        "to": "backend/yt-link-backend"
+      },
+      {
+        "from": "bin",
+        "to": "bin"
+      }
     ],
     "mac": {
       "target": "dmg",
@@ -45,16 +53,6 @@
       "target": "zip",
       "icon": "frontend/public/icon.ico"
     },
-    "extraResources": [
-      {
-        "from": "service/dist",
-        "to": "backend"
-      },
-      {
-        "from": "bin",
-        "to": "bin"
-      }
-    ],
     "afterPack": "./scripts/afterPack.js"
   }
 }
