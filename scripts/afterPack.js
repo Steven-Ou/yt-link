@@ -10,6 +10,7 @@ const path = require('path');
 exports.default = async function (context) {
   // This hook is only necessary for non-Windows platforms.
   if (process.platform === 'win32') {
+    console.log('[AfterPack] Windows platform detected, skipping chmod.');
     return;
   }
 
@@ -18,7 +19,7 @@ exports.default = async function (context) {
   const { appOutDir, packager } = context;
   const appName = packager.appInfo.productFilename;
   
-  // Define the path to the app's resources directory.
+  // Define the path to the app's resources directory. On macOS, this is inside the .app bundle.
   const resourcesPath = path.join(appOutDir, `${appName}.app`, 'Contents', 'Resources');
   
   // Define paths to the bundled executables that need permissions.
@@ -35,13 +36,15 @@ exports.default = async function (context) {
         fs.chmodSync(filePath, '755');
         console.log(`[AfterPack] SUCCESS: Set +x permission on ${path.basename(filePath)}`);
       } else {
+        // This is a critical warning. If a file is not found, the app will fail.
         console.warn(`[AfterPack] WARNING: Could not find file to chmod: ${filePath}`);
       }
     } catch (error) {
       console.error(`[AfterPack] ERROR: Failed to set permissions on ${filePath}`, error);
-      throw error; // Fail the build if permissions can't be set.
+      // Fail the entire build if permissions can't be set, as the app will be broken.
+      throw error;
     }
   }
 
-  console.log('--- AfterPack Hook: Finished ---');
+  console.log('--- AfterPack Hook: Finished successfully ---');
 };
