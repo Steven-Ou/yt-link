@@ -67,7 +67,6 @@ function startPythonBackend(port) {
     const isDev = !app.isPackaged;
     
     const backendName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
-
     const command = isDev 
         ? (process.platform === 'win32' ? 'python' : 'python3') 
         : path.join(process.resourcesPath, 'backend', backendName);
@@ -78,19 +77,10 @@ function startPythonBackend(port) {
     
     const cwd = isDev ? path.join(__dirname, '..', 'service') : path.dirname(command);
 
-    // **DEFINITIVE FFMPEG FIX**: Modify the environment for the spawned process.
-    // This makes `ffmpeg` and `ffprobe` available directly on the PATH for the Python script.
-    const binPath = isDev
-        ? path.resolve(__dirname, '..', 'bin')
-        : path.join(process.resourcesPath, 'bin');
-    
-    const newEnv = { ...process.env };
-    newEnv.PATH = `${binPath}${path.delimiter}${newEnv.PATH}`;
-    
     sendLog(`[Electron] Starting backend: ${command} ${args.join(' ')}`);
-    sendLog(`[Electron] Augmenting backend PATH with: ${binPath}`);
     
-    pythonProcess = spawn(command, args, { cwd, env: newEnv });
+    // The Python script is now responsible for finding its own dependencies.
+    pythonProcess = spawn(command, args, { cwd });
 
     pythonProcess.stdout.on('data', (data) => {
         const log = data.toString().trim();
@@ -127,12 +117,11 @@ ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
         return { error: 'Backend is not ready. Please wait a moment or restart the application.' };
     }
     
-    // **DEFINITIVE FFMPEG FIX**: The `ffmpeg_location` is no longer needed in the payload
-    // because the backend process is now launched with the correct PATH environment variable.
+    // Payload is now simplified; Python handles finding ffmpeg.
     const payload = { jobType, url, cookies };
 
     try {
-        sendLog(`[Electron] Sending job to Python: ${JSON.stringify(payload)}`);
+        sendLog(`[Electron] Sending job to Python with payload: ${JSON.stringify(payload)}`);
         const response = await fetch(`http://127.0.0.1:${pyPort}/start-job`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
