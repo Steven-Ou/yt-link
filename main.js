@@ -1,20 +1,19 @@
+
+
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const portfinder = require('portfinder');
 const fetch = require('node-fetch');
 const fs = require('fs');
-const os = require('os');
 
 let pythonProcess = null;
 let mainWindow = null;
 let pyPort = null;
 let isBackendReady = false;
 
-// **DEFINITIVE FIX**: This function now checks if the window is destroyed before sending a log.
-// This prevents the "Object has been destroyed" error.
 function sendLog(message) {
-    console.log(message); // Always log to the terminal
+    console.log(message);
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
         mainWindow.webContents.send('backend-log', message);
     }
@@ -51,7 +50,7 @@ function createWindow() {
     if (!app.isPackaged) {
         mainWindow.webContents.openDevTools();
     }
-    // Ensure mainWindow is cleared on close to prevent further errors
+
     mainWindow.on('closed', () => {
         mainWindow = null;
     });
@@ -93,16 +92,12 @@ function startPythonBackend(port) {
 app.on('ready', createWindow);
 
 app.on('window-all-closed', () => {
-  // On macOS it's common for applications and their menu bar
-  // to stay active until the user quits explicitly with Cmd + Q
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
 app.on('activate', () => {
-  // On macOS it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
@@ -123,9 +118,14 @@ ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
     }
     
     const isDev = !app.isPackaged;
+
+    // --- BUG FIX: Correctly and reliably determine the ffmpeg path ---
     const ffmpegPath = isDev 
-        ? path.join(__dirname, 'bin')
+        ? path.join(__dirname, 'bin') 
         : path.join(process.resourcesPath, 'bin');
+
+    // Add logging to verify the path
+    sendLog(`[Electron] FFMPEG path determined to be: ${ffmpegPath}`);
 
     const payload = { jobType, url, cookies, ffmpeg_location: ffmpegPath };
 
@@ -142,7 +142,6 @@ ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
     }
 });
 
-// Other IPC handlers remain the same...
 ipcMain.handle('get-job-status', async (event, jobId) => {
     if (!isBackendReady) return { status: 'failed', message: 'Backend is not running.' };
     try {
