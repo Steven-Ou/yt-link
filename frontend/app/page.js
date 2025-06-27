@@ -24,6 +24,7 @@ import {
 
 const drawerWidth = 240;
 
+// Your customTheme remains unchanged.
 const customTheme = createTheme({
     palette: {
         mode: 'light',
@@ -44,6 +45,7 @@ const customTheme = createTheme({
     },
 });
 
+// Your WelcomePage component remains unchanged.
 function WelcomePage({ isElectron }) {
     const downloadUrl = "https://github.com/Steven-Ou/yt-link/releases/latest";
     return (
@@ -159,16 +161,18 @@ export default function Home() {
     useEffect(() => {
         setIsElectron(!!(window && window.electron));
         
-        // **LOGGING FIX**: This sets up the listener to print logs in the dev console.
-        if (window.electron && window.electron.onBackendLog) {
+        // **THIS IS THE ONLY ADDITION**: This effect listens for log messages from the
+        // main process (via preload.js) and prints them to the developer console.
+        if (window.electron && typeof window.electron.onBackendLog === 'function') {
             const removeListener = window.electron.onBackendLog((logMessage) => {
                 console.log(logMessage);
             });
-            // Cleanup the listener when the component unmounts
+            // This is a cleanup function that runs when the component is unmounted.
+            // It's good practice to prevent memory leaks.
             return () => removeListener();
         }
-
     }, []);
+
 
     const isAnyJobLoading = () => Object.values(activeJobs).some(job =>
         ['queued', 'downloading', 'processing'].includes(job.status)
