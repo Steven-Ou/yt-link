@@ -1,8 +1,0 @@
-{
-  "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.18.2",
-    "node": "^22.15.0",
-    "server.js": "^1.0.0"
-  }
-}
