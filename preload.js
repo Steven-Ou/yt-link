@@ -2,6 +2,10 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electron', {
+    // --- THIS IS THE NEW FUNCTION ---
+    // Listens for log messages from the main process and sends them to the frontend.
+    onBackendLog: (callback) => ipcRenderer.on('backend-log', (_event, message) => callback(message)),
+
     /**
      * Starts a download job of any type.
      * @param {object} payload - The job details.
@@ -39,8 +43,7 @@ contextBridge.exposeInMainWorld('electron', {
      */
     getDownloadsPath: () => ipcRenderer.invoke('get-downloads-path'),
 
-    // --- Optional: Listeners for app updates ---
-    onBackendStatus: (callback) => ipcRenderer.on('backend-status', (_event, value) => callback(value)),
+    // --- Listeners for app updates ---
     onUpdateAvailable: (callback) => ipcRenderer.on('update-available', (_event, value) => callback(value)),
     onUpdateError: (callback) => ipcRenderer.on('update-error', (_event, value) => callback(value)),
     removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
