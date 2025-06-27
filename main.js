@@ -4,6 +4,7 @@ const { spawn } = require('child_process');
 const portfinder = require('portfinder');
 const fetch = require('node-fetch');
 const fs = require('fs');
+const os = require('os');
 
 let pythonProcess = null;
 let mainWindow = null;
@@ -58,8 +59,8 @@ function startPythonBackend(port) {
         ? (process.platform === 'win32' ? 'python' : 'python3') 
         : path.join(process.resourcesPath, 'backend', process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend');
 
-    // **DEFINITIVE FIX**: The only argument passed is the port.
-    // The ffmpeg path will be sent with each job request instead.
+    // **DEFINITIVE FIX**: The ONLY argument passed to the Python script is the port number.
+    // This prevents the instant crash. The ffmpeg path is now handled per-job.
     const args = isDev 
         ? [path.join(__dirname, 'service', 'app.py'), port.toString()]
         : [port.toString()];
@@ -68,6 +69,7 @@ function startPythonBackend(port) {
     
     pythonProcess = spawn(command, args);
 
+    // This logging setup will now work because the Python process won't crash instantly.
     pythonProcess.stdout.on('data', (data) => {
         const log = data.toString().trim();
         sendLog(`[Python STDOUT]: ${log}`);
@@ -83,6 +85,9 @@ function startPythonBackend(port) {
     pythonProcess.on('close', (code) => {
         isBackendReady = false;
         sendLog(`[Electron] Python process exited with code ${code}`);
+        if (code !== 0 && mainWindow && !mainWindow.isDestroyed()) {
+             dialog.showErrorBox('Backend Error', `The backend service stopped unexpectedly (code: ${code}). Please check the logs or restart the application.`);
+        }
     });
 }
 
@@ -90,32 +95,41 @@ app.on('ready', createWindow);
 app.on('window-all-closed', () => app.quit());
 app.on('quit', () => pythonProcess?.kill());
 
+// IPC handler to start a job
 ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
     if (!isBackendReady) {
         return { error: 'Backend is not ready. Please wait a moment or restart the application.' };
     }
     
-    // **DEFINITIVE FIX**: Calculate the correct ffmpeg path and send it in the job payload.
+    // **DEFINITIVE FIX**: Calculate the correct ffmpeg path here and send it inside the job's JSON payload.
+    // This is much more reliable than using command-line arguments.
     const isDev = !app.isPackaged;
     const ffmpegPath = isDev 
         ? path.join(__dirname, 'bin')
         : path.join(process.resourcesPath, 'bin');
 
+    // Construct the payload with all necessary information.
     const payload = { jobType, url, cookies, ffmpeg_location: ffmpegPath };
 
     try {
+        sendLog(`[Electron] Sending job to Python backend: ${JSON.stringify(payload)}`);
         const response = await fetch(`http://127.0.0.1:${pyPort}/start-job`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
-        return await response.json();
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || `Python backend returned status ${response.status}`);
+        }
+        return result;
     } catch (error) {
+        sendLog(`[Electron] ERROR: Failed to communicate with backend: ${error.message}`);
         return { error: `Failed to communicate with backend: ${error.message}` };
     }
 });
 
-// Other IPC handlers remain the same...
+// Other IPC handlers remain unchanged...
 ipcMain.handle('get-job-status', async (event, jobId) => {
     if (!isBackendReady) return { status: 'failed', message: 'Backend is not running.' };
     try {
