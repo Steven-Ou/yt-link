@@ -5,28 +5,23 @@ import traceback
 import threading
 import uuid
 import zipfile
-import tempfile # Import the correct module for handling temporary directories
+import tempfile
 from flask import Flask, request, jsonify, send_file, Response
 from flask_cors import CORS
 import yt_dlp
 import platform
 import subprocess
 
-# --- Logging Setup ---
 ORIGINAL_STDOUT = sys.stdout
 ORIGINAL_STDERR = sys.stderr
 
-# --- Main Application Logic ---
 try:
     app = Flask(__name__)
     CORS(app)
-    jobs = {} # In-memory job store
+    jobs = {}
 
-    # **DEFINITIVE FIX**: Get the system's temporary directory ONCE at startup.
-    # All subsequent temporary files and folders will be created here.
     APP_TEMP_DIR = tempfile.gettempdir()
     print(f"--- Using system temporary directory: {APP_TEMP_DIR} ---", flush=True)
-
 
     def get_playlist_index(filename):
         try:
@@ -35,9 +30,6 @@ try:
             return float('inf')
 
     def download_thread(url, ydl_opts, job_id, download_type):
-        """Runs the download in a separate thread."""
-        # **DEFINITIVE FIX**: Create a unique temporary directory for this specific job
-        # inside the main system temporary directory.
         job_temp_dir = os.path.join(APP_TEMP_DIR, "yt-link", str(job_id))
         os.makedirs(job_temp_dir, exist_ok=True)
         jobs[job_id]['temp_dir'] = job_temp_dir
@@ -72,7 +64,6 @@ try:
 
         elif download_type == "playlistZip":
             zip_filename = f"{playlist_title}.zip"
-            # Create the zip file also in the system temp directory
             zip_path = os.path.join(APP_TEMP_DIR, "yt-link", f"{job_id}.zip")
             with zipfile.ZipFile(zip_path, 'w') as zipf:
                 for file in os.listdir(temp_dir):
@@ -115,6 +106,14 @@ try:
         data = request.get_json()
         print(f"--- Received /start-job request with payload: {data}", flush=True)
 
+        # --- BUG FIX: Add logging to verify the received path ---
+        ffmpeg_location = data.get('ffmpeg_location')
+        print(f"--- [Job Setup] FFMPEG location received: {ffmpeg_location}", flush=True)
+        if ffmpeg_location and os.path.isdir(ffmpeg_location):
+            print(f"--- [Job Setup] FFMPEG directory exists. Contents: {os.listdir(ffmpeg_location)}", flush=True)
+        else:
+            print(f"--- [Job Setup] WARNING: FFMPEG directory does not exist or is not a directory.", flush=True, file=sys.stderr)
+
         if not all(k in data for k in ['url', 'jobType', 'ffmpeg_location']):
             return jsonify({'error': 'Invalid request: Missing required parameters.'}), 400
 
@@ -137,7 +136,6 @@ try:
             ydl_opts['outtmpl'] = '%(playlist_index)s - %(title)s.%(ext)s'
         
         if data.get('cookies'):
-            # **DEFINITIVE FIX**: Also create the cookie file in the correct temp directory.
             cookie_file = os.path.join(APP_TEMP_DIR, "yt-link", f"cookies_{job_id}.txt")
             os.makedirs(os.path.dirname(cookie_file), exist_ok=True)
             with open(cookie_file, 'w', encoding='utf-8') as f: f.write(data['cookies'])
@@ -169,7 +167,6 @@ try:
         return Response(file_generator(), mimetype='application/octet-stream', headers={'Content-Disposition': f'attachment;filename="{job.get("file_name")}"'})
 
     if __name__ == '__main__':
-        # **DEFINITIVE FIX**: No longer need to create a 'temp' folder here.
         port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001
         print(f"Flask-Backend-Ready:{port}", file=ORIGINAL_STDOUT, flush=True)
         app.run(host='127.0.0.1', port=port, debug=False)
