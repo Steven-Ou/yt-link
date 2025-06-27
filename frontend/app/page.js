@@ -24,7 +24,6 @@ import {
 
 const drawerWidth = 240;
 
-// Your customTheme remains unchanged.
 const customTheme = createTheme({
     palette: {
         mode: 'light',
@@ -45,7 +44,6 @@ const customTheme = createTheme({
     },
 });
 
-// Your WelcomePage component remains unchanged.
 function WelcomePage({ isElectron }) {
     const downloadUrl = "https://github.com/Steven-Ou/yt-link/releases/latest";
     return (
@@ -75,7 +73,6 @@ function WelcomePage({ isElectron }) {
     );
 }
 
-// MODIFICATION: The 'downloadPath' property is now 'savedFilePath'.
 const JobStatusDisplay = ({ jobInfo }) => {
     if (!jobInfo || !jobInfo.status || jobInfo.status === 'idle') return null;
     let icon = <HourglassEmptyIcon />;
@@ -95,14 +92,13 @@ const JobStatusDisplay = ({ jobInfo }) => {
         case 'downloading':
         case 'processing':
             icon = <CircularProgress size={20} sx={{ mr: 1}} color="inherit" />;
-            color = "primary.main"; // Changed to primary for better visibility
+            color = "primary.main";
             showProgressBar = true;
             break;
         default: break;
     }
 
     const handleOpenFolder = () => {
-        // Now uses 'savedFilePath' which is the final path of the downloaded file.
         if (window.electron && jobInfo.savedFilePath) {
             window.electron.openFolder(jobInfo.savedFilePath);
         } else {
@@ -126,7 +122,6 @@ const JobStatusDisplay = ({ jobInfo }) => {
     );
 };
 
-// Your CookieInputField component remains unchanged.
 const CookieInputField = ({ value, onChange, disabled }) => (
     <TextField
         label="Paste YouTube Cookies Here (Optional)"
@@ -163,13 +158,22 @@ export default function Home() {
 
     useEffect(() => {
         setIsElectron(!!(window && window.electron));
+        
+        // **LOGGING FIX**: This sets up the listener to print logs in the dev console.
+        if (window.electron && window.electron.onBackendLog) {
+            const removeListener = window.electron.onBackendLog((logMessage) => {
+                console.log(logMessage);
+            });
+            // Cleanup the listener when the component unmounts
+            return () => removeListener();
+        }
+
     }, []);
 
     const isAnyJobLoading = () => Object.values(activeJobs).some(job =>
         ['queued', 'downloading', 'processing'].includes(job.status)
     );
 
-    // MODIFICATION: The polling logic is updated to handle the new download flow.
     const pollJobStatus = useCallback((jobId, jobType) => {
         if (pollingIntervals.current[jobId]) {
             clearInterval(pollingIntervals.current[jobId]);
@@ -185,7 +189,6 @@ export default function Home() {
 
                 if (data.error) { throw new Error(data.error); }
                 
-                // If job is completed, trigger the download from the main process.
                 if (data.status === 'completed') {
                     clearInterval(pollingIntervals.current[jobId]);
                     delete pollingIntervals.current[jobId];
@@ -201,7 +204,6 @@ export default function Home() {
                         throw new Error(downloadResult.error);
                     }
                     
-                    // Update UI with the final file path for the "Show File" button.
                     setActiveJobs(prev => ({
                         ...prev,
                         [jobType]: { ...prev[jobType], status: 'completed', message: 'File saved successfully!', savedFilePath: downloadResult.path }
@@ -215,7 +217,6 @@ export default function Home() {
                         [jobType]: { ...prev[jobType], ...data, message: data.error || `Job ${data.status}.` }
                     }));
                 } else {
-                     // Update progress for running jobs
                     setActiveJobs(prev => ({ ...prev, [jobType]: { ...prev[jobType], ...data } }));
                 }
 
@@ -230,7 +231,6 @@ export default function Home() {
         }, 2000);
     }, []);
 
-    // MODIFICATION: Logic now uses the unified `startJob` function.
     const startJob = async (jobType, urlValue, operationName) => {
         setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...` } }));
         try {
@@ -276,8 +276,6 @@ export default function Home() {
         return status === 'queued' || status === 'downloading' || status === 'processing';
     };
 
-    // The renderContent function and the main return JSX remain unchanged.
-    // They will work correctly with the updated state logic.
     const renderContent = () => {
         const anyJobLoading = isAnyJobLoading();
         switch (currentView) {
