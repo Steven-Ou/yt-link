@@ -41,18 +41,18 @@ function createWindow() {
             app.quit();
         });
 
-    // **CRITICAL FIX**: Corrected the path for loading the frontend.
-    // In development, we load from the dev server.
-    // In a packaged app, the 'frontend/out' folder is at the root of the resources directory.
+    // **CRITICAL FIX**: The path for the packaged app is now corrected.
+    // The build process places the Next.js files in the root of the resources
+    // directory, so we should load index.html from there directly.
     const urlToLoad = app.isPackaged
-        ? `file://${path.join(process.resourcesPath, 'frontend', 'out', 'index.html')}`
+        ? `file://${path.join(__dirname, 'index.html')}`
         : 'http://localhost:3000';
     
     sendLog(`[Electron] Loading URL: ${urlToLoad}`);
     mainWindow.loadURL(urlToLoad)
       .catch(err => {
         sendLog(`[Electron] ERROR: Failed to load URL: ${urlToLoad}`);
-        sendLog(err);
+        sendLog(JSON.stringify(err));
         dialog.showErrorBox('Load Error', `Failed to load the application window. Please check the logs.\n${err}`);
       });
 
@@ -72,7 +72,7 @@ function startPythonBackend(port) {
     // Path to the backend executable is different in dev vs. packaged app
     const command = isDev 
         ? (process.platform === 'win32' ? 'python' : 'python3') 
-        : path.join(process.resourcesPath, 'backend', process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend');
+        : path.join(process.resourcesPath, 'backend', 'yt-link-backend');
 
     // The main app.py script is in the 'service' folder during development
     const args = isDev 
