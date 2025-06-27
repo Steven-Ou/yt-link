@@ -99,11 +99,11 @@ jobs:
       - name: List downloaded files for verification
         run: ls -R artifacts
 
-      # --- BUG FIX: Overwrite existing assets to prevent 422 error ---
-      - name: Create GitHub Release and Upload Assets
-        uses: softprops/action-gh-release@v1
+      # --- BUG FIX: Update the action to v2, which handles existing releases ---
+      - name: Create or Update GitHub Release and Upload Assets
+        uses: softprops/action-gh-release@v2
         with:
-          overwrite: true # This will replace assets if the tag already exists
+          # This version automatically updates the release if the tag already exists
           files: |
             artifacts/YT-Link-macOS-dmg/*
             artifacts/YT-Link-Windows-zip/*
