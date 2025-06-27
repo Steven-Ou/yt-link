@@ -10,6 +10,7 @@ let mainWindow = null;
 let pyPort = null;
 let isBackendReady = false;
 
+// **RE-IMPLEMENTED**: Function to send logs from main to renderer for debugging.
 function sendLog(message) {
     console.log(message);
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
@@ -22,6 +23,7 @@ function createWindow() {
         width: 1200,
         height: 800,
         webPreferences: {
+            // Preload script is essential for the context bridge.
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
@@ -39,11 +41,21 @@ function createWindow() {
             app.quit();
         });
 
+    // **CRITICAL FIX**: Corrected the path for loading the frontend.
+    // In development, we load from the dev server.
+    // In a packaged app, the 'frontend/out' folder is at the root of the resources directory.
     const urlToLoad = app.isPackaged
-        ? `file://${path.join(__dirname, '..', 'frontend', 'out', 'index.html')}`
+        ? `file://${path.join(process.resourcesPath, 'frontend', 'out', 'index.html')}`
         : 'http://localhost:3000';
     
-    mainWindow.loadURL(urlToLoad);
+    sendLog(`[Electron] Loading URL: ${urlToLoad}`);
+    mainWindow.loadURL(urlToLoad)
+      .catch(err => {
+        sendLog(`[Electron] ERROR: Failed to load URL: ${urlToLoad}`);
+        sendLog(err);
+        dialog.showErrorBox('Load Error', `Failed to load the application window. Please check the logs.\n${err}`);
+      });
+
 
     if (!app.isPackaged) {
         mainWindow.webContents.openDevTools();
@@ -57,40 +69,37 @@ function createWindow() {
 function startPythonBackend(port) {
     const isDev = !app.isPackaged;
     
+    // Path to the backend executable is different in dev vs. packaged app
     const command = isDev 
         ? (process.platform === 'win32' ? 'python' : 'python3') 
         : path.join(process.resourcesPath, 'backend', process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend');
 
-    // Use the `service` directory in dev, and an empty array for packaged app
+    // The main app.py script is in the 'service' folder during development
     const args = isDev 
-        ? [path.join(__dirname, 'app.py'), port.toString()]
+        ? [path.join(__dirname, '..', 'service', 'app.py'), port.toString()]
         : [port.toString()];
     
-    const binPath = isDev ? path.join(__dirname, '..', 'bin') : path.join(process.resourcesPath, 'bin');
-    const newEnv = { ...process.env };
-    newEnv.PATH = `${binPath}${path.delimiter}${newEnv.PATH}`;
+    // In development, the 'service' directory is the working directory for python.
+    // In production, the backend runs from the root of the resources path.
+    const cwd = isDev ? path.join(__dirname, '..', 'service') : process.resourcesPath;
 
-    const options = {
-        env: newEnv,
-        // In development, the python script is in the root, not a 'service' subfolder.
-        cwd: isDev ? __dirname : process.resourcesPath,
-    };
-    
     sendLog(`[Electron] Starting backend: ${command} ${args.join(' ')}`);
-    sendLog(`[Electron] Using CWD: ${options.cwd}`);
-    sendLog(`[Electron] Augmenting backend PATH with: ${binPath}`);
+    sendLog(`[Electron] Backend CWD: ${cwd}`);
     
-    pythonProcess = spawn(command, args, options);
+    pythonProcess = spawn(command, args, { cwd });
 
     pythonProcess.stdout.on('data', (data) => {
         const log = data.toString().trim();
+        // Forward Python's stdout to the renderer console
         sendLog(`[Python STDOUT]: ${log}`);
         if (log.includes(`Flask-Backend-Ready:${port}`)) {
             isBackendReady = true;
+            sendLog('[Electron] Backend is ready.');
         }
     });
     
     pythonProcess.stderr.on('data', (data) => {
+        // Forward Python's stderr to the renderer console
         sendLog(`[Python STDERR]: ${data.toString().trim()}`);
     });
     
@@ -112,11 +121,10 @@ ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
         return { error: 'Backend is not ready. Please wait a moment or restart the application.' };
     }
     
-    // **FIX**: Determine the correct path to the ffmpeg/ffprobe binaries
-    // and pass it to the Python backend with every job request.
+    // Determine the path to the ffmpeg binaries and pass it to Python.
     const ffmpegPath = app.isPackaged
         ? path.join(process.resourcesPath, 'bin')
-        : path.join(__dirname, '..', 'bin'); // In dev, 'bin' is in the root
+        : path.resolve(__dirname, '..', 'bin'); // Use resolve for a robust dev path
 
     const payload = { jobType, url, cookies, ffmpeg_location: ffmpegPath };
 
@@ -127,8 +135,12 @@ ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
+        if (!response.ok) {
+            throw new Error(`Backend responded with status: ${response.status}`);
+        }
         return await response.json();
     } catch (error) {
+        sendLog(`[Electron] ERROR: Failed to communicate with backend: ${error.message}`);
         return { error: `Failed to communicate with backend: ${error.message}` };
     }
 });
@@ -155,7 +167,10 @@ ipcMain.handle('download-file', async (event, jobId) => {
         }
         
         const downloadsPath = app.getPath('downloads');
-        const filePath = path.join(downloadsPath, job.file_name);
+        // Ensure the filename is sanitized before creating the path
+        const safeFileName = job.file_name.replace(/[\/\\]/g, '_');
+        const filePath = path.join(downloadsPath, safeFileName);
+        
         const downloadUrl = `http://127.0.0.1:${pyPort}/download/${jobId}`;
         const downloadResponse = await fetch(downloadUrl);
 
@@ -170,6 +185,7 @@ ipcMain.handle('download-file', async (event, jobId) => {
 
         return { success: true, path: filePath };
     } catch(error) {
+        sendLog(`[Electron] Download Error: ${error.message}`);
         dialog.showErrorBox('Download Error', `Could not download the file: ${error.message}`);
         return { error: error.message };
     }
@@ -180,5 +196,6 @@ ipcMain.handle('open-folder', (event, folderPath) => {
         shell.showItemInFolder(folderPath);
     } else {
         sendLog(`[Electron] ERROR: Attempted to open non-existent path: ${folderPath}`);
+        dialog.showErrorBox('File Not Found', `The path does not exist: ${folderPath}`);
     }
 });
