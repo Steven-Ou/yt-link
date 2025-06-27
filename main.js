@@ -10,7 +10,7 @@ let mainWindow = null;
 let pyPort = null;
 let isBackendReady = false;
 
-// **RE-IMPLEMENTED**: Function to send logs from main to renderer for debugging.
+// Function to send logs from the main process to the renderer for debugging
 function sendLog(message) {
     console.log(message);
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
@@ -23,7 +23,6 @@ function createWindow() {
         width: 1200,
         height: 800,
         webPreferences: {
-            // Preload script is essential for the context bridge.
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
@@ -41,19 +40,19 @@ function createWindow() {
             app.quit();
         });
 
-    // **CRITICAL FIX**: The path for the packaged app is now corrected.
-    // The build process places the Next.js files in the root of the resources
-    // directory, so we should load index.html from there directly.
+    // **FIX #1: Frontend Path**
+    // Based on your `package.json`, the "files" array packs `frontend/out/**/*`
+    // into the asar archive. This path correctly loads it.
     const urlToLoad = app.isPackaged
-        ? `file://${path.join(__dirname, 'index.html')}`
+        ? `file://${path.join(__dirname, 'frontend/out/index.html')}`
         : 'http://localhost:3000';
     
     sendLog(`[Electron] Loading URL: ${urlToLoad}`);
     mainWindow.loadURL(urlToLoad)
       .catch(err => {
-        sendLog(`[Electron] ERROR: Failed to load URL: ${urlToLoad}`);
-        sendLog(JSON.stringify(err));
-        dialog.showErrorBox('Load Error', `Failed to load the application window. Please check the logs.\n${err}`);
+        const errorString = JSON.stringify(err, Object.getOwnPropertyNames(err));
+        sendLog(`[Electron] FATAL: Failed to load URL: ${urlToLoad}. Error: ${errorString}`);
+        dialog.showErrorBox('Load Error', `Failed to load the application window. Please check the logs.\n${errorString}`);
       });
 
 
@@ -69,28 +68,27 @@ function createWindow() {
 function startPythonBackend(port) {
     const isDev = !app.isPackaged;
     
-    // Path to the backend executable is different in dev vs. packaged app
+    const backendName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
+
+    // **FIX #2: Backend Path**
+    // `extraResources` are placed in the `Resources` directory on macOS/Linux and adjacent to the .exe on Windows.
+    // `process.resourcesPath` is the correct, cross-platform way to get this directory.
     const command = isDev 
         ? (process.platform === 'win32' ? 'python' : 'python3') 
-        : path.join(process.resourcesPath, 'backend', 'yt-link-backend');
+        : path.join(process.resourcesPath, 'backend', backendName);
 
-    // The main app.py script is in the 'service' folder during development
     const args = isDev 
         ? [path.join(__dirname, '..', 'service', 'app.py'), port.toString()]
         : [port.toString()];
     
-    // In development, the 'service' directory is the working directory for python.
-    // In production, the backend runs from the root of the resources path.
-    const cwd = isDev ? path.join(__dirname, '..', 'service') : process.resourcesPath;
+    const cwd = isDev ? path.join(__dirname, '..', 'service') : path.dirname(command);
 
     sendLog(`[Electron] Starting backend: ${command} ${args.join(' ')}`);
-    sendLog(`[Electron] Backend CWD: ${cwd}`);
     
     pythonProcess = spawn(command, args, { cwd });
 
     pythonProcess.stdout.on('data', (data) => {
         const log = data.toString().trim();
-        // Forward Python's stdout to the renderer console
         sendLog(`[Python STDOUT]: ${log}`);
         if (log.includes(`Flask-Backend-Ready:${port}`)) {
             isBackendReady = true;
@@ -99,7 +97,6 @@ function startPythonBackend(port) {
     });
     
     pythonProcess.stderr.on('data', (data) => {
-        // Forward Python's stderr to the renderer console
         sendLog(`[Python STDERR]: ${data.toString().trim()}`);
     });
     
@@ -112,7 +109,11 @@ function startPythonBackend(port) {
 app.on('ready', createWindow);
 app.on('window-all-closed', () => process.platform !== 'darwin' && app.quit());
 app.on('activate', () => BrowserWindow.getAllWindows().length === 0 && createWindow());
-app.on('quit', () => pythonProcess && pythonProcess.kill());
+app.on('quit', () => {
+    if (pythonProcess) {
+        pythonProcess.kill();
+    }
+});
 
 // --- IPC HANDLERS ---
 
@@ -121,22 +122,24 @@ ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
         return { error: 'Backend is not ready. Please wait a moment or restart the application.' };
     }
     
-    // Determine the path to the ffmpeg binaries and pass it to Python.
+    // **FIX #3: FFMPEG Path**
+    // This is the direct fix for the `ffmpeg not found` error. We find the `bin`
+    // directory inside the packaged app's resources and pass its path to Python.
     const ffmpegPath = app.isPackaged
         ? path.join(process.resourcesPath, 'bin')
-        : path.resolve(__dirname, '..', 'bin'); // Use resolve for a robust dev path
+        : path.resolve(__dirname, '..', 'bin'); 
 
     const payload = { jobType, url, cookies, ffmpeg_location: ffmpegPath };
 
     try {
-        sendLog(`[Electron] Sending job to Python: ${JSON.stringify(payload)}`);
+        sendLog(`[Electron] Sending job to Python with payload: ${JSON.stringify(payload)}`);
         const response = await fetch(`http://127.0.0.1:${pyPort}/start-job`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
         if (!response.ok) {
-            throw new Error(`Backend responded with status: ${response.status}`);
+            throw new Error(`Backend responded with status: ${response.status} ${await response.text()}`);
         }
         return await response.json();
     } catch (error) {
@@ -167,7 +170,6 @@ ipcMain.handle('download-file', async (event, jobId) => {
         }
         
         const downloadsPath = app.getPath('downloads');
-        // Ensure the filename is sanitized before creating the path
         const safeFileName = job.file_name.replace(/[\/\\]/g, '_');
         const filePath = path.join(downloadsPath, safeFileName);
         
