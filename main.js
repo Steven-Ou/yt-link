@@ -66,6 +66,7 @@ function startPythonBackend(port) {
         : [port.toString()];
     
     // --- DEFINITIVE FIX: Create a new environment for the child process ---
+    // This reliably provides the path to the bundled binaries.
     const binPath = isDev ? path.join(__dirname, 'bin') : path.join(process.resourcesPath, 'bin');
     const newEnv = { ...process.env };
     newEnv.PATH = `${binPath}${path.delimiter}${newEnv.PATH}`;
@@ -73,10 +74,12 @@ function startPythonBackend(port) {
     const options = {
         env: newEnv,
     };
+    // --- END FIX ---
     
     sendLog(`[Electron] Starting backend: ${command} ${args.join(' ')}`);
     sendLog(`[Electron] Augmenting backend PATH with: ${binPath}`);
     
+    // Pass the corrected environment options to the spawn call
     pythonProcess = spawn(command, args, options);
 
     pythonProcess.stdout.on('data', (data) => {
@@ -102,11 +105,14 @@ app.on('window-all-closed', () => process.platform !== 'darwin' && app.quit());
 app.on('activate', () => BrowserWindow.getAllWindows().length === 0 && createWindow());
 app.on('quit', () => pythonProcess && pythonProcess.kill());
 
+// --- IPC HANDLERS ---
+
 ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
     if (!isBackendReady) {
         return { error: 'Backend is not ready. Please wait a moment or restart the application.' };
     }
     
+    // The ffmpeg_location is no longer needed in the payload
     const payload = { jobType, url, cookies };
 
     try {
