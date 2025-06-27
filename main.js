@@ -4,12 +4,19 @@ const { spawn } = require('child_process');
 const portfinder = require('portfinder');
 const fetch = require('node-fetch');
 const fs = require('fs');
-const os = require('os');
 
 let pythonProcess = null;
 let mainWindow = null;
 let pyPort = null;
 let isBackendReady = false;
+
+// Function to send logs to the renderer process
+function sendLog(message) {
+    if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send('backend-log', message);
+    }
+    console.log(message);
+}
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -33,52 +40,49 @@ function createWindow() {
             app.quit();
         });
 
-    if (app.isPackaged) {
-        mainWindow.loadFile(path.join(__dirname, 'frontend', 'out', 'index.html'));
-    } else {
-        mainWindow.loadURL('http://localhost:3000');
+    const urlToLoad = app.isPackaged
+        ? `file://${path.join(__dirname, 'frontend', 'out', 'index.html')}`
+        : 'http://localhost:3000';
+    
+    mainWindow.loadURL(urlToLoad);
+
+    if (!app.isPackaged) {
         mainWindow.webContents.openDevTools();
     }
 }
 
 function startPythonBackend(port) {
     const isDev = !app.isPackaged;
-    const ffmpegPath = isDev 
-        ? path.join(__dirname, 'bin')
-        : path.join(process.resourcesPath, 'bin');
-
+    
     const command = isDev 
         ? (process.platform === 'win32' ? 'python' : 'python3') 
         : path.join(process.resourcesPath, 'backend', process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend');
 
+    // **DEFINITIVE FIX**: The only argument passed is the port.
+    // The ffmpeg path will be sent with each job request instead.
     const args = isDev 
-        ? [path.join(__dirname, 'service', 'app.py'), port.toString(), ffmpegPath]
-        : [port.toString(), ffmpegPath];
+        ? [path.join(__dirname, 'service', 'app.py'), port.toString()]
+        : [port.toString()];
     
-    // **LOGGING FIX**: Forward Python's output to the frontend renderer.
+    sendLog(`[Electron] Starting backend with command: ${command} ${args.join(' ')}`);
+    
     pythonProcess = spawn(command, args);
 
-    const forwardLog = (log) => {
-        console.log(log); // Also log to the main process terminal.
-        if (mainWindow && mainWindow.webContents) {
-            mainWindow.webContents.send('backend-log', log);
-        }
-    };
-    
     pythonProcess.stdout.on('data', (data) => {
-        const log = `[Python STDOUT]: ${data.toString().trim()}`;
-        forwardLog(log);
-        if (data.toString().includes(`Flask-Backend-Ready:${port}`)) {
+        const log = data.toString().trim();
+        sendLog(`[Python STDOUT]: ${log}`);
+        if (log.includes(`Flask-Backend-Ready:${port}`)) {
             isBackendReady = true;
         }
     });
     
     pythonProcess.stderr.on('data', (data) => {
-        forwardLog(`[Python STDERR]: ${data.toString().trim()}`);
+        sendLog(`[Python STDERR]: ${data.toString().trim()}`);
     });
     
     pythonProcess.on('close', (code) => {
-        forwardLog(`[Electron] Python process exited with code ${code}`);
+        isBackendReady = false;
+        sendLog(`[Electron] Python process exited with code ${code}`);
     });
 }
 
@@ -86,8 +90,19 @@ app.on('ready', createWindow);
 app.on('window-all-closed', () => app.quit());
 app.on('quit', () => pythonProcess?.kill());
 
-ipcMain.handle('start-job', async (event, payload) => {
-    if (!isBackendReady) return { error: 'Backend is not ready.' };
+ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
+    if (!isBackendReady) {
+        return { error: 'Backend is not ready. Please wait a moment or restart the application.' };
+    }
+    
+    // **DEFINITIVE FIX**: Calculate the correct ffmpeg path and send it in the job payload.
+    const isDev = !app.isPackaged;
+    const ffmpegPath = isDev 
+        ? path.join(__dirname, 'bin')
+        : path.join(process.resourcesPath, 'bin');
+
+    const payload = { jobType, url, cookies, ffmpeg_location: ffmpegPath };
+
     try {
         const response = await fetch(`http://127.0.0.1:${pyPort}/start-job`, {
             method: 'POST',
@@ -96,20 +111,15 @@ ipcMain.handle('start-job', async (event, payload) => {
         });
         return await response.json();
     } catch (error) {
-        return { error: error.message };
+        return { error: `Failed to communicate with backend: ${error.message}` };
     }
 });
 
-// Other IPC handlers (get-job-status, download-file, etc.) remain the same
+// Other IPC handlers remain the same...
 ipcMain.handle('get-job-status', async (event, jobId) => {
-    if (!isBackendReady) return { status: 'failed', message: 'Backend service is not running.' };
+    if (!isBackendReady) return { status: 'failed', message: 'Backend is not running.' };
     try {
-        const url = `http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`;
-        const response = await fetch(url);
-        if (!response.ok) {
-            if (response.status === 404) return { status: 'not_found', message: `Job ${jobId} not found.` };
-            throw new Error(`Python API Error: ${response.status} - ${await response.text()}`);
-        }
+        const response = await fetch(`http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`);
         return await response.json();
     } catch (error) {
         return { error: error.message };
@@ -117,26 +127,22 @@ ipcMain.handle('get-job-status', async (event, jobId) => {
 });
 
 ipcMain.handle('download-file', async (event, jobId) => {
-    if (!isBackendReady) return { error: 'Backend service is not running.' };
+    if (!isBackendReady) return { error: 'Backend is not running.' };
     try {
         const jobStatusUrl = `http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`;
         const statusResponse = await fetch(jobStatusUrl);
-        if(!statusResponse.ok) throw new Error('Could not get job status before download.');
-        
         const job = await statusResponse.json();
-        if(job.status !== 'completed' || !job.file_name) {
-             return { error: 'File is not ready for download or filename is missing.' };
+
+        if (job.status !== 'completed' || !job.file_name) {
+            return { error: 'File is not ready for download.' };
         }
         
         const downloadsPath = app.getPath('downloads');
         const filePath = path.join(downloadsPath, job.file_name);
-        
         const downloadUrl = `http://127.0.0.1:${pyPort}/download/${jobId}`;
         const downloadResponse = await fetch(downloadUrl);
 
-        if (!downloadResponse.ok) {
-            throw new Error(`Failed to download file from backend: ${await downloadResponse.text()}`);
-        }
+        if (!downloadResponse.ok) throw new Error(`Backend download error: ${await downloadResponse.text()}`);
 
         const fileStream = fs.createWriteStream(filePath);
         await new Promise((resolve, reject) => {
@@ -146,9 +152,8 @@ ipcMain.handle('download-file', async (event, jobId) => {
         });
 
         return { success: true, path: filePath };
-
     } catch(error) {
-        dialog.showErrorBox('Download Error', `Could not download the file. Reason: ${error.message}`);
+        dialog.showErrorBox('Download Error', `Could not download the file: ${error.message}`);
         return { error: error.message };
     }
 });
@@ -157,6 +162,6 @@ ipcMain.handle('open-folder', (event, folderPath) => {
     if (folderPath && fs.existsSync(folderPath)) {
         shell.showItemInFolder(folderPath);
     } else {
-        console.error(`[Electron] Attempted to open a path that does not exist: ${folderPath}`);
+        sendLog(`[Electron] ERROR: Attempted to open non-existent path: ${folderPath}`);
     }
 });
