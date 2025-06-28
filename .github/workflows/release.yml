@@ -22,6 +22,9 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+      
+      - name: Install root and frontend Node.js dependencies
+        run: npm install && npm install --prefix frontend
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -29,31 +32,24 @@ jobs:
           python-version: '3.10'
           cache: 'pip'
 
-      - name: Install root and frontend Node.js dependencies
-        run: npm install && npm install --prefix frontend
-
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
-      # --- Platform-Specific Binary Downloads ---
-      - name: Download FFmpeg and FFprobe for macOS
-        if: runner.os == 'macOS'
+      # --- THIS IS THE FIX: Ensure binaries are downloaded and placed correctly before build ---
+      - name: Prepare FFMPEG Binaries
         shell: bash
         run: |
           mkdir -p bin
-          curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-mac-arm64 -o bin/ffmpeg
-          curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-mac-arm64 -o bin/ffprobe
-          chmod +x bin/*
-          echo "Downloaded and set permissions for macOS binaries."
-
-      - name: Download FFmpeg and FFprobe for Windows
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          mkdir -p bin
-          curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-win32-x64.exe -o bin/ffmpeg.exe
-          curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-win32-x64.exe -o bin/ffprobe.exe
-          echo "Downloaded Windows binaries."
+          if [ "${{ runner.os }}" == "macOS" ]; then
+            echo "Downloading and setting permissions for macOS binaries..."
+            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-mac-arm64 -o bin/ffmpeg
+            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-mac-arm64 -o bin/ffprobe
+            chmod +x bin/*
+          elif [ "${{ runner.os }}" == "Windows" ]; then
+            echo "Downloading Windows binaries..."
+            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-win32-x64.exe -o bin/ffmpeg.exe
+            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-win32-x64.exe -o bin/ffprobe.exe
+          fi
 
       - name: Build Electron app
         env:
@@ -99,7 +95,6 @@ jobs:
       - name: List downloaded files for verification
         run: ls -R artifacts
 
-      # --- BUG FIX: Update the action to v2, which handles existing releases ---
       - name: Create or Update GitHub Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
