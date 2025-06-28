@@ -10,7 +10,6 @@ let mainWindow = null;
 let pyPort = null;
 let isBackendReady = false;
 
-// Function to send logs from the main process to the renderer for debugging
 function sendLog(message) {
     console.log(message);
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
@@ -18,6 +17,24 @@ function sendLog(message) {
     }
 }
 
+function loadMainWindow() {
+    const urlToLoad = !app.isPackaged
+        ? 'http://localhost:3000'
+        : `file://${path.join(__dirname, 'frontend/out/index.html')}`;
+    
+    sendLog(`[Electron] Attempting to load URL: ${urlToLoad}`);
+    
+    mainWindow.loadURL(urlToLoad).catch(err => {
+        sendLog(`[Electron] First load attempt failed: ${err.message}. Retrying in 2 seconds...`);
+        setTimeout(() => {
+            mainWindow.loadURL(urlToLoad).catch(err2 => {
+                const errorString = JSON.stringify(err2, Object.getOwnPropertyNames(err2));
+                sendLog(`[Electron] FATAL: Failed to load URL on second attempt: ${urlToLoad}. Error: ${errorString}`);
+                dialog.showErrorBox('Fatal Load Error', `The application window failed to load twice. Please restart the app or check logs.\n${errorString}`);
+            });
+        }, 2000);
+    });
+}
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -41,21 +58,8 @@ function createWindow() {
             app.quit();
         });
 
-    // --- THIS IS THE FIX ---
-    // Use app.isPackaged to determine whether to load from the dev server or a static file.
-    const urlToLoad = !app.isPackaged
-        ? 'http://localhost:3000'
-        : `file://${path.join(__dirname, 'frontend/out/index.html')}`;
+    loadMainWindow();
     
-    sendLog(`[Electron] Loading URL: ${urlToLoad}`);
-    mainWindow.loadURL(urlToLoad)
-      .catch(err => {
-        const errorString = JSON.stringify(err, Object.getOwnPropertyNames(err));
-        sendLog(`[Electron] FATAL: Failed to load URL: ${urlToLoad}. Error: ${errorString}`);
-        dialog.showErrorBox('Load Error', `Failed to load the application window. Please check the logs.\n${errorString}`);
-      });
-    
-    // Only open DevTools when not in a packaged app
     if (!app.isPackaged) {
         mainWindow.webContents.openDevTools();
     }
@@ -69,20 +73,21 @@ function startPythonBackend(port) {
     const isDev = !app.isPackaged;
     
     const backendName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
-    const command = isDev 
-        ? (process.platform === 'win32' ? 'python' : 'python3') 
+    // When packaged, the backend is in the Resources folder.
+    const backendPath = isDev 
+        ? path.join(__dirname, 'service', 'app.py') 
         : path.join(process.resourcesPath, 'backend', backendName);
 
-    const args = isDev 
-        ? [path.join(__dirname, 'service', 'app.py'), port.toString()] // Removed -Xfrozen_modules=off as it's not needed here
-        : [port.toString()];
+    const command = isDev 
+        ? (process.platform === 'win32' ? 'python' : 'python3') 
+        : backendPath;
+
+    const args = isDev ? [backendPath, port.toString()] : [port.toString()];
     
-    // In development, the working directory for the Python script should be the 'service' folder itself.
     const cwd = isDev ? path.join(__dirname, 'service') : path.dirname(command);
 
     sendLog(`[Electron] Starting backend: ${command} ${args.join(' ')} in ${cwd}`);
     
-    // The Python script is now responsible for finding its own dependencies.
     pythonProcess = spawn(command, args, { cwd: cwd });
 
     pythonProcess.stdout.on('data', (data) => {
