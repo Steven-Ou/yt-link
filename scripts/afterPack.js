@@ -8,28 +8,32 @@ const path = require('path');
  * ffmpeg, ffprobe, and the Python backend itself, which is a requirement on macOS and Linux.
  */
 exports.default = async function (context) {
+  const { appOutDir, packager } = context;
+  const platformName = packager.platform.name;
+
+  console.log(`--- AfterPack Hook: Starting for platform '${platformName}' ---`);
+
   // This hook is only necessary for non-Windows platforms.
-  if (process.platform === 'win32') {
+  if (platformName === 'win') {
     console.log('[AfterPack] Windows platform detected, skipping chmod.');
     return;
   }
 
-  console.log('--- AfterPack Hook: Setting executable permissions ---');
+  // On macOS, resources are in the .app bundle. On Linux, they are in the root.
+  const resourcesPath = platformName === 'mac'
+    ? path.join(appOutDir, `${packager.appInfo.productFilename}.app`, 'Contents', 'Resources')
+    : path.join(appOutDir, 'resources');
   
-  const { appOutDir, packager } = context;
-  const appName = packager.appInfo.productFilename;
-  
-  // Define the path to the app's resources directory. On macOS, this is inside the .app bundle.
-  const resourcesPath = path.join(appOutDir, `${appName}.app`, 'Contents', 'Resources');
-  
-  // Define paths to the bundled executables that need permissions.
-  const ffmpegPath = path.join(resourcesPath, 'bin', 'ffmpeg');
-  const ffprobePath = path.join(resourcesPath, 'bin', 'ffprobe');
-  const backendPath = path.join(resourcesPath, 'backend', 'yt-link-backend');
-  
-  const filesToChmod = [ffmpegPath, ffprobePath, backendPath];
+  console.log(`[AfterPack] Resources path determined to be: ${resourcesPath}`);
+
+  const filesToChmod = [
+    path.join(resourcesPath, 'bin', 'ffmpeg'),
+    path.join(resourcesPath, 'bin', 'ffprobe'),
+    path.join(resourcesPath, 'backend', 'yt-link-backend')
+  ];
 
   for (const filePath of filesToChmod) {
+    console.log(`[AfterPack] Processing file: ${filePath}`);
     try {
       if (fs.existsSync(filePath)) {
         // Set permissions to 'rwxr-xr-x' (read/write/execute for owner, read/execute for others)
