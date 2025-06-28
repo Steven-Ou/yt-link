@@ -1,5 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
-
+console.log("--- PRELOAD SCRIPT EXECUTING ---");
 contextBridge.exposeInMainWorld('electron', {
     // **LOGGING FIX**: This function allows the frontend to receive logs from the main process.
     onBackendLog: (callback) => {

@@ -18,6 +18,7 @@ function sendLog(message) {
     }
 }
 
+
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1200,
@@ -41,7 +42,7 @@ function createWindow() {
         });
 
     // This path correctly loads the frontend from the asar archive in the packaged app.
-    const urlToLoad = app.isPackaged
+    const urlToLoad = true
         ? `file://${path.join(__dirname, 'frontend/out/index.html')}`
         : 'http://localhost:3000';
     
@@ -52,7 +53,7 @@ function createWindow() {
         sendLog(`[Electron] FATAL: Failed to load URL: ${urlToLoad}. Error: ${errorString}`);
         dialog.showErrorBox('Load Error', `Failed to load the application window. Please check the logs.\n${errorString}`);
       });
-
+    mainWindow.webContents.openDevTools();
 
     if (!app.isPackaged) {
         mainWindow.webContents.openDevTools();
@@ -72,7 +73,7 @@ function startPythonBackend(port) {
         : path.join(process.resourcesPath, 'backend', backendName);
 
     const args = isDev 
-        ? [path.join(__dirname, '..', 'service', 'app.py'), port.toString()]
+        ? [path.join(__dirname, 'service', 'app.py'), port.toString(), '-Xfrozen_modules=off']
         : [port.toString()];
     
     const cwd = isDev ? path.join(__dirname, '..', 'service') : path.dirname(command);
@@ -80,7 +81,7 @@ function startPythonBackend(port) {
     sendLog(`[Electron] Starting backend: ${command} ${args.join(' ')}`);
     
     // The Python script is now responsible for finding its own dependencies.
-    pythonProcess = spawn(command, args, { cwd });
+    pythonProcess = spawn(command, args);
 
     pythonProcess.stdout.on('data', (data) => {
         const log = data.toString().trim();
