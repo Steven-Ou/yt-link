@@ -30,19 +30,21 @@ def get_ffmpeg_path():
         # In a packaged app, the executable's path is the starting point.
         base_path = os.path.dirname(sys.executable)
         
-        # On macOS, the structure is app.app/Contents/Resources/
-        # and the executable is in app.app/Contents/MacOS/
+        # On macOS, the packaged structure is YourApp.app/Contents/Resources/.
+        # The Python backend is in .../Resources/backend/ and ffmpeg is in .../Resources/bin/.
+        # They are siblings inside the Resources folder.
         if platform.system() == "Darwin":
-            # Navigates from .../MacOS/yt-link-backend up to Contents and then down to Resources/bin
-            bin_path = os.path.abspath(os.path.join(base_path, '..', 'Resources', 'bin'))
-        else: # Windows and Linux
-            # Binaries are placed next to the executable.
+            # From .../Resources/backend/, go up one level to .../Resources/, then down to 'bin'.
+            bin_path = os.path.abspath(os.path.join(base_path, '..', 'bin'))
+        else: # For Windows
+            # The binaries are placed right next to the main executable.
             bin_path = os.path.join(base_path, 'bin')
 
         if os.path.exists(bin_path):
             print(f"--- FFMPEG_PATH: Found at '{bin_path}' ---", flush=True)
             return bin_path
         else:
+            # This is the critical log for debugging.
             print(f"--- FFMPEG_PATH: WARNING! Packaged path not found: '{bin_path}' ---", file=sys.stderr, flush=True)
             return None
     except Exception as e:
