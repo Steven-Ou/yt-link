@@ -22,30 +22,32 @@ def get_ffmpeg_path():
     Returns the path to the directory containing ffmpeg, or None if not found.
     """
     if not getattr(sys, 'frozen', False):
-        # Development environment: rely on system PATH.
         print("--- FFMPEG_PATH: Running in dev mode, using system PATH. ---", flush=True)
         return None
 
     try:
-        # In a packaged app, the executable's path is the starting point.
-        base_path = os.path.dirname(sys.executable)
-        
-        # On macOS, the packaged structure is YourApp.app/Contents/Resources/.
-        # The Python backend is in .../Resources/backend/ and ffmpeg is in .../Resources/bin/.
-        # They are siblings inside the Resources folder.
+        # --- DEBUGGING ---
+        # Log the initial executable path to see exactly where the script is running from.
+        executable_path = sys.executable
+        print(f"--- FFMPEG_DEBUG: sys.executable is '{executable_path}' ---", flush=True)
+        base_path = os.path.dirname(executable_path)
+        print(f"--- FFMPEG_DEBUG: base_path is '{base_path}' ---", flush=True)
+
         if platform.system() == "Darwin":
-            # From .../Resources/backend/, go up one level to .../Resources/, then down to 'bin'.
+            # On macOS, the structure is YourApp.app/Contents/Resources/
+            # The backend is in .../Resources/backend/ and ffmpeg is in .../Resources/bin/
             bin_path = os.path.abspath(os.path.join(base_path, '..', 'bin'))
-        else: # For Windows
-            # The binaries are placed right next to the main executable.
+        else: # For Windows/Linux
+            # Binaries are typically placed next to the main executable.
             bin_path = os.path.join(base_path, 'bin')
 
+        print(f"--- FFMPEG_DEBUG: Attempting to find binaries at '{bin_path}' ---", flush=True)
+
         if os.path.exists(bin_path):
-            print(f"--- FFMPEG_PATH: Found at '{bin_path}' ---", flush=True)
+            print(f"--- FFMPEG_PATH: SUCCESS! Found at '{bin_path}' ---", flush=True)
             return bin_path
         else:
-            # This is the critical log for debugging.
-            print(f"--- FFMPEG_PATH: WARNING! Packaged path not found: '{bin_path}' ---", file=sys.stderr, flush=True)
+            print(f"--- FFMPEG_PATH: CRITICAL WARNING! Packaged path not found: '{bin_path}' ---", file=sys.stderr, flush=True)
             return None
     except Exception as e:
         print(f"--- FFMPEG_PATH: CRITICAL ERROR while determining path: {e}", file=sys.stderr, flush=True)
