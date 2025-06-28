@@ -22,43 +22,38 @@ def get_ffmpeg_path():
     Returns the path to the directory containing ffmpeg, or None if not found.
     """
     if not getattr(sys, 'frozen', False):
-        print("--- FFMPEG_PATH: Running in dev mode, using system PATH. ---", flush=True)
         return None
 
     try:
-        # --- DEBUGGING ---
-        # Log the initial executable path to see exactly where the script is running from.
-        executable_path = sys.executable
-        print(f"--- FFMPEG_DEBUG: sys.executable is '{executable_path}' ---", flush=True)
-        base_path = os.path.dirname(executable_path)
-        print(f"--- FFMPEG_DEBUG: base_path is '{base_path}' ---", flush=True)
-
+        base_path = os.path.dirname(sys.executable)
+        
         if platform.system() == "Darwin":
-            # On macOS, the structure is YourApp.app/Contents/Resources/
-            # The backend is in .../Resources/backend/ and ffmpeg is in .../Resources/bin/
             bin_path = os.path.abspath(os.path.join(base_path, '..', 'bin'))
-        else: # For Windows/Linux
-            # Binaries are typically placed next to the main executable.
+        else:
             bin_path = os.path.join(base_path, 'bin')
 
-        print(f"--- FFMPEG_DEBUG: Attempting to find binaries at '{bin_path}' ---", flush=True)
-
         if os.path.exists(bin_path):
-            print(f"--- FFMPEG_PATH: SUCCESS! Found at '{bin_path}' ---", flush=True)
             return bin_path
         else:
-            print(f"--- FFMPEG_PATH: CRITICAL WARNING! Packaged path not found: '{bin_path}' ---", file=sys.stderr, flush=True)
             return None
-    except Exception as e:
-        print(f"--- FFMPEG_PATH: CRITICAL ERROR while determining path: {e}", file=sys.stderr, flush=True)
+    except Exception:
         return None
+
+# --- THE FINAL FIX: Modify the system PATH at startup ---
+# This ensures that any subprocess can find the ffmpeg binaries.
+FFMPEG_LOCATION = get_ffmpeg_path()
+if FFMPEG_LOCATION:
+    print(f"--- PATH MODIFICATION: Prepending '{FFMPEG_LOCATION}' to PATH. ---", flush=True)
+    os.environ['PATH'] = FFMPEG_LOCATION + os.pathsep + os.environ.get('PATH', '')
+else:
+    print("--- PATH MODIFICATION: FFMPEG_LOCATION not found, relying on system PATH. ---", flush=True)
+# --- END FIX ---
 
 try:
     app = Flask(__name__)
     CORS(app)
     jobs = {}
     APP_TEMP_DIR = os.path.join(tempfile.gettempdir(), "yt-link")
-    FFMPEG_LOCATION = get_ffmpeg_path() # Determine path at startup.
     os.makedirs(APP_TEMP_DIR, exist_ok=True)
     print(f"--- Using application temporary directory: {APP_TEMP_DIR} ---", flush=True)
 
@@ -123,7 +118,7 @@ try:
             ffmpeg_exe = 'ffmpeg.exe' if platform.system() == 'Windows' else 'ffmpeg'
             command = [ffmpeg_exe, '-f', 'concat', '-safe', '0', '-i', list_file_path, '-c', 'copy', '-y', output_filepath]
             
-            subprocess.run(command, check=True, capture_output=True, text=True, cwd=FFMPEG_LOCATION or None)
+            subprocess.run(command, check=True, capture_output=True, text=True)
             job.update({'file_path': output_filepath, 'file_name': output_filename})
         
         job['status'] = 'completed'
@@ -159,8 +154,7 @@ try:
             'noplaylist': data.get('jobType') == 'singleMp3',
         }
         
-        if FFMPEG_LOCATION:
-            ydl_opts['ffmpeg_location'] = FFMPEG_LOCATION
+        # The 'ffmpeg_location' option is no longer needed because we've modified the PATH.
         
         if data.get('jobType') != 'singleMp3':
             ydl_opts['outtmpl'] = '%(playlist_index)s - %(title)s.%(ext)s'
