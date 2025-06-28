@@ -5,15 +5,16 @@
   "author": "Steven Ou",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "npm run prepare:bins && concurrently \"npm:dev-frontend\" \"npm:dev-electron-start\"",
     "prepare:bins": "chmod +x bin/ffmpeg bin/ffprobe || echo 'Could not set permissions, likely on Windows'",
     "dev": "npm run prepare:bins && concurrently \"npm:dev-frontend\" \"npm:dev-electron\"",
     "dev:clean": "npm run clean --prefix frontend && npm run dev",
     "dev-frontend": "cd frontend && npm install && npm run dev",
     "dev-electron": "wait-on http://localhost:3000 && electron .",
+    "dev-electron-start": "wait-on http://localhost:3000 && electron .",
     "build:frontend": "cd frontend && npm install && npm run build",
     "build:backend": "cd service && pip install -r requirements.txt && python -m PyInstaller app.py --noconfirm --onefile --name yt-link-backend --distpath ./dist",
-    "dist": "npm run build:frontend && npm run build:backend && electron-builder --publish never"
+    "dist": "npm run prepare:bins && npm run build:frontend && npm run build:backend && electron-builder --publish never"
   },
   "dependencies": {
     "node-fetch": "^2.6.7",
@@ -42,8 +43,11 @@
         "to": "backend/yt-link-backend"
       },
       {
-        "from": "bin",
-        "to": "bin"
+        "from": "./bin/",
+        "to": "bin/",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "mac": {
