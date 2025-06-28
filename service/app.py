@@ -18,29 +18,35 @@ ORIGINAL_STDERR = sys.stderr
 
 def get_ffmpeg_path():
     """
-    Determines the correct path for ffmpeg binaries, especially when packaged.
+    Determines the correct, platform-aware path for ffmpeg binaries, especially when packaged.
     Returns the path to the directory containing ffmpeg, or None if not found.
     """
-    if getattr(sys, 'frozen', False):
-        try:
-            # Running in a packaged app (frozen).
-            executable_dir = os.path.dirname(sys.executable)
-            # The 'bin' directory is packaged as a sibling to the 'backend' dir.
-            bin_path = os.path.abspath(os.path.join(executable_dir, '..', 'bin'))
-            
-            # Verify that the path actually exists before returning it.
-            if os.path.exists(bin_path):
-                print(f"--- FFMPEG_PATH: Found at '{bin_path}' ---", flush=True)
-                return bin_path
-            else:
-                print(f"--- FFMPEG_PATH: WARNING! Packaged path not found: '{bin_path}' ---", file=sys.stderr, flush=True)
-                return None
-        except Exception as e:
-            print(f"--- FFMPEG_PATH: CRITICAL ERROR while determining path: {e}", file=sys.stderr, flush=True)
+    if not getattr(sys, 'frozen', False):
+        # Development environment: rely on system PATH.
+        print("--- FFMPEG_PATH: Running in dev mode, using system PATH. ---", flush=True)
+        return None
+
+    try:
+        # In a packaged app, the executable's path is the starting point.
+        base_path = os.path.dirname(sys.executable)
+        
+        # On macOS, the structure is app.app/Contents/Resources/
+        # and the executable is in app.app/Contents/MacOS/
+        if platform.system() == "Darwin":
+            # Navigates from .../MacOS/yt-link-backend up to Contents and then down to Resources/bin
+            bin_path = os.path.abspath(os.path.join(base_path, '..', 'Resources', 'bin'))
+        else: # Windows and Linux
+            # Binaries are placed next to the executable.
+            bin_path = os.path.join(base_path, 'bin')
+
+        if os.path.exists(bin_path):
+            print(f"--- FFMPEG_PATH: Found at '{bin_path}' ---", flush=True)
+            return bin_path
+        else:
+            print(f"--- FFMPEG_PATH: WARNING! Packaged path not found: '{bin_path}' ---", file=sys.stderr, flush=True)
             return None
-    else:
-        # Running in a development environment.
-        # yt-dlp will try to find ffmpeg on the system PATH.
+    except Exception as e:
+        print(f"--- FFMPEG_PATH: CRITICAL ERROR while determining path: {e}", file=sys.stderr, flush=True)
         return None
 
 try:
@@ -110,11 +116,9 @@ try:
             output_filename = f"{playlist_title} (Combined).mp3"
             output_filepath = os.path.join(APP_TEMP_DIR, f"{job_id}_combined.mp3")
             
-            # Since ffmpeg is now in the PATH, we can just call it directly by name.
             ffmpeg_exe = 'ffmpeg.exe' if platform.system() == 'Windows' else 'ffmpeg'
             command = [ffmpeg_exe, '-f', 'concat', '-safe', '0', '-i', list_file_path, '-c', 'copy', '-y', output_filepath]
             
-            # Use FFMPEG_LOCATION if available to ensure the correct executable is used.
             subprocess.run(command, check=True, capture_output=True, text=True, cwd=FFMPEG_LOCATION or None)
             job.update({'file_path': output_filepath, 'file_name': output_filename})
         
@@ -151,8 +155,6 @@ try:
             'noplaylist': data.get('jobType') == 'singleMp3',
         }
         
-        # --- THIS IS THE FIX ---
-        # Explicitly tell yt-dlp where to find the ffmpeg binaries if they were found at startup.
         if FFMPEG_LOCATION:
             ydl_opts['ffmpeg_location'] = FFMPEG_LOCATION
         
