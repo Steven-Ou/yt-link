@@ -13,38 +13,42 @@ import platform
 import subprocess
 from urllib.parse import quote
 
-# --- DEFINITIVE FFMPEG FIX ---
-# This block runs at the very start of the script to ensure the environment
-# is correctly set up before any other code executes.
-if getattr(sys, 'frozen', False):
-    # This code runs only when the app is a packaged executable.
-    try:
-        # Get the directory of the backend executable.
-        # On macOS, this will be inside .../Resources/backend/
-        executable_dir = os.path.dirname(sys.executable)
-        
-        # Construct the absolute path to the 'bin' directory, which is a sibling
-        # to the 'backend' directory inside Resources.
-        bin_path = os.path.abspath(os.path.join(executable_dir, '..', 'bin'))
-        
-        # Prepend this path to the system's PATH environment variable.
-        # This makes ffmpeg and ffprobe discoverable by any subprocess,
-        # including those spawned by yt-dlp.
-        print(f"--- FFMPEG FIX: Prepending to PATH: '{bin_path}' ---", flush=True)
-        os.environ['PATH'] = bin_path + os.pathsep + os.environ.get('PATH', '')
-    except Exception as e:
-        # Log any errors during this critical setup phase.
-        print(f"--- FFMPEG FIX: CRITICAL ERROR while setting PATH: {e}", file=sys.stderr, flush=True)
-# --- END FIX ---
-
 ORIGINAL_STDOUT = sys.stdout
 ORIGINAL_STDERR = sys.stderr
+
+def get_ffmpeg_path():
+    """
+    Determines the correct path for ffmpeg binaries, especially when packaged.
+    Returns the path to the directory containing ffmpeg, or None if not found.
+    """
+    if getattr(sys, 'frozen', False):
+        try:
+            # Running in a packaged app (frozen).
+            executable_dir = os.path.dirname(sys.executable)
+            # The 'bin' directory is packaged as a sibling to the 'backend' dir.
+            bin_path = os.path.abspath(os.path.join(executable_dir, '..', 'bin'))
+            
+            # Verify that the path actually exists before returning it.
+            if os.path.exists(bin_path):
+                print(f"--- FFMPEG_PATH: Found at '{bin_path}' ---", flush=True)
+                return bin_path
+            else:
+                print(f"--- FFMPEG_PATH: WARNING! Packaged path not found: '{bin_path}' ---", file=sys.stderr, flush=True)
+                return None
+        except Exception as e:
+            print(f"--- FFMPEG_PATH: CRITICAL ERROR while determining path: {e}", file=sys.stderr, flush=True)
+            return None
+    else:
+        # Running in a development environment.
+        # yt-dlp will try to find ffmpeg on the system PATH.
+        return None
 
 try:
     app = Flask(__name__)
     CORS(app)
     jobs = {}
     APP_TEMP_DIR = os.path.join(tempfile.gettempdir(), "yt-link")
+    FFMPEG_LOCATION = get_ffmpeg_path() # Determine path at startup.
     os.makedirs(APP_TEMP_DIR, exist_ok=True)
     print(f"--- Using application temporary directory: {APP_TEMP_DIR} ---", flush=True)
 
@@ -110,7 +114,8 @@ try:
             ffmpeg_exe = 'ffmpeg.exe' if platform.system() == 'Windows' else 'ffmpeg'
             command = [ffmpeg_exe, '-f', 'concat', '-safe', '0', '-i', list_file_path, '-c', 'copy', '-y', output_filepath]
             
-            subprocess.run(command, check=True, capture_output=True, text=True)
+            # Use FFMPEG_LOCATION if available to ensure the correct executable is used.
+            subprocess.run(command, check=True, capture_output=True, text=True, cwd=FFMPEG_LOCATION or None)
             job.update({'file_path': output_filepath, 'file_name': output_filename})
         
         job['status'] = 'completed'
@@ -134,8 +139,7 @@ try:
         data = request.get_json()
         job_id = str(uuid.uuid4())
         jobs[job_id] = {'status': 'queued', 'url': data.get('url')}
-
-        # The `ffmpeg_location` parameter is no longer needed, as ffmpeg is now on the PATH.
+        
         ydl_opts = {
             'format': 'bestaudio/best',
             'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
@@ -146,6 +150,11 @@ try:
             'ignoreerrors': data.get('jobType') != 'singleMp3',
             'noplaylist': data.get('jobType') == 'singleMp3',
         }
+        
+        # --- THIS IS THE FIX ---
+        # Explicitly tell yt-dlp where to find the ffmpeg binaries if they were found at startup.
+        if FFMPEG_LOCATION:
+            ydl_opts['ffmpeg_location'] = FFMPEG_LOCATION
         
         if data.get('jobType') != 'singleMp3':
             ydl_opts['outtmpl'] = '%(playlist_index)s - %(title)s.%(ext)s'
@@ -186,9 +195,7 @@ try:
         
         file_name = job.get("file_name")
         
-        # --- FIX: Properly encode the filename for HTTP headers ---
         encoded_file_name = quote(file_name)
-        # Create a simple ASCII-only fallback filename for older clients.
         fallback_file_name = file_name.encode('ascii', 'ignore').decode('ascii') or "download.mp3"
 
         headers = {
