@@ -8,6 +8,7 @@
     "start": "electron .",
     "prepare:bins": "chmod +x bin/ffmpeg bin/ffprobe || echo 'Could not set permissions, likely on Windows'",
     "dev": "npm run prepare:bins && concurrently \"npm:dev-frontend\" \"npm:dev-electron\"",
+    "dev:clean": "npm run clean --prefix frontend && npm run dev",
     "dev-frontend": "cd frontend && npm install && npm run dev",
     "dev-electron": "wait-on http://localhost:3000 && electron .",
     "build:frontend": "cd frontend && npm install && npm run build",
