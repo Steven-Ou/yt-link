@@ -239,7 +239,7 @@ export default function Home() {
         setActiveJobs(prev => ({ ...prev, [jobType]: { id: null, status: 'queued', message: `Initiating ${operationName}...` } }));
         try {
             const payload = { jobType, url: urlValue, cookies: cookieData || null };
-            const result = await window.electron.startJob(payPload);
+            const result = await window.electron.startJob(payload);
 
             if (result.error) { throw new Error(result.error); }
             
