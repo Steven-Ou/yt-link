@@ -11,6 +11,7 @@ from flask_cors import CORS
 import yt_dlp
 import platform
 import subprocess
+from urllib.parse import quote
 
 # --- DEFINITIVE FFMPEG FIX ---
 # This block runs at the very start of the script to ensure the environment
@@ -183,7 +184,18 @@ try:
                 if 'temp_dir' in job and os.path.exists(job['temp_dir']): shutil.rmtree(job['temp_dir'], ignore_errors=True)
                 jobs.pop(job_id, None)
         
-        return Response(file_generator(), mimetype='application/octet-stream', headers={'Content-Disposition': f'attachment;filename="{job.get("file_name")}"'})
+        file_name = job.get("file_name")
+        
+        # --- FIX: Properly encode the filename for HTTP headers ---
+        encoded_file_name = quote(file_name)
+        # Create a simple ASCII-only fallback filename for older clients.
+        fallback_file_name = file_name.encode('ascii', 'ignore').decode('ascii') or "download.mp3"
+
+        headers = {
+            'Content-Disposition': f'attachment; filename="{fallback_file_name}"; filename*="UTF-8\'\'{encoded_file_name}"'
+        }
+        
+        return Response(file_generator(), mimetype='application/octet-stream', headers=headers)
 
     if __name__ == '__main__':
         port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001
