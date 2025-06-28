@@ -41,10 +41,11 @@ function createWindow() {
             app.quit();
         });
 
-    // This path correctly loads the frontend from the asar archive in the packaged app.
-    const urlToLoad = true
-        ? `file://${path.join(__dirname, 'frontend/out/index.html')}`
-        : 'http://localhost:3000';
+    // --- THIS IS THE FIX ---
+    // Use app.isPackaged to determine whether to load from the dev server or a static file.
+    const urlToLoad = !app.isPackaged
+        ? 'http://localhost:3000'
+        : `file://${path.join(__dirname, 'frontend/out/index.html')}`;
     
     sendLog(`[Electron] Loading URL: ${urlToLoad}`);
     mainWindow.loadURL(urlToLoad)
@@ -53,8 +54,8 @@ function createWindow() {
         sendLog(`[Electron] FATAL: Failed to load URL: ${urlToLoad}. Error: ${errorString}`);
         dialog.showErrorBox('Load Error', `Failed to load the application window. Please check the logs.\n${errorString}`);
       });
-    mainWindow.webContents.openDevTools();
-
+    
+    // Only open DevTools when not in a packaged app
     if (!app.isPackaged) {
         mainWindow.webContents.openDevTools();
     }
@@ -73,15 +74,16 @@ function startPythonBackend(port) {
         : path.join(process.resourcesPath, 'backend', backendName);
 
     const args = isDev 
-        ? [path.join(__dirname, 'service', 'app.py'), port.toString(), '-Xfrozen_modules=off']
+        ? [path.join(__dirname, 'service', 'app.py'), port.toString()] // Removed -Xfrozen_modules=off as it's not needed here
         : [port.toString()];
     
-    const cwd = isDev ? path.join(__dirname, '..', 'service') : path.dirname(command);
+    // In development, the working directory for the Python script should be the 'service' folder itself.
+    const cwd = isDev ? path.join(__dirname, 'service') : path.dirname(command);
 
-    sendLog(`[Electron] Starting backend: ${command} ${args.join(' ')}`);
+    sendLog(`[Electron] Starting backend: ${command} ${args.join(' ')} in ${cwd}`);
     
     // The Python script is now responsible for finding its own dependencies.
-    pythonProcess = spawn(command, args);
+    pythonProcess = spawn(command, args, { cwd: cwd });
 
     pythonProcess.stdout.on('data', (data) => {
         const log = data.toString().trim();
@@ -118,7 +120,6 @@ ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
         return { error: 'Backend is not ready. Please wait a moment or restart the application.' };
     }
     
-    // Payload is now simplified; Python handles finding ffmpeg.
     const payload = { jobType, url, cookies };
 
     try {
