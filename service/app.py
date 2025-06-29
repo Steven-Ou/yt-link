@@ -19,14 +19,13 @@ ORIGINAL_STDERR = sys.stderr
 def ensure_executable_permissions(bin_path):
     """
     On non-Windows systems, ensures the ffmpeg/ffprobe binaries are executable.
-    This is a critical fix for macOS and Linux packaged apps.
+    This is a critical fix for macOS packaged apps.
     """
     if platform.system() != "Windows":
         for binary in ['ffmpeg', 'ffprobe']:
             binary_path = os.path.join(bin_path, binary)
             if os.path.exists(binary_path):
                 try:
-                    # Set permissions to 'rwxr-xr-x' (755)
                     os.chmod(binary_path, 0o755)
                     print(f"--- PERMISSION FIX: Set +x on {binary} ---", flush=True)
                 except Exception as e:
@@ -40,7 +39,6 @@ def get_ffmpeg_path():
     Determines the correct, platform-aware path for ffmpeg binaries, especially when packaged.
     """
     if not getattr(sys, 'frozen', False):
-        # In development, yt-dlp can find ffmpeg on the system PATH.
         print("--- FFMPEG_PATH: Development mode, using system PATH. ---", flush=True)
         return None
 
@@ -48,31 +46,20 @@ def get_ffmpeg_path():
         base_path = os.path.dirname(sys.executable)
         
         if platform.system() == "Darwin": # macOS
-            # Path relative to the executable in a .app bundle
             bin_path = os.path.abspath(os.path.join(base_path, '..', 'bin'))
         else: # Windows
-            # Path relative to the executable in a standard installation
             bin_path = os.path.join(base_path, 'bin')
 
         if os.path.exists(bin_path):
-            # Before returning the path, ensure the binaries inside are executable.
             ensure_executable_permissions(bin_path)
             return bin_path
         else:
-            print(f"--- FFMPEG_PATH: WARNING! Packaged path not found: '{bin_path}' ---", file=sys.stderr, flush=True)
             return None
     except Exception as e:
         print(f"--- FFMPEG_PATH: CRITICAL ERROR while determining path: {e}", file=sys.stderr, flush=True)
         return None
 
-# --- Startup PATH modification and permission check ---
 FFMPEG_LOCATION = get_ffmpeg_path()
-if FFMPEG_LOCATION:
-    print(f"--- PATH MODIFICATION: Prepending '{FFMPEG_LOCATION}' to PATH. ---", flush=True)
-    os.environ['PATH'] = FFMPEG_LOCATION + os.pathsep + os.environ.get('PATH', '')
-else:
-    print("--- PATH MODIFICATION: FFMPEG_LOCATION not found, relying on system PATH. ---", flush=True)
-
 
 try:
     app = Flask(__name__)
@@ -140,6 +127,7 @@ try:
             output_filename = f"{playlist_title} (Combined).mp3"
             output_filepath = os.path.join(APP_TEMP_DIR, f"{job_id}_combined.mp3")
             
+            # This will use the system PATH, which we modified at startup for packaged apps
             ffmpeg_exe = 'ffmpeg.exe' if platform.system() == 'Windows' else 'ffmpeg'
             command = [ffmpeg_exe, '-f', 'concat', '-safe', '0', '-i', list_file_path, '-c', 'copy', '-y', output_filepath]
             
@@ -179,7 +167,9 @@ try:
             'noplaylist': data.get('jobType') == 'singleMp3',
         }
         
-        # We no longer need to set ffmpeg_location because the PATH is now correct.
+        # Explicitly tell yt-dlp where to find ffmpeg if we're in a packaged app
+        if FFMPEG_LOCATION:
+            ydl_opts['ffmpeg_location'] = FFMPEG_LOCATION
         
         if data.get('jobType') != 'singleMp3':
             ydl_opts['outtmpl'] = '%(playlist_index)s - %(title)s.%(ext)s'
