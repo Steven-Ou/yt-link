@@ -16,6 +16,21 @@ from urllib.parse import quote
 ORIGINAL_STDOUT = sys.stdout
 ORIGINAL_STDERR = sys.stderr
 
+def ensure_executable_permissions(bin_path):
+    """
+    On macOS/Linux, ensures the ffmpeg/ffprobe binaries are executable.
+    """
+    if platform.system() != "Windows":
+        for binary in ['ffmpeg', 'ffprobe']:
+            binary_path = os.path.join(bin_path, binary)
+            if os.path.exists(binary_path):
+                try:
+                    # Set permissions to 'rwxr-xr-x' (755)
+                    os.chmod(binary_path, 0o755)
+                    print(f"--- PERMISSION FIX: Set +x on {binary} ---", flush=True)
+                except Exception as e:
+                    print(f"--- PERMISSION FIX: FAILED to set +x on {binary}: {e} ---", file=sys.stderr, flush=True)
+
 def get_ffmpeg_path():
     """
     Determines the correct, platform-aware path for ffmpeg binaries, especially when packaged.
@@ -33,21 +48,23 @@ def get_ffmpeg_path():
             bin_path = os.path.join(base_path, 'bin')
 
         if os.path.exists(bin_path):
+            # --- THIS IS THE FIX ---
+            # Before returning the path, ensure the binaries inside are executable.
+            ensure_executable_permissions(bin_path)
+            # --- END FIX ---
             return bin_path
         else:
             return None
     except Exception:
         return None
 
-# --- THE FINAL FIX: Modify the system PATH at startup ---
-# This ensures that any subprocess can find the ffmpeg binaries.
+# --- Startup PATH modification and permission check ---
 FFMPEG_LOCATION = get_ffmpeg_path()
 if FFMPEG_LOCATION:
     print(f"--- PATH MODIFICATION: Prepending '{FFMPEG_LOCATION}' to PATH. ---", flush=True)
     os.environ['PATH'] = FFMPEG_LOCATION + os.pathsep + os.environ.get('PATH', '')
 else:
     print("--- PATH MODIFICATION: FFMPEG_LOCATION not found, relying on system PATH. ---", flush=True)
-# --- END FIX ---
 
 try:
     app = Flask(__name__)
@@ -154,7 +171,10 @@ try:
             'noplaylist': data.get('jobType') == 'singleMp3',
         }
         
-        # The 'ffmpeg_location' option is no longer needed because we've modified the PATH.
+        # The 'ffmpeg_location' option is not strictly necessary anymore, but we leave it
+        # as a fallback in case the PATH modification doesn't work for a specific subprocess.
+        if FFMPEG_LOCATION:
+            ydl_opts['ffmpeg_location'] = FFMPEG_LOCATION
         
         if data.get('jobType') != 'singleMp3':
             ydl_opts['outtmpl'] = '%(playlist_index)s - %(title)s.%(ext)s'
