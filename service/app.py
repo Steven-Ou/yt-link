@@ -18,7 +18,8 @@ ORIGINAL_STDERR = sys.stderr
 
 def ensure_executable_permissions(bin_path):
     """
-    On macOS/Linux, ensures the ffmpeg/ffprobe binaries are executable.
+    On non-Windows systems, ensures the ffmpeg/ffprobe binaries are executable.
+    This is a critical fix for macOS and Linux packaged apps.
     """
     if platform.system() != "Windows":
         for binary in ['ffmpeg', 'ffprobe']:
@@ -30,32 +31,38 @@ def ensure_executable_permissions(bin_path):
                     print(f"--- PERMISSION FIX: Set +x on {binary} ---", flush=True)
                 except Exception as e:
                     print(f"--- PERMISSION FIX: FAILED to set +x on {binary}: {e} ---", file=sys.stderr, flush=True)
+            else:
+                 print(f"--- PERMISSION WARNING: Binary not found for chmod: {binary_path} ---", file=sys.stderr, flush=True)
+
 
 def get_ffmpeg_path():
     """
     Determines the correct, platform-aware path for ffmpeg binaries, especially when packaged.
-    Returns the path to the directory containing ffmpeg, or None if not found.
     """
     if not getattr(sys, 'frozen', False):
+        # In development, yt-dlp can find ffmpeg on the system PATH.
+        print("--- FFMPEG_PATH: Development mode, using system PATH. ---", flush=True)
         return None
 
     try:
         base_path = os.path.dirname(sys.executable)
         
-        if platform.system() == "Darwin":
+        if platform.system() == "Darwin": # macOS
+            # Path relative to the executable in a .app bundle
             bin_path = os.path.abspath(os.path.join(base_path, '..', 'bin'))
-        else:
+        else: # Windows
+            # Path relative to the executable in a standard installation
             bin_path = os.path.join(base_path, 'bin')
 
         if os.path.exists(bin_path):
-            # --- THIS IS THE FIX ---
             # Before returning the path, ensure the binaries inside are executable.
             ensure_executable_permissions(bin_path)
-            # --- END FIX ---
             return bin_path
         else:
+            print(f"--- FFMPEG_PATH: WARNING! Packaged path not found: '{bin_path}' ---", file=sys.stderr, flush=True)
             return None
-    except Exception:
+    except Exception as e:
+        print(f"--- FFMPEG_PATH: CRITICAL ERROR while determining path: {e}", file=sys.stderr, flush=True)
         return None
 
 # --- Startup PATH modification and permission check ---
@@ -65,6 +72,7 @@ if FFMPEG_LOCATION:
     os.environ['PATH'] = FFMPEG_LOCATION + os.pathsep + os.environ.get('PATH', '')
 else:
     print("--- PATH MODIFICATION: FFMPEG_LOCATION not found, relying on system PATH. ---", flush=True)
+
 
 try:
     app = Flask(__name__)
@@ -171,10 +179,7 @@ try:
             'noplaylist': data.get('jobType') == 'singleMp3',
         }
         
-        # The 'ffmpeg_location' option is not strictly necessary anymore, but we leave it
-        # as a fallback in case the PATH modification doesn't work for a specific subprocess.
-        if FFMPEG_LOCATION:
-            ydl_opts['ffmpeg_location'] = FFMPEG_LOCATION
+        # We no longer need to set ffmpeg_location because the PATH is now correct.
         
         if data.get('jobType') != 'singleMp3':
             ydl_opts['outtmpl'] = '%(playlist_index)s - %(title)s.%(ext)s'
