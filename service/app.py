@@ -127,11 +127,10 @@ try:
             output_filename = f"{playlist_title} (Combined).mp3"
             output_filepath = os.path.join(APP_TEMP_DIR, f"{job_id}_combined.mp3")
             
-            # This will use the system PATH, which we modified at startup for packaged apps
             ffmpeg_exe = 'ffmpeg.exe' if platform.system() == 'Windows' else 'ffmpeg'
             command = [ffmpeg_exe, '-f', 'concat', '-safe', '0', '-i', list_file_path, '-c', 'copy', '-y', output_filepath]
             
-            subprocess.run(command, check=True, capture_output=True, text=True)
+            subprocess.run(command, check=True, capture_output=True, text=True, cwd=FFMPEG_LOCATION or None)
             job.update({'file_path': output_filepath, 'file_name': output_filename})
         
         job['status'] = 'completed'
