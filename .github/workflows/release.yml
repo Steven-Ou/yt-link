@@ -41,32 +41,40 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
-      - name: Install and Prepare FFMPEG Binaries
+      # --- THE DEFINITIVE FIX: Use a reliable source for static binaries ---
+      - name: Prepare FFMPEG Static Binaries
         shell: bash
         run: |
           mkdir -p bin
           if [ "${{ runner.os }}" == "macOS" ]; then
-            echo "Installing ffmpeg via Homebrew for ${{ matrix.arch }}..."
-            brew install ffmpeg
+            if [ "${{ matrix.arch }}" == "arm64" ]; then
+              echo "Downloading ARM64 (Apple Silicon) static binaries from johnvansickle.com..."
+              curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz -o ffmpeg.tar.xz
+            else # x64
+              echo "Downloading x64 (Intel) static binaries from johnvansickle.com..."
+              curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -o ffmpeg.tar.xz
+            fi
             
-            # Find the Homebrew prefix, which is different for arm64 vs x64
-            BREW_PREFIX=$(brew --prefix)
-            echo "Homebrew prefix is ${BREW_PREFIX}"
+            # Extract the tarball
+            tar -xf ffmpeg.tar.xz
             
-            # Copy the known-good binaries to our project's bin folder for packaging
-            cp "${BREW_PREFIX}/bin/ffmpeg" "./bin/ffmpeg"
-            cp "${BREW_PREFIX}/bin/ffprobe" "./bin/ffprobe"
+            # Find the extracted directory name (it's versioned, e.g., ffmpeg-7.1.1-arm64-static)
+            EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "ffmpeg-*-static")
             
-            echo "Successfully copied ffmpeg and ffprobe from Homebrew."
-            ls -la bin
+            echo "Copying from ${EXTRACTED_DIR} to ./bin"
+            cp "${EXTRACTED_DIR}/ffmpeg" "./bin/ffmpeg"
+            cp "${EXTRACTED_DIR}/ffprobe" "./bin/ffprobe"
             
           elif [ "${{ runner.os }}" == "Windows" ]; then
             echo "Downloading Windows static binaries..."
-            # For Windows, static binaries are reliable
             curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-win32-x64.exe -o bin/ffmpeg.exe
             curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-win32-x64.exe -o bin/ffprobe.exe
           fi
           
+      - name: Set Binary Permissions (macOS and Linux)
+        if: runner.os != 'Windows'
+        run: chmod +x bin/ffmpeg bin/ffprobe
+
       - name: Build Frontend
         run: npm run build:frontend
 
