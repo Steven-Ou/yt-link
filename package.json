@@ -56,6 +56,7 @@
     "win": {
       "target": "zip",
       "icon": "frontend/public/icon.ico"
-    }
+    },
+    "afterPack": "./scripts/afterPack.js"
   }
 }
