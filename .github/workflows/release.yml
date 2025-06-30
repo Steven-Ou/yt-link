@@ -10,9 +10,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-13 # This is an Intel (x64) runner
+          - os: macos-13 # Intel (x64) runner
             arch: x64
-          - os: macos-14 # This is an Apple Silicon (arm64) runner
+          - os: macos-14 # Apple Silicon (arm64) runner
             arch: arm64
           - os: windows-latest
             arch: x64
@@ -59,7 +59,17 @@ jobs:
             curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-win32-x64.exe -o bin/ffprobe.exe
           fi
           
-      - name: Build Electron app
+      - name: Set Binary Permissions (macOS)
+        if: runner.os == 'macOS'
+        run: chmod +x bin/ffmpeg bin/ffprobe
+
+      - name: Build Frontend
+        run: npm run build:frontend
+
+      - name: Build Backend
+        run: npm run build:backend
+
+      - name: Build and Package Electron App
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run dist -- --arch=${{ matrix.arch }}
