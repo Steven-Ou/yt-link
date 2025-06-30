@@ -46,17 +46,20 @@ jobs:
         run: |
           mkdir -p bin
           if [ "${{ runner.os }}" == "macOS" ]; then
-            if [ "${{ matrix.arch }}" == "arm64" ];
-            then
+            if [ "${{ matrix.arch }}" == "arm64" ]; then
               echo "Downloading ARM64 (Apple Silicon) static binaries from BtbN..."
-              curl -L https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-macos-arm64-static.tar.xz -o ffmpeg.tar.xz
+              curl -fL https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-macos-arm64-static.tar.xz -o ffmpeg.tar.xz
             else # x64
               echo "Downloading x64 (Intel) static binaries from BtbN..."
-              curl -L https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-macos-x64-static.tar.xz -o ffmpeg.tar.xz
+              curl -fL https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-macos-x64-static.tar.xz -o ffmpeg.tar.xz
             fi
             
-            # --- THIS IS THE FIX: Use tar to extract the .tar.xz file ---
-            tar -xf ffmpeg.tar.xz
+            # --- THIS IS THE FIX: Use tar to extract the .tar.xz file and add error checking ---
+            if ! tar -xf ffmpeg.tar.xz; then
+              echo "Failed to extract ffmpeg.tar.xz. File info:"
+              file ffmpeg.tar.xz
+              exit 1
+            fi
             
             EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "ffmpeg-*-static")
             
@@ -66,7 +69,7 @@ jobs:
             
           elif [ "${{ runner.os }}" == "Windows" ]; then
             echo "Downloading Windows static binaries..."
-            curl -L https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip -o ffmpeg.zip
+            curl -fL https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip -o ffmpeg.zip
             unzip -o ffmpeg.zip -d ffmpeg-build
             cp ffmpeg-build/bin/ffmpeg.exe ./bin/ffmpeg.exe
             cp ffmpeg-build/bin/ffprobe.exe ./bin/ffprobe.exe
