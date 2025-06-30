@@ -41,6 +41,7 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
+      # --- THE DEFINITIVE FIX: Use stable URLs for static binaries ---
       - name: Prepare FFMPEG Static Binaries
         shell: bash
         run: |
