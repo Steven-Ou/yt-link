@@ -4,8 +4,8 @@ const path = require('path');
 
 /**
  * This hook is executed by electron-builder after the app is packaged.
- * Its purpose is to set the necessary executable permissions for the bundled
- * ffmpeg, ffprobe, and the Python backend itself, which is a requirement on macOS and Linux.
+ * Its primary purpose is to set executable permissions on bundled binaries,
+ * which is a requirement on macOS and Linux.
  */
 exports.default = async function (context) {
   const { appOutDir, packager } = context;
@@ -19,7 +19,7 @@ exports.default = async function (context) {
     return;
   }
 
-  // On macOS, resources are in the .app bundle. On Linux, they are in the root.
+  // Determine the correct path to the app's resources directory.
   const resourcesPath = platformName === 'mac'
     ? path.join(appOutDir, `${packager.appInfo.productFilename}.app`, 'Contents', 'Resources')
     : path.join(appOutDir, 'resources');
@@ -37,7 +37,7 @@ exports.default = async function (context) {
     try {
       if (fs.existsSync(filePath)) {
         // Set permissions to 'rwxr-xr-x' (read/write/execute for owner, read/execute for others)
-        fs.chmodSync(filePath, '755');
+        fs.chmodSync(filePath, 0o755);
         console.log(`[AfterPack] SUCCESS: Set +x permission on ${path.basename(filePath)}`);
       } else {
         // This is a critical warning. If a file is not found, the app will fail.
