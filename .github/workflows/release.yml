@@ -6,11 +6,17 @@ on:
       - 'v*.*.*'
 
 jobs:
-  # --- Build Job: Creates the app for macOS and Windows ---
   build:
     strategy:
       matrix:
-        os: [macos-latest, windows-latest]
+        include:
+          - os: macos-13 # This is an Intel (x64) runner
+            arch: x64
+          - os: macos-14 # This is an Apple Silicon (arm64) runner
+            arch: arm64
+          - os: windows-latest
+            arch: x64
+
     runs-on: ${{ matrix.os }}
     
     steps:
@@ -22,7 +28,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-      
+
       - name: Install root and frontend Node.js dependencies
         run: npm install && npm install --prefix frontend
 
@@ -35,26 +41,29 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
-      # --- THIS IS THE FIX: Ensure binaries are downloaded and placed correctly before build ---
       - name: Prepare FFMPEG Binaries
         shell: bash
         run: |
           mkdir -p bin
-          if [ "${{ runner.os }}" == "macOS" ]; then
-            echo "Downloading and setting permissions for macOS binaries..."
+          if [ "${{ matrix.arch }}" == "arm64" ]; then
+            echo "Downloading ARM64 (Apple Silicon) binaries..."
             curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-mac-arm64 -o bin/ffmpeg
             curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-mac-arm64 -o bin/ffprobe
-            chmod +x bin/*
+          elif [ "${{ matrix.arch }}" == "x64" ] && [ "${{ runner.os }}" == "macOS" ]; then
+            echo "Downloading x64 (Intel) binaries for macOS..."
+            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-mac-x64 -o bin/ffmpeg
+            curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-mac-x64 -o bin/ffprobe
           elif [ "${{ runner.os }}" == "Windows" ]; then
             echo "Downloading Windows binaries..."
             curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-win32-x64.exe -o bin/ffmpeg.exe
             curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-win32-x64.exe -o bin/ffprobe.exe
           fi
-
+          # The prepare:bins script will handle chmod
+          
       - name: Build Electron app
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run dist
+        run: npm run dist -- --arch=${{ matrix.arch }}
 
       - name: Prepare Artifacts for Upload
         id: prep_artifacts
@@ -62,10 +71,10 @@ jobs:
         run: |
           if [ "${{ runner.os }}" == "macOS" ]; then
             ARTIFACT_PATH=$(ls dist/*.dmg)
-            ARTIFACT_NAME="YT-Link-macOS-dmg"
+            ARTIFACT_NAME="YT-Link-macOS-${{ matrix.arch }}.dmg"
           elif [ "${{ runner.os }}" == "Windows" ]; then
             ARTIFACT_PATH=$(ls dist/*.zip)
-            ARTIFACT_NAME="YT-Link-Windows-zip"
+            ARTIFACT_NAME="YT-Link-Windows-${{ matrix.arch }}.zip"
           fi
           echo "ARTIFACT_PATH=${ARTIFACT_PATH}" >> $GITHUB_ENV
           echo "ARTIFACT_NAME=${ARTIFACT_NAME}" >> $GITHUB_ENV
@@ -76,7 +85,6 @@ jobs:
           name: ${{ env.ARTIFACT_NAME }}
           path: ${{ env.ARTIFACT_PATH }}
 
-  # --- Release Job: Creates the final GitHub Release ---
   release:
     runs-on: ubuntu-latest
     needs: build
@@ -98,9 +106,6 @@ jobs:
       - name: Create or Update GitHub Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
-          # This version automatically updates the release if the tag already exists
-          files: |
-            artifacts/YT-Link-macOS-dmg/*
-            artifacts/YT-Link-Windows-zip/*
+          files: artifacts/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
