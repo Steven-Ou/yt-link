@@ -13,24 +13,24 @@ import platform
 import subprocess
 from urllib.parse import quote
 
-ORIGINAL_STDOUT = sys.stdout
-ORIGINAL_STDERR = sys.stderr
-
-def get_ffmpeg_path(binary_name):
+def get_binary_path(binary_name):
     """
-    Finds the absolute path to a bundled binary (ffmpeg or ffprobe).
+    Finds the absolute path to a bundled binary, handling .exe for Windows.
+    Also ensures executable permissions on non-Windows systems.
     """
     if not getattr(sys, 'frozen', False):
-        # In dev, assume it's on the system PATH
+        # In development, assume the binary is on the system's PATH.
         return binary_name
 
     try:
         base_path = os.path.dirname(sys.executable)
         
         if platform.system() == "Darwin": # macOS
+            # In the .app bundle: .../Contents/Resources/bin/
             bin_dir = os.path.abspath(os.path.join(base_path, '..', 'bin'))
         else: # Windows
-            bin_dir = os.path.join(base_path, 'bin')
+            # In the packaged folder: .../bin/
+            bin_dir = os.path.join(base_path, '..', 'bin')
             binary_name = f"{binary_name}.exe"
 
         binary_path = os.path.join(bin_dir, binary_name)
@@ -39,19 +39,19 @@ def get_ffmpeg_path(binary_name):
             if platform.system() != "Windows":
                 try:
                     os.chmod(binary_path, 0o755)
-                    print(f"--- PERMISSION FIX: Set +x on {binary_name} ---", flush=True)
                 except Exception as e:
-                    print(f"--- PERMISSION FIX: FAILED to set +x on {binary_name}: {e} ---", file=sys.stderr, flush=True)
+                    print(f"--- PERMISSION ERROR: Failed to set +x on {binary_path}: {e} ---", file=sys.stderr, flush=True)
             return binary_path
         else:
-            print(f"--- FFMPEG_PATH: CRITICAL! Binary not found at '{binary_path}' ---", file=sys.stderr, flush=True)
+            print(f"--- BINARY NOT FOUND: Could not find '{binary_path}' ---", file=sys.stderr, flush=True)
             return None
             
     except Exception as e:
-        print(f"--- FFMPEG_PATH: CRITICAL ERROR while determining path: {e}", file=sys.stderr, flush=True)
+        print(f"--- FATAL ERROR in get_binary_path: {e} ---", file=sys.stderr, flush=True)
         return None
 
-FFMPEG_EXE = get_ffmpeg_path('ffmpeg')
+# Get the absolute paths to the binaries at startup.
+FFMPEG_EXE = get_binary_path('ffmpeg')
 
 try:
     app = Flask(__name__)
@@ -59,24 +59,20 @@ try:
     jobs = {}
     APP_TEMP_DIR = os.path.join(tempfile.gettempdir(), "yt-link")
     os.makedirs(APP_TEMP_DIR, exist_ok=True)
-    print(f"--- Using application temporary directory: {APP_TEMP_DIR} ---", flush=True)
 
-    def download_thread(url, ydl_opts, job_id, download_type):
+    def download_thread(url, ydl_opts, job_id):
         job_temp_dir = os.path.join(APP_TEMP_DIR, str(job_id))
         os.makedirs(job_temp_dir, exist_ok=True)
         jobs[job_id]['temp_dir'] = job_temp_dir
         
-        # We will manually handle file extensions
         ydl_opts['outtmpl'] = os.path.join(job_temp_dir, f"{job_id}.%(ext)s")
         
         try:
-            print(f"--- [Job {job_id}] Starting download...", flush=True)
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info_dict = ydl.extract_info(url, download=True)
                 jobs[job_id]['info'] = info_dict
             
-            # Now, trigger our own post-processing
-            manual_post_processing(job_id, download_type)
+            manual_post_processing(job_id)
 
         except Exception as e:
             error_message = traceback.format_exc()
@@ -84,60 +80,39 @@ try:
             jobs[job_id]['status'] = 'failed'
             jobs[job_id]['error'] = str(e)
 
-    def manual_post_processing(job_id, download_type):
+    def manual_post_processing(job_id):
         job = jobs[job_id]
         temp_dir = job['temp_dir']
         info = job['info']
-        
-        # Sanitize title for the final filename
         title = info.get('title', 'yt-link-download').replace('/', '_').replace('\\', '_')
         
-        print(f"--- [Job {job_id}] Manual Post-processing. Type: {download_type}", flush=True)
+        print(f"--- [Job {job_id}] Manual Post-processing ---", flush=True)
 
         if not FFMPEG_EXE:
-            raise FileNotFoundError("FATAL: FFMPEG executable not found in packaged app.")
+            raise FileNotFoundError("FATAL: FFMPEG executable path was not resolved at startup.")
 
-        # Find the downloaded file (it will have our job_id as the name)
-        downloaded_file = None
-        for f in os.listdir(temp_dir):
-            if f.startswith(job_id):
-                downloaded_file = os.path.join(temp_dir, f)
-                break
+        downloaded_file = next((os.path.join(temp_dir, f) for f in os.listdir(temp_dir) if f.startswith(job_id)), None)
         
         if not downloaded_file:
-            raise FileNotFoundError("Download file could not be found for post-processing.")
+            raise FileNotFoundError("Downloaded file could not be found for post-processing.")
 
         final_filename = f"{title}.mp3"
         output_filepath = os.path.join(temp_dir, final_filename)
 
-        # Build the ffmpeg command
-        # -i: input file
-        # -vn: no video
-        # -ab: audio bitrate
-        # -ar: audio rate
-        # -y: overwrite output file
         command = [
             FFMPEG_EXE,
             '-i', downloaded_file,
-            '-vn',
-            '-ab', '192k',
-            '-ar', '44100',
-            '-y',
-            output_filepath
+            '-vn', '-ab', '192k', '-ar', '44100',
+            '-y', output_filepath
         ]
 
         print(f"--- [Job {job_id}] Running FFMPEG command: {' '.join(command)} ---", flush=True)
-        # We don't use cwd here because FFMPEG_EXE is an absolute path
-        process = subprocess.run(command, capture_output=True, text=True)
+        process = subprocess.run(command, capture_output=True, text=True, encoding='utf-8')
 
         if process.returncode != 0:
-            print(f"--- FFMPEG ERROR STDOUT ---\n{process.stdout}", file=sys.stderr, flush=True)
-            print(f"--- FFMPEG ERROR STDERR ---\n{process.stderr}", file=sys.stderr, flush=True)
             raise Exception(f"FFMPEG failed with code {process.returncode}: {process.stderr}")
 
-        job.update({'file_path': output_filepath, 'file_name': final_filename})
-        job['status'] = 'completed'
-        job['message'] = 'Processing complete!'
+        job.update({'file_path': output_filepath, 'file_name': final_filename, 'status': 'completed', 'message': 'Processing complete!'})
         print(f"--- [Job {job_id}] Post-processing complete.", flush=True)
 
 
@@ -148,10 +123,7 @@ try:
         jobs[job_id] = {'status': 'queued', 'url': data.get('url')}
         
         ydl_opts = {
-            # Download best audio format available
             'format': 'bestaudio/best',
-            # We are no longer using yt-dlp's post-processor
-            # 'postprocessors': [...],
             'progress_hooks': [progress_hook],
             'nocheckcertificate': True,
             'ignoreerrors': data.get('jobType') != 'singleMp3',
@@ -164,29 +136,21 @@ try:
             with open(cookie_file, 'w', encoding='utf-8') as f: f.write(data['cookies'])
             ydl_opts['cookiefile'] = cookie_file
 
-        thread = threading.Thread(target=download_thread, args=(data['url'], ydl_opts, job_id, data.get('jobType')))
+        thread = threading.Thread(target=download_thread, args=(data['url'], ydl_opts, job_id))
         thread.start()
         
         return jsonify({'jobId': job_id})
 
-    # The rest of your Flask routes (job-status, download) remain the same
-    # as they operate on the job dictionary which we are still updating correctly.
-    # ... (progress_hook, get_job_status, download_file, and main block are omitted for brevity, they don't need changes) ...
+    # The progress_hook, get_job_status, download_file, and main block remain unchanged.
     def progress_hook(d):
-        job_id_from_info = d.get('info_dict', {}).get('__finaldir')
-        if not job_id_from_info: return
-
-        job_id = os.path.basename(job_id_from_info)
-
-        if job_id in jobs:
-            if d['status'] == 'downloading':
-                jobs[job_id]['status'] = 'downloading'
-                percent_str = d.get('_percent_str', '0%').replace('%','').strip()
-                jobs[job_id]['progress'] = percent_str
-                jobs[job_id]['message'] = f"Downloading... {percent_str}%"
-            elif d['status'] == 'finished':
-                jobs[job_id]['status'] = 'processing'
-                jobs[job_id]['message'] = 'Download finished, converting to MP3...'
+        if d['status'] == 'finished':
+            temp_dir = os.path.dirname(d['filename'])
+            job_id = os.path.basename(temp_dir)
+            if job_id in jobs:
+                jobs[job_id].update({
+                    'status': 'processing',
+                    'message': 'Download finished, converting to MP3...'
+                })
 
     @app.route('/job-status', methods=['GET'])
     def get_job_status():
@@ -224,9 +188,9 @@ try:
 
     if __name__ == '__main__':
         port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001
-        print(f"Flask-Backend-Ready:{port}", file=ORIGINAL_STDOUT, flush=True)
+        print(f"Flask-Backend-Ready:{port}", flush=True)
         app.run(host='127.0.0.1', port=port, debug=False)
 
 except Exception as e:
-    print(f"--- PYTHON BACKEND FATAL CRASH ---\n{traceback.format_exc()}", file=ORIGINAL_STDERR, flush=True)
+    print(f"--- PYTHON BACKEND FATAL CRASH ---\n{traceback.format_exc()}", file=sys.stderr, flush=True)
     sys.exit(1)
