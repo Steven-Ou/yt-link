@@ -26,8 +26,10 @@ def get_binary_path(binary_name):
         base_path = os.path.dirname(sys.executable)
         
         if platform.system() == "Darwin": # macOS
+            # In the .app bundle: .../Contents/Resources/bin/
             bin_dir = os.path.abspath(os.path.join(base_path, '..', 'bin'))
         else: # Windows
+            # In the packaged folder: .../bin/
             bin_dir = os.path.join(os.path.dirname(base_path), 'bin')
             binary_name = f"{binary_name}.exe"
 
@@ -117,9 +119,7 @@ try:
         print(f"--- [Job {job_id}] Post-processing complete.", flush=True)
 
     def progress_hook(d):
-        # Since we use manual post-processing, we only care about download status here
         if d['status'] == 'downloading':
-            # A bit of a hack to find the job_id from the filename
             temp_dir = os.path.dirname(d['filename'])
             job_id = os.path.basename(temp_dir)
             if job_id in jobs:
@@ -147,7 +147,6 @@ try:
         
         ydl_opts = {
             'format': 'bestaudio/best',
-            # Post-processors removed, we handle it manually
             'progress_hooks': [progress_hook],
             'nocheckcertificate': True,
             'ignoreerrors': data.get('jobType') != 'singleMp3',
