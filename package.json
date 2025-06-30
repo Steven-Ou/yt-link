@@ -51,11 +51,7 @@
     ],
     "mac": {
       "target": "dmg",
-      "icon": "frontend/public/icon.icns",
-      "arch": [
-        "x64",
-        "arm64"
-      ]
+      "icon": "frontend/public/icon.icns"
     },
     "win": {
       "target": "zip",
