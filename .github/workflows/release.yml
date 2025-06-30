@@ -41,7 +41,7 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
-      # --- THE DEFINITIVE FIX: Use stable URLs for static binaries ---
+      # --- THE DEFINITIVE FIX: Use stable URLs for fully static binaries ---
       - name: Prepare FFMPEG Static Binaries
         shell: bash
         run: |
@@ -49,17 +49,26 @@ jobs:
           if [ "${{ runner.os }}" == "macOS" ]; then
             if [ "${{ matrix.arch }}" == "arm64" ]; then
               echo "Downloading ARM64 (Apple Silicon) static binaries..."
-              curl -fL https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-mac-arm64 -o bin/ffmpeg
-              curl -fL https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-mac-arm64 -o bin/ffprobe
+              curl -fL "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz" -o ffmpeg.tar.xz
             else # x64
               echo "Downloading x64 (Intel) static binaries for macOS..."
-              curl -fL https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-mac-x64 -o bin/ffmpeg
-              curl -fL https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-mac-x64 -o bin/ffprobe
+              curl -fL "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz" -o ffmpeg.tar.xz
             fi
+            
+            # Extract the tarball
+            tar -xf ffmpeg.tar.xz --strip-components=1 -C .
+            
+            # Move the binaries to the correct location
+            echo "Copying from extracted bin to ./bin"
+            cp ./ffmpeg ./bin/ffmpeg
+            cp ./ffprobe ./bin/ffprobe
+            
           elif [ "${{ runner.os }}" == "Windows" ]; then
             echo "Downloading Windows static binaries..."
-            curl -fL https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffmpeg-win32-x64.exe -o bin/ffmpeg.exe
-            curl -fL https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-win32-x64.exe -o bin/ffprobe.exe
+            curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -o ffmpeg.zip
+            unzip -o ffmpeg.zip -d ffmpeg-build
+            cp ffmpeg-build/bin/ffmpeg.exe ./bin/ffmpeg.exe
+            cp ffmpeg-build/bin/ffprobe.exe ./bin/ffprobe.exe
           fi
           
       - name: Set Binary Permissions (macOS)
