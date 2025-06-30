@@ -72,7 +72,13 @@ jobs:
       - name: Build and Package Electron App
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run dist -- --arch=${{ matrix.arch }}
+        shell: bash
+        run: |
+          if [ "${{ matrix.arch }}" == "arm64" ]; then
+            npm run dist -- --arm64
+          else
+            npm run dist -- --x64
+          fi
 
       - name: Prepare Artifacts for Upload
         id: prep_artifacts
