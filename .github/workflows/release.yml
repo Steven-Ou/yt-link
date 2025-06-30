@@ -59,8 +59,8 @@ jobs:
             curl -L https://github.com/eugeneware/ffmpeg-static/releases/download/b4.4/ffprobe-win32-x64.exe -o bin/ffprobe.exe
           fi
           
-      - name: Set Binary Permissions (macOS)
-        if: runner.os == 'macOS'
+      - name: Set Binary Permissions (macOS and Linux)
+        if: runner.os != 'Windows'
         run: chmod +x bin/ffmpeg bin/ffprobe
 
       - name: Build Frontend
