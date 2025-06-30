@@ -15,8 +15,8 @@ from urllib.parse import quote
 
 def get_binary_path(binary_name):
     """
-    Finds the absolute path to a bundled binary, handling .exe for Windows.
-    Also ensures executable permissions on non-Windows systems.
+    Finds the absolute path to a bundled binary and ensures it is executable.
+    This is the most reliable method for packaged apps.
     """
     if not getattr(sys, 'frozen', False):
         # In development, assume the binary is on the system's PATH.
@@ -26,11 +26,9 @@ def get_binary_path(binary_name):
         base_path = os.path.dirname(sys.executable)
         
         if platform.system() == "Darwin": # macOS
-            # In the .app bundle: .../Contents/Resources/bin/
             bin_dir = os.path.abspath(os.path.join(base_path, '..', 'bin'))
         else: # Windows
-            # In the packaged folder: .../bin/
-            bin_dir = os.path.join(base_path, '..', 'bin')
+            bin_dir = os.path.join(os.path.dirname(base_path), 'bin')
             binary_name = f"{binary_name}.exe"
 
         binary_path = os.path.join(bin_dir, binary_name)
@@ -39,6 +37,7 @@ def get_binary_path(binary_name):
             if platform.system() != "Windows":
                 try:
                     os.chmod(binary_path, 0o755)
+                    print(f"--- PERMISSION CHECK/FIX: Set +x on {binary_name} ---", flush=True)
                 except Exception as e:
                     print(f"--- PERMISSION ERROR: Failed to set +x on {binary_path}: {e} ---", file=sys.stderr, flush=True)
             return binary_path
@@ -60,11 +59,12 @@ try:
     APP_TEMP_DIR = os.path.join(tempfile.gettempdir(), "yt-link")
     os.makedirs(APP_TEMP_DIR, exist_ok=True)
 
-    def download_thread(url, ydl_opts, job_id):
+    def download_thread(url, ydl_opts, job_id, download_type):
         job_temp_dir = os.path.join(APP_TEMP_DIR, str(job_id))
         os.makedirs(job_temp_dir, exist_ok=True)
         jobs[job_id]['temp_dir'] = job_temp_dir
         
+        # Set a predictable output filename for manual processing
         ydl_opts['outtmpl'] = os.path.join(job_temp_dir, f"{job_id}.%(ext)s")
         
         try:
@@ -72,7 +72,8 @@ try:
                 info_dict = ydl.extract_info(url, download=True)
                 jobs[job_id]['info'] = info_dict
             
-            manual_post_processing(job_id)
+            # Trigger our own post-processing
+            manual_post_processing(job_id, download_type)
 
         except Exception as e:
             error_message = traceback.format_exc()
@@ -80,13 +81,13 @@ try:
             jobs[job_id]['status'] = 'failed'
             jobs[job_id]['error'] = str(e)
 
-    def manual_post_processing(job_id):
+    def manual_post_processing(job_id, download_type):
         job = jobs[job_id]
         temp_dir = job['temp_dir']
         info = job['info']
         title = info.get('title', 'yt-link-download').replace('/', '_').replace('\\', '_')
         
-        print(f"--- [Job {job_id}] Manual Post-processing ---", flush=True)
+        print(f"--- [Job {job_id}] Manual Post-processing. Type: {download_type}", flush=True)
 
         if not FFMPEG_EXE:
             raise FileNotFoundError("FATAL: FFMPEG executable path was not resolved at startup.")
@@ -115,6 +116,28 @@ try:
         job.update({'file_path': output_filepath, 'file_name': final_filename, 'status': 'completed', 'message': 'Processing complete!'})
         print(f"--- [Job {job_id}] Post-processing complete.", flush=True)
 
+    def progress_hook(d):
+        # Since we use manual post-processing, we only care about download status here
+        if d['status'] == 'downloading':
+            # A bit of a hack to find the job_id from the filename
+            temp_dir = os.path.dirname(d['filename'])
+            job_id = os.path.basename(temp_dir)
+            if job_id in jobs:
+                percent_str = d.get('_percent_str', '0%').replace('%','').strip()
+                jobs[job_id].update({
+                    'status': 'downloading',
+                    'progress': percent_str,
+                    'message': f"Downloading... {percent_str}%"
+                })
+        elif d['status'] == 'finished':
+            temp_dir = os.path.dirname(d['filename'])
+            job_id = os.path.basename(temp_dir)
+            if job_id in jobs:
+                jobs[job_id].update({
+                    'status': 'processing',
+                    'message': 'Download finished, converting to MP3...'
+                })
+
 
     @app.route('/start-job', methods=['POST'])
     def start_job_endpoint():
@@ -124,6 +147,7 @@ try:
         
         ydl_opts = {
             'format': 'bestaudio/best',
+            # Post-processors removed, we handle it manually
             'progress_hooks': [progress_hook],
             'nocheckcertificate': True,
             'ignoreerrors': data.get('jobType') != 'singleMp3',
@@ -136,21 +160,10 @@ try:
             with open(cookie_file, 'w', encoding='utf-8') as f: f.write(data['cookies'])
             ydl_opts['cookiefile'] = cookie_file
 
-        thread = threading.Thread(target=download_thread, args=(data['url'], ydl_opts, job_id))
+        thread = threading.Thread(target=download_thread, args=(data['url'], ydl_opts, job_id, data.get('jobType')))
         thread.start()
         
         return jsonify({'jobId': job_id})
-
-    # The progress_hook, get_job_status, download_file, and main block remain unchanged.
-    def progress_hook(d):
-        if d['status'] == 'finished':
-            temp_dir = os.path.dirname(d['filename'])
-            job_id = os.path.basename(temp_dir)
-            if job_id in jobs:
-                jobs[job_id].update({
-                    'status': 'processing',
-                    'message': 'Download finished, converting to MP3...'
-                })
 
     @app.route('/job-status', methods=['GET'])
     def get_job_status():
