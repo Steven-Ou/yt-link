@@ -147,6 +147,7 @@ try:
         
         ydl_opts = {
             'format': 'bestaudio/best',
+            # Post-processors removed, we handle it manually
             'progress_hooks': [progress_hook],
             'nocheckcertificate': True,
             'ignoreerrors': data.get('jobType') != 'singleMp3',
