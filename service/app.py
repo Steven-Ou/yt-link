@@ -29,8 +29,9 @@ def get_binary_path(binary_name):
         # When packaged, sys.executable is the path to our bundled Python script (e.g., .../backend/yt-link-backend)
         base_dir = os.path.dirname(sys.executable)
         
-        # The binary is expected to be in a sibling 'bin' directory, so we go up one level from 'backend' to 'resources'
-        # and then down into 'bin'. Path: .../resources/backend/ -> .../resources/bin/
+        # The binary is expected to be in a sibling 'bin' directory.
+        # Path: .../resources/backend/ -> .../resources/bin/
+        # We go up one level from the executable's directory and then into the 'bin' folder.
         binary_path = os.path.abspath(os.path.join(base_dir, '..', 'bin', binary_name))
 
         if platform.system() == "Windows":
@@ -42,7 +43,19 @@ def get_binary_path(binary_name):
             # so we don't need to chmod here.
             return binary_path
         else:
-            print(f"--- BINARY NOT FOUND: Could not find '{binary_name}' at expected path '{binary_path}' ---", file=sys.stderr, flush=True)
+            # Fallback for some packaging structures, especially on macOS
+            # where resources might be laid out differently.
+            # Path: <app_name>.app/Contents/Resources/
+            resources_path = os.path.abspath(os.path.join(base_dir, '..'))
+            fallback_path = os.path.join(resources_path, 'bin', binary_name)
+            if platform.system() == "Windows":
+                fallback_path += ".exe"
+
+            if os.path.exists(fallback_path):
+                 print(f"--- BINARY FOUND (Fallback): Located '{binary_name}' at '{fallback_path}' ---", flush=True)
+                 return fallback_path
+
+            print(f"--- BINARY NOT FOUND: Could not find '{binary_name}' at expected path '{binary_path}' OR fallback '{fallback_path}' ---", file=sys.stderr, flush=True)
             return None
             
     except Exception as e:
@@ -65,16 +78,19 @@ try:
         jobs[job_id]['temp_dir'] = job_temp_dir
         
         # Use a more descriptive output template to avoid overwrites
-        ydl_opts['outtmpl'] = os.path.join(job_temp_dir, '%(playlist_index)s-%(title)s.%(ext)s')
+        # Note: Using %(title)s can create very long filenames. A safer bet might be %(id)s.
+        ydl_opts['outtmpl'] = os.path.join(job_temp_dir, '%(playlist_index)s-%(id)s.%(ext)s')
         
         try:
             # We need to add the job_id to the info_dict for the progress hook to use it
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info_dict = ydl.extract_info(url, download=False) # Don't download yet
-                # Manually add job_id to each entry for the progress hook
-                if 'entries' in info_dict:
+                # Extract info first to get playlist count, etc.
+                info_dict = ydl.extract_info(url, download=False)
+                
+                # Manually inject job_id into each entry for the progress hook
+                if 'entries' in info_dict and info_dict['entries']:
                     for entry in info_dict['entries']:
-                        entry['job_id'] = job_id
+                        if entry: entry['job_id'] = job_id
                 else:
                     info_dict['job_id'] = job_id
                 
@@ -95,8 +111,11 @@ try:
         job = jobs[job_id]
         temp_dir = job['temp_dir']
         info = job['info']
-        playlist_title = info.get('title', 'yt-link-playlist').replace('/', '_').replace('\\', '_')
         
+        # Sanitize playlist title for use in filenames
+        playlist_title = info.get('title', 'yt-link-playlist')
+        safe_playlist_title = "".join([c for c in playlist_title if c.isalpha() or c.isdigit() or c in (' ', '-')]).rstrip()
+
         print(f"--- [Job {job_id}] Manual Post-processing. Type: {job_type}", flush=True)
 
         if not FFMPEG_EXE:
@@ -112,8 +131,12 @@ try:
         for i, file_path in enumerate(downloaded_files):
             job['message'] = f"Converting file {i+1} of {len(downloaded_files)} to MP3..."
             
-            file_name_without_ext = os.path.splitext(os.path.basename(file_path))[0]
-            output_filepath = os.path.join(temp_dir, f"{file_name_without_ext}.mp3")
+            # Use the original video title for the mp3 filename
+            entry_info = info.get('entries', [info])[i]
+            video_title = entry_info.get('title', f'track_{i+1}')
+            safe_video_title = "".join([c for c in video_title if c.isalpha() or c.isdigit() or c in (' ', '-')]).rstrip()
+            output_filename = f"{i+1:02d} - {safe_video_title}.mp3"
+            output_filepath = os.path.join(temp_dir, output_filename)
             
             command = [ FFMPEG_EXE, '-i', file_path, '-vn', '-ab', '192k', '-ar', '44100', '-y', output_filepath ]
             
@@ -131,7 +154,7 @@ try:
 
         elif job_type == 'playlistZip':
             job['message'] = 'Creating ZIP archive...'
-            final_file_name = f"{playlist_title}.zip"
+            final_file_name = f"{safe_playlist_title}.zip"
             final_file_path = os.path.join(temp_dir, final_file_name)
             with zipfile.ZipFile(final_file_path, 'w') as zipf:
                 for mp3_file in mp3_files:
@@ -139,12 +162,14 @@ try:
 
         elif job_type == 'combineMp3':
             job['message'] = 'Combining all tracks into one MP3...'
-            final_file_name = f"{playlist_title} (Combined).mp3"
+            final_file_name = f"{safe_playlist_title} (Combined).mp3"
             final_file_path = os.path.join(temp_dir, final_file_name)
             
             concat_list_path = os.path.join(temp_dir, 'concat_list.txt')
             with open(concat_list_path, 'w', encoding='utf-8') as f:
-                for mp3_file in sorted(mp3_files):
+                # Sort files numerically based on the prefix from yt-dlp's template
+                sorted_mp3s = sorted(mp3_files, key=lambda p: int(os.path.basename(p).split('-')[0]))
+                for mp3_file in sorted_mp3s:
                     safe_path = mp3_file.replace("'", "'\\''")
                     f.write(f"file '{safe_path}'\n")
             
@@ -163,7 +188,6 @@ try:
 
         if d['status'] == 'downloading':
             percent_str = d.get('_percent_str', '0.0%').strip()
-            # A more reliable way to get playlist info from the stored job
             playlist_index = d.get('info_dict', {}).get('playlist_index', 1)
             playlist_count = jobs[job_id].get('info', {}).get('playlist_count', 1)
 
@@ -191,7 +215,7 @@ try:
             'nocheckcertificate': True,
             'ignoreerrors': job_type != 'singleMp3',
             'noplaylist': job_type == 'singleMp3',
-            'outtmpl': os.path.join(APP_TEMP_DIR, str(job_id), '%(playlist_index)s-%(title)s.%(ext)s'),
+            'outtmpl': os.path.join(APP_TEMP_DIR, str(job_id), '%(playlist_index)s-%(id)s.%(ext)s'),
             'download_archive': False
         }
 
