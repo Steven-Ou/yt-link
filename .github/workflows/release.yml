@@ -43,7 +43,7 @@ jobs:
 
       # --- THE DEFINITIVE FIX: Use a dedicated GitHub Action to set up FFMPEG ---
       - name: Setup FFmpeg
-        uses: federicobond/setup-ffmpeg@v2
+        uses: federicobond/setup-ffmpeg@v1
         with:
           # This action will download the correct static binary for the runner's OS and architecture
           # and add it to the system PATH. This makes it available to all subsequent steps.
