@@ -41,7 +41,7 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
-      # --- THE DEFINITIVE FIX: Use stable URLs and correct extraction commands ---
+      # --- THE DEFINITIVE FIX: Use verified URLs and correct extraction commands ---
       - name: Prepare FFMPEG Static Binaries
         shell: bash
         run: |
@@ -49,28 +49,25 @@ jobs:
           if [ "${{ runner.os }}" == "macOS" ]; then
             if [ "${{ matrix.arch }}" == "arm64" ]; then
               echo "Downloading ARM64 (Apple Silicon) static binaries from BtbN..."
-              curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n7.0/ffmpeg-n7.0-macos-arm64-static.zip" -o ffmpeg.zip
+              curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n6.1/ffmpeg-n6.1-macos-arm64-static.zip" -o ffmpeg.zip
             else # x64
               echo "Downloading x64 (Intel) static binaries from BtbN..."
-              curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n7.0/ffmpeg-n7.0-macos-x64-static.zip" -o ffmpeg.zip
+              curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n6.1/ffmpeg-n6.1-macos-x64-static.zip" -o ffmpeg.zip
             fi
             
-            # --- FIX: Use unzip for .zip files on macOS ---
-            unzip -o ffmpeg.zip -d ffmpeg-build
-            
+            unzip -o ffmpeg.zip
             # The binaries are inside a 'bin' subdirectory of the extracted folder
-            echo "Copying from ffmpeg-build/bin to ./bin"
-            cp ffmpeg-build/bin/ffmpeg ./bin/ffmpeg
-            cp ffmpeg-build/bin/ffprobe ./bin/ffprobe
+            echo "Copying from extracted bin to ./bin"
+            cp ffmpeg-n6.1-macos-*-static/bin/ffmpeg ./bin/ffmpeg
+            cp ffmpeg-n6.1-macos-*-static/bin/ffprobe ./bin/ffprobe
             
           elif [ "${{ runner.os }}" == "Windows" ]; then
             echo "Downloading Windows static binaries..."
-            curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n7.0/ffmpeg-n7.0-win64-gpl.zip" -o ffmpeg.zip
-            unzip -o ffmpeg.zip -d ffmpeg-build
-            
+            curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n6.1/ffmpeg-n6.1-win64-gpl.zip" -o ffmpeg.zip
+            unzip -o ffmpeg.zip
             # Corrected path for Windows binaries inside the zip
-            cp ffmpeg-build/ffmpeg-n7.0-win64-gpl/bin/ffmpeg.exe ./bin/ffmpeg.exe
-            cp ffmpeg-build/ffmpeg-n7.0-win64-gpl/bin/ffprobe.exe ./bin/ffprobe.exe
+            cp ffmpeg-n6.1-win64-gpl/bin/ffmpeg.exe ./bin/ffmpeg.exe
+            cp ffmpeg-n6.1-win64-gpl/bin/ffprobe.exe ./bin/ffprobe.exe
           fi
           
       - name: Set Binary Permissions (macOS)
