@@ -48,12 +48,14 @@ function createWindow() {
         title: "YT Link"
     });
 
-    portfinder.getPortPromise({ port: 5001 })
+    // Increase the port search range to make it more robust.
+    portfinder.getPortPromise({ port: 5001, stopPort: 5999 })
         .then(freePort => {
             pyPort = freePort;
             startPythonBackend(pyPort);
         })
         .catch(err => {
+            sendLog(`[Electron] Portfinder error: ${err}`);
             dialog.showErrorBox('Startup Error', 'Could not find a free port for the backend service.');
             app.quit();
         });
