@@ -41,7 +41,7 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
-      # --- THE DEFINITIVE FIX: Use stable URLs and correct extraction commands ---
+      # --- THE DEFINITIVE FIX: Use stable, correct URLs and extraction commands ---
       - name: Prepare FFMPEG Static Binaries
         shell: bash
         run: |
@@ -55,10 +55,7 @@ jobs:
               curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n7.0/ffmpeg-n7.0-macos-x64-static.zip" -o ffmpeg.zip
             fi
             
-            # --- FIX: Use unzip for .zip files on macOS ---
             unzip -o ffmpeg.zip -d ffmpeg-build
-            
-            # The binaries are inside a 'bin' subdirectory of the extracted folder
             echo "Copying from ffmpeg-build/bin to ./bin"
             cp ffmpeg-build/bin/ffmpeg ./bin/ffmpeg
             cp ffmpeg-build/bin/ffprobe ./bin/ffprobe
@@ -66,10 +63,8 @@ jobs:
           elif [ "${{ runner.os }}" == "Windows" ]; then
             echo "Downloading Windows static binaries..."
             curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n7.0/ffmpeg-n7.0-win64-gpl.zip" -o ffmpeg.zip
-            
-            # --- FIX: Correct the path after unzipping on Windows ---
             unzip -o ffmpeg.zip -d ffmpeg-build
-            # The path includes a versioned folder name
+            # Corrected path for Windows binaries inside the zip
             cp ffmpeg-build/ffmpeg-n7.0-win64-gpl/bin/ffmpeg.exe ./bin/ffmpeg.exe
             cp ffmpeg-build/ffmpeg-n7.0-win64-gpl/bin/ffprobe.exe ./bin/ffprobe.exe
           fi
