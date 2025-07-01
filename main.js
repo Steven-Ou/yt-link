@@ -75,23 +75,20 @@ function createWindow() {
 
 function startPythonBackend(port) {
     const isDev = !app.isPackaged;
-    
     const backendName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
-    const ffmpegName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
 
+    // This is the corrected path logic.
+    // In dev, it runs the .py script.
+    // In production, it points to the executable inside the nested folder.
     const command = isDev 
         ? (process.platform === 'win32' ? 'python' : 'python3') 
-        : path.join(process.resourcesPath, 'backend', backendName);
+        : path.join(process.resourcesPath, 'backend', 'yt-link-backend', backendName);
 
-    // Pass the absolute path to ffmpeg as an argument in packaged mode.
-    const args = isDev 
-        ? [path.join(__dirname, 'service', 'app.py'), port.toString()] 
-        : [port.toString(), path.join(process.resourcesPath, 'bin', ffmpegName)];
-
+    const args = isDev ? [path.join(__dirname, 'service', 'app.py'), port.toString()] : [port.toString()];
+    
     sendLog(`[Electron] Starting backend with command: "${command}"`);
     sendLog(`[Electron] Using arguments: [${args.join(', ')}]`);
     
-    // No 'cwd' needed, simplifying the call and avoiding ENOTDIR errors.
     pythonProcess = spawn(command, args);
 
     pythonProcess.on('error', (err) => {
@@ -131,7 +128,6 @@ app.on('quit', () => {
 });
 
 // --- IPC HANDLERS (No changes below this line) ---
-
 ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
     if (!isBackendReady) {
         return { error: 'Backend is not ready. Please wait a moment or restart the application.' };
