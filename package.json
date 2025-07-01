@@ -39,7 +39,7 @@
     "extraResources": [
       {
         "from": "service/dist/yt-link-backend",
-        "to": "backend/yt-link-backend"
+        "to": "backend"
       },
       {
         "from": "./bin/",
