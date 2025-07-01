@@ -41,13 +41,13 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
-      # --- THE DEFINITIVE FIX: Use a dedicated GitHub Action to set up FFMPEG ---
-      - name: Setup FFmpeg
-        uses: federicobond/setup-ffmpeg@v1
-        with:
-          # This action will download the correct static binary for the runner's OS and architecture
-          # and add it to the system PATH. This makes it available to all subsequent steps.
-          token: ${{ secrets.GITHUB_TOKEN }}
+      # --- Install ffmpeg-static via npm and add it to the PATH ---
+      - name: Install ffmpeg-static
+        run: npm install --save-dev ffmpeg-static
+
+      - name: Add ffmpeg-static to PATH
+        shell: bash
+        run: echo "$(npm explore ffmpeg-static -- pwd)" >> $GITHUB_PATH
 
       - name: Build Frontend
         run: npm run build:frontend
