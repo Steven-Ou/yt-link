@@ -48,15 +48,18 @@ function createWindow() {
         title: "YT Link"
     });
 
-    // Increase the port search range to make it more robust.
-    portfinder.getPortPromise({ port: 5001, stopPort: 5999 })
+    // Reverted to simpler portfinder call and added more detailed error logging.
+    sendLog('[Electron] Finding a free port...');
+    portfinder.getPortPromise({ port: 5001 })
         .then(freePort => {
+            sendLog(`[Electron] Found free port: ${freePort}`);
             pyPort = freePort;
             startPythonBackend(pyPort);
         })
         .catch(err => {
-            sendLog(`[Electron] Portfinder error: ${err}`);
-            dialog.showErrorBox('Startup Error', 'Could not find a free port for the backend service.');
+            const errorMessage = `Could not find a free port for the backend service.\n\nError: ${err.message}`;
+            sendLog(`[Electron] Portfinder error: ${errorMessage}`);
+            dialog.showErrorBox('Startup Error', errorMessage);
             app.quit();
         });
 
@@ -76,14 +79,12 @@ function startPythonBackend(port) {
     
     const backendName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
     
-    // Correctly determine the path for both development and packaged app
     const command = isDev 
         ? (process.platform === 'win32' ? 'python' : 'python3') 
         : path.join(process.resourcesPath, 'backend', backendName);
 
     const args = isDev ? [path.join(__dirname, 'service', 'app.py'), port.toString()] : [port.toString()];
     
-    // The working directory should be where the executable is, or the service folder in dev
     const cwd = isDev ? path.join(__dirname, 'service') : path.dirname(command);
 
     sendLog(`[Electron] Starting backend with command: "${command}"`);
@@ -113,6 +114,9 @@ function startPythonBackend(port) {
     pythonProcess.on('close', (code) => {
         isBackendReady = false;
         sendLog(`[Electron] Python process exited with code ${code}`);
+        if (code !== 0 && !isBackendReady) {
+            dialog.showErrorBox('Backend Error', `The backend service failed to start or closed unexpectedly with code: ${code}. Please check the logs.`);
+        }
     });
 }
 
