@@ -15,41 +15,34 @@ from urllib.parse import quote
 
 def get_binary_path(binary_name):
     """
-    Finds the absolute path to a bundled binary and ensures it is executable.
-    This is the most reliable method for packaged apps.
+    Finds the absolute path to a bundled binary. This is the most reliable method for packaged apps.
+    It assumes that the binary (e.g., ffmpeg) is in a 'bin' directory, and the Python executable
+    is in a 'backend' directory, both inside the main 'resources' folder.
     """
     if not getattr(sys, 'frozen', False):
         # In development, assume the binary is on the system's PATH.
+        # This allows you to use system-installed ffmpeg during development.
+        print(f"--- DEV MODE: Using '{binary_name}' from PATH ---", flush=True)
         return binary_name
 
     try:
-        # The base path of the running executable
-        base_path = os.path.dirname(sys.executable)
+        # When packaged, sys.executable is the path to our bundled Python script (e.g., .../backend/yt-link-backend)
+        base_dir = os.path.dirname(sys.executable)
         
-        # In a packaged app, binaries are in a 'bin' folder within 'resources'
-        # The structure is slightly different on macOS vs. Windows/Linux
-        # macOS: <app_name>.app/Contents/Resources/bin/
-        # Win/Lin: <app_dir>/resources/bin/
-        resources_path = os.path.join(base_path, '..', 'Resources') if platform.system() == "Darwin" else base_path
-        bin_dir = os.path.join(resources_path, 'bin')
+        # The binary is expected to be in a sibling 'bin' directory, so we go up one level from 'backend' to 'resources'
+        # and then down into 'bin'. Path: .../resources/backend/ -> .../resources/bin/
+        binary_path = os.path.abspath(os.path.join(base_dir, '..', 'bin', binary_name))
 
-        # Add .exe for Windows
         if platform.system() == "Windows":
-            binary_name = f"{binary_name}.exe"
-
-        binary_path = os.path.join(bin_dir, binary_name)
+            binary_path += ".exe"
 
         if os.path.exists(binary_path):
-            if platform.system() != "Windows":
-                try:
-                    # Set executable permission for non-Windows platforms
-                    os.chmod(binary_path, 0o755)
-                    print(f"--- PERMISSION CHECK/FIX: Set +x on {binary_name} ---", flush=True)
-                except Exception as e:
-                    print(f"--- PERMISSION ERROR: Failed to set +x on {binary_path}: {e} ---", file=sys.stderr, flush=True)
+            print(f"--- BINARY FOUND: Located '{binary_name}' at '{binary_path}' ---", flush=True)
+            # The executable permission should be set by the 'afterPack' script,
+            # so we don't need to chmod here.
             return binary_path
         else:
-            print(f"--- BINARY NOT FOUND: Could not find '{binary_path}' ---", file=sys.stderr, flush=True)
+            print(f"--- BINARY NOT FOUND: Could not find '{binary_name}' at expected path '{binary_path}' ---", file=sys.stderr, flush=True)
             return None
             
     except Exception as e:
@@ -75,10 +68,20 @@ try:
         ydl_opts['outtmpl'] = os.path.join(job_temp_dir, '%(playlist_index)s-%(title)s.%(ext)s')
         
         try:
+            # We need to add the job_id to the info_dict for the progress hook to use it
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info_dict = ydl.extract_info(url, download=True)
+                info_dict = ydl.extract_info(url, download=False) # Don't download yet
+                # Manually add job_id to each entry for the progress hook
+                if 'entries' in info_dict:
+                    for entry in info_dict['entries']:
+                        entry['job_id'] = job_id
+                else:
+                    info_dict['job_id'] = job_id
+                
                 jobs[job_id]['info'] = info_dict
-            
+                # Now download with the modified info_dict
+                ydl.download([url])
+
             # Trigger our own post-processing
             manual_post_processing(job_id, job_type)
 
@@ -97,15 +100,16 @@ try:
         print(f"--- [Job {job_id}] Manual Post-processing. Type: {job_type}", flush=True)
 
         if not FFMPEG_EXE:
+            job.update({'status': 'failed', 'error': "FFMPEG executable not found."})
             raise FileNotFoundError("FATAL: FFMPEG executable path was not resolved at startup.")
 
-        downloaded_files = [os.path.join(temp_dir, f) for f in os.listdir(temp_dir) if not f.endswith('.mp3')]
+        downloaded_files = [os.path.join(temp_dir, f) for f in os.listdir(temp_dir) if not f.endswith(('.mp3', '.zip', '.txt'))]
         if not downloaded_files:
+            job.update({'status': 'failed', 'error': "No downloaded video files found for processing."})
             raise FileNotFoundError("No downloaded files found for post-processing.")
 
         mp3_files = []
         for i, file_path in enumerate(downloaded_files):
-            # Update progress for processing step
             job['message'] = f"Converting file {i+1} of {len(downloaded_files)} to MP3..."
             
             file_name_without_ext = os.path.splitext(os.path.basename(file_path))[0]
@@ -113,7 +117,7 @@ try:
             
             command = [ FFMPEG_EXE, '-i', file_path, '-vn', '-ab', '192k', '-ar', '44100', '-y', output_filepath ]
             
-            process = subprocess.run(command, capture_output=True, text=True, encoding='utf-8')
+            process = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', errors='ignore')
             if process.returncode != 0:
                 raise Exception(f"FFMPEG failed for {file_path}: {process.stderr}")
             mp3_files.append(output_filepath)
@@ -138,51 +142,41 @@ try:
             final_file_name = f"{playlist_title} (Combined).mp3"
             final_file_path = os.path.join(temp_dir, final_file_name)
             
-            # Create a file list for ffmpeg's concat demuxer
             concat_list_path = os.path.join(temp_dir, 'concat_list.txt')
             with open(concat_list_path, 'w', encoding='utf-8') as f:
                 for mp3_file in sorted(mp3_files):
-                    # FFMPEG requires special characters to be escaped
                     safe_path = mp3_file.replace("'", "'\\''")
                     f.write(f"file '{safe_path}'\n")
             
             combine_command = [FFMPEG_EXE, '-f', 'concat', '-safe', '0', '-i', concat_list_path, '-c', 'copy', '-y', final_file_path]
-            combine_process = subprocess.run(combine_command, capture_output=True, text=True, encoding='utf-8')
+            combine_process = subprocess.run(combine_command, capture_output=True, text=True, encoding='utf-8', errors='ignore')
             if combine_process.returncode != 0:
                 raise Exception(f"FFMPEG combine failed: {combine_process.stderr}")
 
         job.update({'file_path': final_file_path, 'file_name': final_file_name, 'status': 'completed', 'message': 'Processing complete!'})
         print(f"--- [Job {job_id}] Post-processing complete. Output: {final_file_name}", flush=True)
 
-    # The rest of the file (progress_hook, Flask routes) remains the same.
     def progress_hook(d):
+        job_id = d.get('info_dict', {}).get('job_id')
+        if not job_id or job_id not in jobs:
+            return
+
         if d['status'] == 'downloading':
-            job_id = d.get('info_dict', {}).get('job_id')
-            if job_id in jobs:
-                percent_str = d.get('_percent_str', '0%').replace('%','').strip()
-                total_bytes = d.get('total_bytes') or d.get('total_bytes_estimate')
-                if total_bytes:
-                     # Calculate overall progress for playlists
-                    playlist_index = d.get('playlist_index', 1)
-                    playlist_count = jobs[job_id]['info'].get('playlist_count', 1)
-                    progress = ((playlist_index - 1) / playlist_count) * 100 + float(percent_str) / playlist_count
-                else:
-                    progress = float(percent_str)
-                
-                jobs[job_id].update({
-                    'status': 'downloading',
-                    'progress': f"{progress:.2f}",
-                    'message': f"Downloading video {d.get('playlist_index', 1)} of {jobs[job_id]['info'].get('playlist_count', 1)}... {percent_str}%"
-                })
+            percent_str = d.get('_percent_str', '0.0%').strip()
+            # A more reliable way to get playlist info from the stored job
+            playlist_index = d.get('info_dict', {}).get('playlist_index', 1)
+            playlist_count = jobs[job_id].get('info', {}).get('playlist_count', 1)
 
+            jobs[job_id].update({
+                'status': 'downloading',
+                'progress': percent_str.replace('%',''),
+                'message': f"Downloading video {playlist_index} of {playlist_count}... {percent_str}"
+            })
         elif d['status'] == 'finished':
-            job_id = d.get('info_dict', {}).get('job_id')
-            if job_id in jobs:
-                 jobs[job_id].update({
-                    'status': 'processing',
-                    'message': 'Download finished, preparing for conversion...'
-                })
-
+            jobs[job_id].update({
+                'status': 'processing',
+                'message': 'Download finished, converting to MP3...'
+            })
 
     @app.route('/start-job', methods=['POST'])
     def start_job_endpoint():
@@ -197,15 +191,9 @@ try:
             'nocheckcertificate': True,
             'ignoreerrors': job_type != 'singleMp3',
             'noplaylist': job_type == 'singleMp3',
-            # Pass job_id to the hook info_dict
-            'outtmpl': {'default': os.path.join(APP_TEMP_DIR, str(job_id), '%(playlist_index)s-%(title)s.%(ext)s')},
+            'outtmpl': os.path.join(APP_TEMP_DIR, str(job_id), '%(playlist_index)s-%(title)s.%(ext)s'),
             'download_archive': False
         }
-        # Add job_id to info_dict for progress hook
-        def add_job_id(info_dict):
-            info_dict['job_id'] = job_id
-        ydl_opts['postprocessor_hooks'] = [add_job_id]
-
 
         if data.get('cookies'):
             cookie_file = os.path.join(APP_TEMP_DIR, f"cookies_{job_id}.txt")
@@ -235,18 +223,18 @@ try:
 
         def file_generator():
             try:
-                with open(file_path, 'rb') as f: yield from f
+                with open(file_path, 'rb') as f:
+                    yield from f
             finally:
-                # Clean up the entire job directory
                 temp_dir = job.get('temp_dir')
                 if temp_dir and os.path.exists(temp_dir):
                     shutil.rmtree(temp_dir, ignore_errors=True)
                 jobs.pop(job_id, None)
         
-        file_name = job.get("file_name")
+        file_name = job.get("file_name", "download.dat")
         
         encoded_file_name = quote(file_name)
-        fallback_file_name = file_name.encode('ascii', 'ignore').decode('ascii')
+        fallback_file_name = file_name.encode('ascii', 'ignore').decode('ascii').replace('"', '')
         if not fallback_file_name:
             fallback_file_name = "download.dat"
 
