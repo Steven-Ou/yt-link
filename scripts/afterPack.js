@@ -29,7 +29,8 @@ exports.default = async function (context) {
   const filesToChmod = [
     path.join(resourcesPath, 'bin', 'ffmpeg'),
     path.join(resourcesPath, 'bin', 'ffprobe'),
-    path.join(resourcesPath, 'backend', 'yt-link-backend')
+    // This is the corrected path to the backend executable
+    path.join(resourcesPath, 'backend', 'yt-link-backend', 'yt-link-backend')
   ];
 
   for (const filePath of filesToChmod) {
