@@ -48,7 +48,6 @@ function createWindow() {
         title: "YT Link"
     });
 
-    // Reverted to simpler portfinder call and added more detailed error logging.
     sendLog('[Electron] Finding a free port...');
     portfinder.getPortPromise({ port: 5001 })
         .then(freePort => {
@@ -78,20 +77,22 @@ function startPythonBackend(port) {
     const isDev = !app.isPackaged;
     
     const backendName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
-    
+    const ffmpegName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+
     const command = isDev 
         ? (process.platform === 'win32' ? 'python' : 'python3') 
         : path.join(process.resourcesPath, 'backend', backendName);
 
-    const args = isDev ? [path.join(__dirname, 'service', 'app.py'), port.toString()] : [port.toString()];
-    
-    const cwd = isDev ? path.join(__dirname, 'service') : path.dirname(command);
+    // Pass the absolute path to ffmpeg as an argument in packaged mode.
+    const args = isDev 
+        ? [path.join(__dirname, 'service', 'app.py'), port.toString()] 
+        : [port.toString(), path.join(process.resourcesPath, 'bin', ffmpegName)];
 
     sendLog(`[Electron] Starting backend with command: "${command}"`);
     sendLog(`[Electron] Using arguments: [${args.join(', ')}]`);
-    sendLog(`[Electron] In working directory: ${cwd}`);
     
-    pythonProcess = spawn(command, args, { cwd: cwd });
+    // No 'cwd' needed, simplifying the call and avoiding ENOTDIR errors.
+    pythonProcess = spawn(command, args);
 
     pythonProcess.on('error', (err) => {
         sendLog(`[Electron] FAILED TO START PYTHON PROCESS: ${err}`);
@@ -129,7 +130,7 @@ app.on('quit', () => {
     }
 });
 
-// --- IPC HANDLERS ---
+// --- IPC HANDLERS (No changes below this line) ---
 
 ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
     if (!isBackendReady) {
