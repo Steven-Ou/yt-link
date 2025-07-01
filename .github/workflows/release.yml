@@ -41,34 +41,37 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
-      # --- THE DEFINITIVE FIX: Use stable URLs for fully static binaries ---
+      # --- THE DEFINITIVE FIX: Use stable URLs and correct extraction commands ---
       - name: Prepare FFMPEG Static Binaries
         shell: bash
         run: |
           mkdir -p bin
           if [ "${{ runner.os }}" == "macOS" ]; then
             if [ "${{ matrix.arch }}" == "arm64" ]; then
-              echo "Downloading ARM64 (Apple Silicon) static binaries..."
-              curl -fL "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz" -o ffmpeg.tar.xz
+              echo "Downloading ARM64 (Apple Silicon) static binaries from BtbN..."
+              curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n7.0/ffmpeg-n7.0-macos-arm64-static.zip" -o ffmpeg.zip
             else # x64
-              echo "Downloading x64 (Intel) static binaries for macOS..."
-              curl -fL "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz" -o ffmpeg.tar.xz
+              echo "Downloading x64 (Intel) static binaries from BtbN..."
+              curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n7.0/ffmpeg-n7.0-macos-x64-static.zip" -o ffmpeg.zip
             fi
             
-            # Extract the tarball
-            tar -xf ffmpeg.tar.xz --strip-components=1 -C .
+            # --- FIX: Use unzip for .zip files on macOS ---
+            unzip -o ffmpeg.zip -d ffmpeg-build
             
-            # Move the binaries to the correct location
-            echo "Copying from extracted bin to ./bin"
-            cp ./ffmpeg ./bin/ffmpeg
-            cp ./ffprobe ./bin/ffprobe
+            # The binaries are inside a 'bin' subdirectory of the extracted folder
+            echo "Copying from ffmpeg-build/bin to ./bin"
+            cp ffmpeg-build/bin/ffmpeg ./bin/ffmpeg
+            cp ffmpeg-build/bin/ffprobe ./bin/ffprobe
             
           elif [ "${{ runner.os }}" == "Windows" ]; then
             echo "Downloading Windows static binaries..."
-            curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -o ffmpeg.zip
+            curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n7.0/ffmpeg-n7.0-win64-gpl.zip" -o ffmpeg.zip
+            
+            # --- FIX: Correct the path after unzipping on Windows ---
             unzip -o ffmpeg.zip -d ffmpeg-build
-            cp ffmpeg-build/bin/ffmpeg.exe ./bin/ffmpeg.exe
-            cp ffmpeg-build/bin/ffprobe.exe ./bin/ffprobe.exe
+            # The path includes a versioned folder name
+            cp ffmpeg-build/ffmpeg-n7.0-win64-gpl/bin/ffmpeg.exe ./bin/ffmpeg.exe
+            cp ffmpeg-build/ffmpeg-n7.0-win64-gpl/bin/ffprobe.exe ./bin/ffprobe.exe
           fi
           
       - name: Set Binary Permissions (macOS)
