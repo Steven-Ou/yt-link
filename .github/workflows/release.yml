@@ -41,7 +41,7 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
-      # --- THE DEFINITIVE FIX: Use stable, correct URLs and extraction commands ---
+      # --- THE DEFINITIVE FIX: Use stable URLs and correct extraction commands ---
       - name: Prepare FFMPEG Static Binaries
         shell: bash
         run: |
