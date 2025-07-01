@@ -49,21 +49,27 @@ jobs:
           if [ "${{ runner.os }}" == "macOS" ]; then
             if [ "${{ matrix.arch }}" == "arm64" ]; then
               echo "Downloading ARM64 (Apple Silicon) static binaries from BtbN..."
-              curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n7.0/ffmpeg-n7.0-macos-arm64-static.zip" -o ffmpeg.zip
+              curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n7.0/ffmpeg-n7.0-macos-arm64-static.tar.xz" -o ffmpeg.tar.xz
             else # x64
               echo "Downloading x64 (Intel) static binaries from BtbN..."
-              curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n7.0/ffmpeg-n7.0-macos-x64-static.zip" -o ffmpeg.zip
+              curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n7.0/ffmpeg-n7.0-macOS-x64-static.tar.xz" -o ffmpeg.tar.xz
             fi
             
-            unzip -o ffmpeg.zip -d ffmpeg-build
-            echo "Copying from ffmpeg-build/bin to ./bin"
-            cp ffmpeg-build/bin/ffmpeg ./bin/ffmpeg
-            cp ffmpeg-build/bin/ffprobe ./bin/ffprobe
+            # --- FIX: Use tar to extract the .tar.xz file ---
+            tar -xf ffmpeg.tar.xz
+            
+            # The binaries are inside a versioned subdirectory
+            EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "ffmpeg-n7.0-*-static")
+            
+            echo "Copying from ${EXTRACTED_DIR}/bin to ./bin"
+            cp "${EXTRACTED_DIR}/ffmpeg" "./bin/ffmpeg"
+            cp "${EXTRACTED_DIR}/ffprobe" "./bin/ffprobe"
             
           elif [ "${{ runner.os }}" == "Windows" ]; then
             echo "Downloading Windows static binaries..."
             curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n7.0/ffmpeg-n7.0-win64-gpl.zip" -o ffmpeg.zip
             unzip -o ffmpeg.zip -d ffmpeg-build
+            
             # Corrected path for Windows binaries inside the zip
             cp ffmpeg-build/ffmpeg-n7.0-win64-gpl/bin/ffmpeg.exe ./bin/ffmpeg.exe
             cp ffmpeg-build/ffmpeg-n7.0-win64-gpl/bin/ffprobe.exe ./bin/ffprobe.exe
