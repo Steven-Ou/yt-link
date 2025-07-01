@@ -73,22 +73,27 @@ function startPythonBackend(port) {
     const isDev = !app.isPackaged;
     
     const backendName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
-    // When packaged, the backend is in the Resources folder.
-    const backendPath = isDev 
-        ? path.join(__dirname, 'service', 'app.py') 
-        : path.join(process.resourcesPath, 'backend', backendName);
-
+    
+    // Correctly determine the path for both development and packaged app
     const command = isDev 
         ? (process.platform === 'win32' ? 'python' : 'python3') 
-        : backendPath;
+        : path.join(process.resourcesPath, 'backend', backendName);
 
-    const args = isDev ? [backendPath, port.toString()] : [port.toString()];
+    const args = isDev ? [path.join(__dirname, 'service', 'app.py'), port.toString()] : [port.toString()];
     
+    // The working directory should be where the executable is, or the service folder in dev
     const cwd = isDev ? path.join(__dirname, 'service') : path.dirname(command);
 
-    sendLog(`[Electron] Starting backend: ${command} ${args.join(' ')} in ${cwd}`);
+    sendLog(`[Electron] Starting backend with command: "${command}"`);
+    sendLog(`[Electron] Using arguments: [${args.join(', ')}]`);
+    sendLog(`[Electron] In working directory: ${cwd}`);
     
     pythonProcess = spawn(command, args, { cwd: cwd });
+
+    pythonProcess.on('error', (err) => {
+        sendLog(`[Electron] FAILED TO START PYTHON PROCESS: ${err}`);
+        dialog.showErrorBox('Backend Error', `Failed to start the backend service:\n${err}`);
+    });
 
     pythonProcess.stdout.on('data', (data) => {
         const log = data.toString().trim();
@@ -135,7 +140,8 @@ ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
             body: JSON.stringify(payload),
         });
         if (!response.ok) {
-            throw new Error(`Backend responded with status: ${response.status} ${await response.text()}`);
+            const errorText = await response.text();
+            throw new Error(`Backend responded with status: ${response.status} ${errorText}`);
         }
         return await response.json();
     } catch (error) {
@@ -148,6 +154,10 @@ ipcMain.handle('get-job-status', async (event, jobId) => {
     if (!isBackendReady) return { status: 'failed', message: 'Backend is not running.' };
     try {
         const response = await fetch(`http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`);
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Backend responded with status: ${response.status} ${errorText}`);
+        }
         return await response.json();
     } catch (error) {
         return { error: error.message };
@@ -166,7 +176,7 @@ ipcMain.handle('download-file', async (event, jobId) => {
         }
         
         const downloadsPath = app.getPath('downloads');
-        const safeFileName = job.file_name.replace(/[\/\\]/g, '_');
+        const safeFileName = job.file_name.replace(/[\\/]/g, '_');
         const filePath = path.join(downloadsPath, safeFileName);
         
         const downloadUrl = `http://127.0.0.1:${pyPort}/download/${jobId}`;
