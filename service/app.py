@@ -13,57 +13,8 @@ import platform
 import subprocess
 from urllib.parse import quote
 
-def get_binary_path(binary_name):
-    """
-    Finds the absolute path to a bundled binary. This is the most reliable method for packaged apps.
-    It assumes that the binary (e.g., ffmpeg) is in a 'bin' directory, and the Python executable
-    is in a 'backend' directory, both inside the main 'resources' folder.
-    """
-    if not getattr(sys, 'frozen', False):
-        # In development, assume the binary is on the system's PATH.
-        # This allows you to use system-installed ffmpeg during development.
-        print(f"--- DEV MODE: Using '{binary_name}' from PATH ---", flush=True)
-        return binary_name
-
-    try:
-        # When packaged, sys.executable is the path to our bundled Python script (e.g., .../backend/yt-link-backend)
-        base_dir = os.path.dirname(sys.executable)
-        
-        # The binary is expected to be in a sibling 'bin' directory.
-        # Path: .../resources/backend/ -> .../resources/bin/
-        # We go up one level from the executable's directory and then into the 'bin' folder.
-        binary_path = os.path.abspath(os.path.join(base_dir, '..', 'bin', binary_name))
-
-        if platform.system() == "Windows":
-            binary_path += ".exe"
-
-        if os.path.exists(binary_path):
-            print(f"--- BINARY FOUND: Located '{binary_name}' at '{binary_path}' ---", flush=True)
-            # The executable permission should be set by the 'afterPack' script,
-            # so we don't need to chmod here.
-            return binary_path
-        else:
-            # Fallback for some packaging structures, especially on macOS
-            # where resources might be laid out differently.
-            # Path: <app_name>.app/Contents/Resources/
-            resources_path = os.path.abspath(os.path.join(base_dir, '..'))
-            fallback_path = os.path.join(resources_path, 'bin', binary_name)
-            if platform.system() == "Windows":
-                fallback_path += ".exe"
-
-            if os.path.exists(fallback_path):
-                 print(f"--- BINARY FOUND (Fallback): Located '{binary_name}' at '{fallback_path}' ---", flush=True)
-                 return fallback_path
-
-            print(f"--- BINARY NOT FOUND: Could not find '{binary_name}' at expected path '{binary_path}' OR fallback '{fallback_path}' ---", file=sys.stderr, flush=True)
-            return None
-            
-    except Exception as e:
-        print(f"--- FATAL ERROR in get_binary_path: {e} ---", file=sys.stderr, flush=True)
-        return None
-
-# Get the absolute paths to the binaries at startup.
-FFMPEG_EXE = get_binary_path('ffmpeg')
+# This will be set at runtime from command-line arguments
+FFMPEG_EXE = None
 
 try:
     app = Flask(__name__)
@@ -77,17 +28,12 @@ try:
         os.makedirs(job_temp_dir, exist_ok=True)
         jobs[job_id]['temp_dir'] = job_temp_dir
         
-        # Use a more descriptive output template to avoid overwrites
-        # Note: Using %(title)s can create very long filenames. A safer bet might be %(id)s.
         ydl_opts['outtmpl'] = os.path.join(job_temp_dir, '%(playlist_index)s-%(id)s.%(ext)s')
         
         try:
-            # We need to add the job_id to the info_dict for the progress hook to use it
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # Extract info first to get playlist count, etc.
                 info_dict = ydl.extract_info(url, download=False)
                 
-                # Manually inject job_id into each entry for the progress hook
                 if 'entries' in info_dict and info_dict['entries']:
                     for entry in info_dict['entries']:
                         if entry: entry['job_id'] = job_id
@@ -95,10 +41,8 @@ try:
                     info_dict['job_id'] = job_id
                 
                 jobs[job_id]['info'] = info_dict
-                # Now download with the modified info_dict
                 ydl.download([url])
 
-            # Trigger our own post-processing
             manual_post_processing(job_id, job_type)
 
         except Exception as e:
@@ -112,7 +56,6 @@ try:
         temp_dir = job['temp_dir']
         info = job['info']
         
-        # Sanitize playlist title for use in filenames
         playlist_title = info.get('title', 'yt-link-playlist')
         safe_playlist_title = "".join([c for c in playlist_title if c.isalpha() or c.isdigit() or c in (' ', '-')]).rstrip()
 
@@ -128,11 +71,11 @@ try:
             raise FileNotFoundError("No downloaded files found for post-processing.")
 
         mp3_files = []
+        entries = info.get('entries', [info])
         for i, file_path in enumerate(downloaded_files):
             job['message'] = f"Converting file {i+1} of {len(downloaded_files)} to MP3..."
             
-            # Use the original video title for the mp3 filename
-            entry_info = info.get('entries', [info])[i]
+            entry_info = entries[i] if i < len(entries) else {}
             video_title = entry_info.get('title', f'track_{i+1}')
             safe_video_title = "".join([c for c in video_title if c.isalpha() or c.isdigit() or c in (' ', '-')]).rstrip()
             output_filename = f"{i+1:02d} - {safe_video_title}.mp3"
@@ -167,7 +110,6 @@ try:
             
             concat_list_path = os.path.join(temp_dir, 'concat_list.txt')
             with open(concat_list_path, 'w', encoding='utf-8') as f:
-                # Sort files numerically based on the prefix from yt-dlp's template
                 sorted_mp3s = sorted(mp3_files, key=lambda p: int(os.path.basename(p).split('-')[0]))
                 for mp3_file in sorted_mp3s:
                     safe_path = mp3_file.replace("'", "'\\''")
@@ -269,7 +211,26 @@ try:
         return Response(file_generator(), mimetype='application/octet-stream', headers=headers)
 
     if __name__ == '__main__':
+        # The script now expects the port number and optionally the ffmpeg path.
         port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001
+        
+        if getattr(sys, 'frozen', False):
+            # In packaged mode, the ffmpeg path is the second argument (index 2)
+            if len(sys.argv) > 2:
+                FFMPEG_EXE = sys.argv[2]
+                print(f"--- FFMPEG path provided by main process: {FFMPEG_EXE} ---", flush=True)
+            else:
+                 print(f"--- FATAL: FFMPEG path not provided by main process. ---", file=sys.stderr, flush=True)
+                 sys.exit(1)
+        else:
+            # In dev mode, assume it's in the PATH
+            FFMPEG_EXE = 'ffmpeg'
+            print(f"--- DEV MODE: Using ffmpeg from PATH ---", flush=True)
+
+        if not FFMPEG_EXE or (getattr(sys, 'frozen', False) and not os.path.exists(FFMPEG_EXE)):
+            print(f"--- FATAL: FFMPEG executable not found or path is invalid. Path: '{FFMPEG_EXE}' ---", file=sys.stderr, flush=True)
+            sys.exit(1)
+
         print(f"Flask-Backend-Ready:{port}", flush=True)
         app.run(host='127.0.0.1', port=port, debug=False)
 
