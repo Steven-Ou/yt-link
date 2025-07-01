@@ -41,38 +41,13 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
-      # --- THE DEFINITIVE FIX: Use verified URLs and correct extraction paths ---
-      - name: Prepare FFMPEG Static Binaries
-        shell: bash
-        run: |
-          mkdir -p bin
-          if [ "${{ runner.os }}" == "macOS" ]; then
-            if [ "${{ matrix.arch }}" == "arm64" ]; then
-              echo "Downloading ARM64 (Apple Silicon) static binaries from BtbN (n6.1)..."
-              curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n6.1/ffmpeg-n6.1-macos-arm64-static.zip" -o ffmpeg.zip
-            else # x64
-              echo "Downloading x64 (Intel) static binaries from BtbN (n6.1)..."
-              curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n6.1/ffmpeg-n6.1-macos-x64-static.zip" -o ffmpeg.zip
-            fi
-            
-            unzip -o ffmpeg.zip
-            # The binaries are inside a versioned subdirectory, use a wildcard to copy them
-            echo "Copying from ffmpeg-n6.1-macos-*-static/bin to ./bin"
-            cp ffmpeg-n6.1-macos-*-static/bin/ffmpeg ./bin/ffmpeg
-            cp ffmpeg-n6.1-macos-*-static/bin/ffprobe ./bin/ffprobe
-            
-          elif [ "${{ runner.os }}" == "Windows" ]; then
-            echo "Downloading Windows static binaries..."
-            curl -fL "https://github.com/BtbN/FFmpeg-Builds/releases/download/n6.1/ffmpeg-n6.1-win64-gpl.zip" -o ffmpeg.zip
-            unzip -o ffmpeg.zip
-            # Corrected path for Windows binaries inside the zip
-            cp ffmpeg-n6.1-win64-gpl/bin/ffmpeg.exe ./bin/ffmpeg.exe
-            cp ffmpeg-n6.1-win64-gpl/bin/ffprobe.exe ./bin/ffprobe.exe
-          fi
-          
-      - name: Set Binary Permissions (macOS)
-        if: runner.os == 'macOS'
-        run: chmod +x bin/ffmpeg bin/ffprobe
+      # --- THE DEFINITIVE FIX: Use a dedicated GitHub Action to set up FFMPEG ---
+      - name: Setup FFmpeg
+        uses: federicobond/setup-ffmpeg@v2
+        with:
+          # This action will download the correct static binary for the runner's OS and architecture
+          # and add it to the system PATH. This makes it available to all subsequent steps.
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Frontend
         run: npm run build:frontend
