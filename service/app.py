@@ -23,14 +23,18 @@ def get_binary_path(binary_name):
         return binary_name
 
     try:
+        # The base path of the running executable
         base_path = os.path.dirname(sys.executable)
         
-        if platform.system() == "Darwin": # macOS
-            # In the .app bundle: .../Contents/Resources/bin/
-            bin_dir = os.path.abspath(os.path.join(base_path, '..', 'bin'))
-        else: # Windows
-            # In the packaged folder: .../bin/
-            bin_dir = os.path.join(os.path.dirname(base_path), 'bin')
+        # In a packaged app, binaries are in a 'bin' folder within 'resources'
+        # The structure is slightly different on macOS vs. Windows/Linux
+        # macOS: <app_name>.app/Contents/Resources/bin/
+        # Win/Lin: <app_dir>/resources/bin/
+        resources_path = os.path.join(base_path, '..', 'Resources') if platform.system() == "Darwin" else base_path
+        bin_dir = os.path.join(resources_path, 'bin')
+
+        # Add .exe for Windows
+        if platform.system() == "Windows":
             binary_name = f"{binary_name}.exe"
 
         binary_path = os.path.join(bin_dir, binary_name)
@@ -38,6 +42,7 @@ def get_binary_path(binary_name):
         if os.path.exists(binary_path):
             if platform.system() != "Windows":
                 try:
+                    # Set executable permission for non-Windows platforms
                     os.chmod(binary_path, 0o755)
                     print(f"--- PERMISSION CHECK/FIX: Set +x on {binary_name} ---", flush=True)
                 except Exception as e:
@@ -61,13 +66,13 @@ try:
     APP_TEMP_DIR = os.path.join(tempfile.gettempdir(), "yt-link")
     os.makedirs(APP_TEMP_DIR, exist_ok=True)
 
-    def download_thread(url, ydl_opts, job_id, download_type):
+    def download_thread(url, ydl_opts, job_id, job_type):
         job_temp_dir = os.path.join(APP_TEMP_DIR, str(job_id))
         os.makedirs(job_temp_dir, exist_ok=True)
         jobs[job_id]['temp_dir'] = job_temp_dir
         
-        # Set a predictable output filename for manual processing
-        ydl_opts['outtmpl'] = os.path.join(job_temp_dir, f"{job_id}.%(ext)s")
+        # Use a more descriptive output template to avoid overwrites
+        ydl_opts['outtmpl'] = os.path.join(job_temp_dir, '%(playlist_index)s-%(title)s.%(ext)s')
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -75,7 +80,7 @@ try:
                 jobs[job_id]['info'] = info_dict
             
             # Trigger our own post-processing
-            manual_post_processing(job_id, download_type)
+            manual_post_processing(job_id, job_type)
 
         except Exception as e:
             error_message = traceback.format_exc()
@@ -83,59 +88,99 @@ try:
             jobs[job_id]['status'] = 'failed'
             jobs[job_id]['error'] = str(e)
 
-    def manual_post_processing(job_id, download_type):
+    def manual_post_processing(job_id, job_type):
         job = jobs[job_id]
         temp_dir = job['temp_dir']
         info = job['info']
-        title = info.get('title', 'yt-link-download').replace('/', '_').replace('\\', '_')
+        playlist_title = info.get('title', 'yt-link-playlist').replace('/', '_').replace('\\', '_')
         
-        print(f"--- [Job {job_id}] Manual Post-processing. Type: {download_type}", flush=True)
+        print(f"--- [Job {job_id}] Manual Post-processing. Type: {job_type}", flush=True)
 
         if not FFMPEG_EXE:
             raise FileNotFoundError("FATAL: FFMPEG executable path was not resolved at startup.")
 
-        downloaded_file = next((os.path.join(temp_dir, f) for f in os.listdir(temp_dir) if f.startswith(job_id)), None)
+        downloaded_files = [os.path.join(temp_dir, f) for f in os.listdir(temp_dir) if not f.endswith('.mp3')]
+        if not downloaded_files:
+            raise FileNotFoundError("No downloaded files found for post-processing.")
+
+        mp3_files = []
+        for i, file_path in enumerate(downloaded_files):
+            # Update progress for processing step
+            job['message'] = f"Converting file {i+1} of {len(downloaded_files)} to MP3..."
+            
+            file_name_without_ext = os.path.splitext(os.path.basename(file_path))[0]
+            output_filepath = os.path.join(temp_dir, f"{file_name_without_ext}.mp3")
+            
+            command = [ FFMPEG_EXE, '-i', file_path, '-vn', '-ab', '192k', '-ar', '44100', '-y', output_filepath ]
+            
+            process = subprocess.run(command, capture_output=True, text=True, encoding='utf-8')
+            if process.returncode != 0:
+                raise Exception(f"FFMPEG failed for {file_path}: {process.stderr}")
+            mp3_files.append(output_filepath)
         
-        if not downloaded_file:
-            raise FileNotFoundError("Downloaded file could not be found for post-processing.")
+        final_file_path = None
+        final_file_name = None
 
-        final_filename = f"{title}.mp3"
-        output_filepath = os.path.join(temp_dir, final_filename)
+        if job_type == 'singleMp3':
+            final_file_path = mp3_files[0]
+            final_file_name = os.path.basename(final_file_path)
 
-        command = [
-            FFMPEG_EXE,
-            '-i', downloaded_file,
-            '-vn', '-ab', '192k', '-ar', '44100',
-            '-y', output_filepath
-        ]
+        elif job_type == 'playlistZip':
+            job['message'] = 'Creating ZIP archive...'
+            final_file_name = f"{playlist_title}.zip"
+            final_file_path = os.path.join(temp_dir, final_file_name)
+            with zipfile.ZipFile(final_file_path, 'w') as zipf:
+                for mp3_file in mp3_files:
+                    zipf.write(mp3_file, os.path.basename(mp3_file))
 
-        print(f"--- [Job {job_id}] Running FFMPEG command: {' '.join(command)} ---", flush=True)
-        process = subprocess.run(command, capture_output=True, text=True, encoding='utf-8')
+        elif job_type == 'combineMp3':
+            job['message'] = 'Combining all tracks into one MP3...'
+            final_file_name = f"{playlist_title} (Combined).mp3"
+            final_file_path = os.path.join(temp_dir, final_file_name)
+            
+            # Create a file list for ffmpeg's concat demuxer
+            concat_list_path = os.path.join(temp_dir, 'concat_list.txt')
+            with open(concat_list_path, 'w', encoding='utf-8') as f:
+                for mp3_file in sorted(mp3_files):
+                    # FFMPEG requires special characters to be escaped
+                    safe_path = mp3_file.replace("'", "'\\''")
+                    f.write(f"file '{safe_path}'\n")
+            
+            combine_command = [FFMPEG_EXE, '-f', 'concat', '-safe', '0', '-i', concat_list_path, '-c', 'copy', '-y', final_file_path]
+            combine_process = subprocess.run(combine_command, capture_output=True, text=True, encoding='utf-8')
+            if combine_process.returncode != 0:
+                raise Exception(f"FFMPEG combine failed: {combine_process.stderr}")
 
-        if process.returncode != 0:
-            raise Exception(f"FFMPEG failed with code {process.returncode}: {process.stderr}")
+        job.update({'file_path': final_file_path, 'file_name': final_file_name, 'status': 'completed', 'message': 'Processing complete!'})
+        print(f"--- [Job {job_id}] Post-processing complete. Output: {final_file_name}", flush=True)
 
-        job.update({'file_path': output_filepath, 'file_name': final_filename, 'status': 'completed', 'message': 'Processing complete!'})
-        print(f"--- [Job {job_id}] Post-processing complete.", flush=True)
-
+    # The rest of the file (progress_hook, Flask routes) remains the same.
     def progress_hook(d):
         if d['status'] == 'downloading':
-            temp_dir = os.path.dirname(d['filename'])
-            job_id = os.path.basename(temp_dir)
+            job_id = d.get('info_dict', {}).get('job_id')
             if job_id in jobs:
                 percent_str = d.get('_percent_str', '0%').replace('%','').strip()
+                total_bytes = d.get('total_bytes') or d.get('total_bytes_estimate')
+                if total_bytes:
+                     # Calculate overall progress for playlists
+                    playlist_index = d.get('playlist_index', 1)
+                    playlist_count = jobs[job_id]['info'].get('playlist_count', 1)
+                    progress = ((playlist_index - 1) / playlist_count) * 100 + float(percent_str) / playlist_count
+                else:
+                    progress = float(percent_str)
+                
                 jobs[job_id].update({
                     'status': 'downloading',
-                    'progress': percent_str,
-                    'message': f"Downloading... {percent_str}%"
+                    'progress': f"{progress:.2f}",
+                    'message': f"Downloading video {d.get('playlist_index', 1)} of {jobs[job_id]['info'].get('playlist_count', 1)}... {percent_str}%"
                 })
+
         elif d['status'] == 'finished':
-            temp_dir = os.path.dirname(d['filename'])
-            job_id = os.path.basename(temp_dir)
+            job_id = d.get('info_dict', {}).get('job_id')
             if job_id in jobs:
-                jobs[job_id].update({
+                 jobs[job_id].update({
                     'status': 'processing',
-                    'message': 'Download finished, converting to MP3...'
+                    'message': 'Download finished, preparing for conversion...'
                 })
 
 
@@ -143,24 +188,32 @@ try:
     def start_job_endpoint():
         data = request.get_json()
         job_id = str(uuid.uuid4())
-        jobs[job_id] = {'status': 'queued', 'url': data.get('url')}
+        job_type = data.get('jobType')
+        jobs[job_id] = {'status': 'queued', 'url': data.get('url'), 'job_type': job_type}
         
         ydl_opts = {
             'format': 'bestaudio/best',
-            # Post-processors removed, we handle it manually
             'progress_hooks': [progress_hook],
             'nocheckcertificate': True,
-            'ignoreerrors': data.get('jobType') != 'singleMp3',
-            'noplaylist': data.get('jobType') == 'singleMp3',
+            'ignoreerrors': job_type != 'singleMp3',
+            'noplaylist': job_type == 'singleMp3',
+            # Pass job_id to the hook info_dict
+            'outtmpl': {'default': os.path.join(APP_TEMP_DIR, str(job_id), '%(playlist_index)s-%(title)s.%(ext)s')},
+            'download_archive': False
         }
-        
+        # Add job_id to info_dict for progress hook
+        def add_job_id(info_dict):
+            info_dict['job_id'] = job_id
+        ydl_opts['postprocessor_hooks'] = [add_job_id]
+
+
         if data.get('cookies'):
             cookie_file = os.path.join(APP_TEMP_DIR, f"cookies_{job_id}.txt")
             os.makedirs(os.path.dirname(cookie_file), exist_ok=True)
             with open(cookie_file, 'w', encoding='utf-8') as f: f.write(data['cookies'])
             ydl_opts['cookiefile'] = cookie_file
 
-        thread = threading.Thread(target=download_thread, args=(data['url'], ydl_opts, job_id, data.get('jobType')))
+        thread = threading.Thread(target=download_thread, args=(data['url'], ydl_opts, job_id, job_type))
         thread.start()
         
         return jsonify({'jobId': job_id})
@@ -184,14 +237,18 @@ try:
             try:
                 with open(file_path, 'rb') as f: yield from f
             finally:
-                if os.path.exists(file_path): os.remove(file_path)
-                if 'temp_dir' in job and os.path.exists(job['temp_dir']): shutil.rmtree(job['temp_dir'], ignore_errors=True)
+                # Clean up the entire job directory
+                temp_dir = job.get('temp_dir')
+                if temp_dir and os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir, ignore_errors=True)
                 jobs.pop(job_id, None)
         
         file_name = job.get("file_name")
         
         encoded_file_name = quote(file_name)
-        fallback_file_name = file_name.encode('ascii', 'ignore').decode('ascii') or "download.mp3"
+        fallback_file_name = file_name.encode('ascii', 'ignore').decode('ascii')
+        if not fallback_file_name:
+            fallback_file_name = "download.dat"
 
         headers = {
             'Content-Disposition': f'attachment; filename="{fallback_file_name}"; filename*="UTF-8\'\'{encoded_file_name}"'
