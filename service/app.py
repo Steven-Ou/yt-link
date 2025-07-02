@@ -18,39 +18,54 @@ def get_binary_path(binary_name):
     Finds the absolute path to a bundled binary. This is the most reliable method for packaged apps.
     It correctly handles the different directory structures on macOS and Windows/Linux.
     """
-    if not getattr(sys, 'frozen', False):
-        print(f"--- DEV MODE: Using '{binary_name}' from PATH ---", flush=True)
-        return binary_name
+    # --- START: Windows Development Fix ---
+    # If not packaged (dev mode) and on Windows, look inside the project's bin folder.
+    if not getattr(sys, 'frozen', False) and platform.system() == "Windows":
+        # Assuming this script is in 'service/app.py', we go up two levels to the project root.
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        dev_binary_path = os.path.join(project_root, 'bin', f"{binary_name}.exe")
+        if os.path.exists(dev_binary_path):
+            print(f"--- DEV MODE (Windows): Using '{binary_name}' from project bin at '{dev_binary_path}' ---", flush=True)
+            return dev_binary_path
+    # --- END: Windows Development Fix ---
 
-    try:
-        base_path = os.path.dirname(sys.executable)
-        
-        if platform.system() == "Darwin":
-            binary_path = os.path.abspath(os.path.join(base_path, '..', 'Resources', 'bin', binary_name))
-        else:
-            binary_path = os.path.join(base_path, 'bin', binary_name)
-            if platform.system() == "Windows":
-                binary_path += ".exe"
-
-        if os.path.exists(binary_path):
-            print(f"--- BINARY FOUND: Located '{binary_name}' at '{binary_path}' ---", flush=True)
-            return binary_path
-        else:
-            resources_path = os.path.abspath(os.path.join(base_path, '..'))
-            fallback_path = os.path.join(resources_path, 'bin', binary_name)
-            if platform.system() == "Windows":
-                fallback_path += ".exe"
-
-            if os.path.exists(fallback_path):
-                 print(f"--- BINARY FOUND (Fallback): Located '{binary_name}' at '{fallback_path}' ---", flush=True)
-                 return fallback_path
-
-            print(f"--- BINARY NOT FOUND: Could not find '{binary_name}' at expected path '{binary_path}' OR fallback '{fallback_path}' ---", file=sys.stderr, flush=True)
-            return None
+    # If in a packaged app (.pyinstaller)
+    if getattr(sys, 'frozen', False):
+        try:
+            base_path = os.path.dirname(sys.executable)
             
-    except Exception as e:
-        print(f"--- FATAL ERROR in get_binary_path: {e} ---", file=sys.stderr, flush=True)
-        return None
+            if platform.system() == "Darwin":
+                # Packaged macOS app structure
+                binary_path = os.path.abspath(os.path.join(base_path, '..', 'Resources', 'bin', binary_name))
+            else:
+                # Packaged Windows/Linux app structure
+                binary_path = os.path.join(base_path, 'bin', binary_name)
+                if platform.system() == "Windows":
+                    binary_path += ".exe"
+
+            if os.path.exists(binary_path):
+                print(f"--- BINARY FOUND: Located '{binary_name}' at '{binary_path}' ---", flush=True)
+                return binary_path
+            else:
+                # Fallback for slightly different packaging structures
+                resources_path = os.path.abspath(os.path.join(base_path, '..'))
+                fallback_path = os.path.join(resources_path, 'bin', binary_name)
+                if platform.system() == "Windows":
+                    fallback_path += ".exe"
+
+                if os.path.exists(fallback_path):
+                    print(f"--- BINARY FOUND (Fallback): Located '{binary_name}' at '{fallback_path}' ---", flush=True)
+                    return fallback_path
+
+                print(f"--- BINARY NOT FOUND: Could not find '{binary_name}' in packaged app resources. ---", file=sys.stderr, flush=True)
+                return None
+        except Exception as e:
+            print(f"--- FATAL ERROR in get_binary_path (Packaged): {e} ---", file=sys.stderr, flush=True)
+            return None
+
+    # Fallback for non-Windows dev environments (e.g., macOS dev)
+    print(f"--- DEV MODE: Using '{binary_name}' from system PATH ---", flush=True)
+    return binary_name
 
 FFMPEG_EXE = get_binary_path('ffmpeg')
 
