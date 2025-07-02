@@ -41,13 +41,38 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
-      # --- Install ffmpeg-static via npm and add it to the PATH ---
-      - name: Install ffmpeg-static
-        run: npm install --save-dev ffmpeg-static
+      - name: Create bin directory
+        run: mkdir -p bin
 
-      - name: Add ffmpeg-static to PATH
+      - name: Download and Setup FFmpeg for macOS
+        if: runner.os == 'macOS'
         shell: bash
-        run: echo "$(npm explore ffmpeg-static -- pwd)" >> $GITHUB_PATH
+        run: |
+          if [ "${{ matrix.arch }}" == "arm64" ]; then
+            FFMPEG_URL="https://www.osxexperts.net/ffmpeg7-arm.zip"
+            FFMPEG_ZIP="ffmpeg-arm.zip"
+            EXTRACTED_DIR="ffmpeg-7.0-arm"
+          else
+            FFMPEG_URL="https://www.osxexperts.net/ffmpeg7-intel.zip"
+            FFMPEG_ZIP="ffmpeg-intel.zip"
+            EXTRACTED_DIR="ffmpeg-7.0-intel"
+          fi
+          curl -L "$FFMPEG_URL" -o "$FFMPEG_ZIP"
+          unzip -o "$FFMPEG_ZIP" -d bin
+          mv "bin/$EXTRACTED_DIR/ffmpeg" bin/ffmpeg
+          mv "bin/$EXTRACTED_DIR/ffprobe" bin/ffprobe
+          rm -rf "bin/$EXTRACTED_DIR" "$FFMPEG_ZIP"
+          chmod +x bin/ffmpeg bin/ffprobe
+          
+      - name: Download and Setup FFmpeg for Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          curl -L "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z" -o ffmpeg.7z
+          7z x ffmpeg.7z -o.
+          mv ffmpeg-*-full_build/bin/ffmpeg.exe bin/
+          mv ffmpeg-*-full_build/bin/ffprobe.exe bin/
+          rm -rf ffmpeg-*-full_build ffmpeg.7z
 
       - name: Build Frontend
         run: npm run build:frontend
