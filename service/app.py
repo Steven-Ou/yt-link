@@ -13,8 +13,46 @@ import platform
 import subprocess
 from urllib.parse import quote
 
-# This will be set at runtime from command-line arguments
-FFMPEG_EXE = None
+def get_binary_path(binary_name):
+    """
+    Finds the absolute path to a bundled binary. This is the most reliable method for packaged apps.
+    It correctly handles the different directory structures on macOS and Windows/Linux.
+    """
+    if not getattr(sys, 'frozen', False):
+        print(f"--- DEV MODE: Using '{binary_name}' from PATH ---", flush=True)
+        return binary_name
+
+    try:
+        base_path = os.path.dirname(sys.executable)
+        
+        if platform.system() == "Darwin":
+            binary_path = os.path.abspath(os.path.join(base_path, '..', 'Resources', 'bin', binary_name))
+        else:
+            binary_path = os.path.join(base_path, 'bin', binary_name)
+            if platform.system() == "Windows":
+                binary_path += ".exe"
+
+        if os.path.exists(binary_path):
+            print(f"--- BINARY FOUND: Located '{binary_name}' at '{binary_path}' ---", flush=True)
+            return binary_path
+        else:
+            resources_path = os.path.abspath(os.path.join(base_path, '..'))
+            fallback_path = os.path.join(resources_path, 'bin', binary_name)
+            if platform.system() == "Windows":
+                fallback_path += ".exe"
+
+            if os.path.exists(fallback_path):
+                 print(f"--- BINARY FOUND (Fallback): Located '{binary_name}' at '{fallback_path}' ---", flush=True)
+                 return fallback_path
+
+            print(f"--- BINARY NOT FOUND: Could not find '{binary_name}' at expected path '{binary_path}' OR fallback '{fallback_path}' ---", file=sys.stderr, flush=True)
+            return None
+            
+    except Exception as e:
+        print(f"--- FATAL ERROR in get_binary_path: {e} ---", file=sys.stderr, flush=True)
+        return None
+
+FFMPEG_EXE = get_binary_path('ffmpeg')
 
 try:
     app = Flask(__name__)
@@ -58,8 +96,6 @@ try:
         
         playlist_title = info.get('title', 'yt-link-playlist')
         safe_playlist_title = "".join([c for c in playlist_title if c.isalpha() or c.isdigit() or c in (' ', '-')]).rstrip()
-
-        print(f"--- [Job {job_id}] Manual Post-processing. Type: {job_type}", flush=True)
 
         if not FFMPEG_EXE:
             job.update({'status': 'failed', 'error': "FFMPEG executable not found."})
@@ -158,7 +194,6 @@ try:
             'ignoreerrors': job_type != 'singleMp3',
             'noplaylist': job_type == 'singleMp3',
             'outtmpl': os.path.join(APP_TEMP_DIR, str(job_id), '%(playlist_index)s-%(id)s.%(ext)s'),
-            'download_archive': False
         }
 
         if data.get('cookies'):
@@ -213,17 +248,8 @@ try:
     if __name__ == '__main__':
         port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001
         
-        if getattr(sys, 'frozen', False):
-            if len(sys.argv) > 2:
-                FFMPEG_EXE = sys.argv[2]
-            else:
-                 print(f"--- FATAL: FFMPEG path not provided by main process. ---", file=sys.stderr, flush=True)
-                 sys.exit(1)
-        else:
-            FFMPEG_EXE = 'ffmpeg'
-
-        if not FFMPEG_EXE or (getattr(sys, 'frozen', False) and not os.path.exists(FFMPEG_EXE)):
-            print(f"--- FATAL: FFMPEG executable not found or path is invalid. Path: '{FFMPEG_EXE}' ---", file=sys.stderr, flush=True)
+        if not FFMPEG_EXE:
+            print(f"--- FATAL: FFMPEG executable could not be found. ---", file=sys.stderr, flush=True)
             sys.exit(1)
 
         print(f"Flask-Backend-Ready:{port}", flush=True)
