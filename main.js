@@ -77,15 +77,16 @@ function startPythonBackend(port) {
     const isDev = !app.isPackaged;
     
     const backendName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
-    
+    const ffmpegName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+
     const command = isDev 
         ? (process.platform === 'win32' ? 'python' : 'python3') 
         : path.join(process.resourcesPath, 'backend', backendName);
 
-    // The Python script will find ffmpeg on its own, so we only need to pass the port.
+    // THIS IS THE FIX: In packaged mode, we now correctly pass the path to ffmpeg as the second argument.
     const args = isDev 
         ? [path.join(__dirname, 'service', 'app.py'), port.toString()] 
-        : [port.toString()];
+        : [port.toString(), path.join(process.resourcesPath, 'bin', ffmpegName)];
     
     sendLog(`[Electron] Starting backend with command: "${command}"`);
     sendLog(`[Electron] Using arguments: [${args.join(', ')}]`);
