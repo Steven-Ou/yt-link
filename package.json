@@ -5,9 +5,10 @@
   "author": "Steven Ou",
   "main": "main.js",
   "scripts": {
-    "start": "npm run prepare:bins && concurrently \"npm:dev-frontend\" \"npm:dev-electron\"",
+    "start": "npm run clean && npm run prepare:bins && concurrently \"npm:dev-frontend\" \"npm:dev-electron\"",
+    "clean": "rimraf frontend/.next frontend/out",
     "prepare:bins": "chmod +x bin/ffmpeg bin/ffprobe || echo 'Could not set permissions, likely on Windows'",
-    "dev": "npm run prepare:bins && concurrently \"npm:dev-frontend\" \"npm:dev-electron\"",
+    "dev": "npm run clean && npm run prepare:bins && concurrently \"npm:dev-frontend\" \"npm:dev-electron\"",
     "dev:clean": "npm run clean --prefix frontend && npm run dev",
     "dev-frontend": "cd frontend && npm install && npm run dev",
     "dev-electron": "wait-on http://localhost:3000 && electron .",
@@ -23,6 +24,7 @@
     "concurrently": "^8.2.2",
     "electron": "^31.2.1",
     "electron-builder": "^24.13.3",
+    "rimraf": "^5.0.0",
     "wait-on": "^7.2.0"
   },
   "build": {
