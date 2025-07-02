@@ -75,20 +75,20 @@ function createWindow() {
 
 function startPythonBackend(port) {
     const isDev = !app.isPackaged;
+    
     const backendName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
-
-    // This is the corrected path logic.
-    // In dev, it runs the .py script.
-    // In production, it points to the executable inside the nested folder.
+    
+    // This path is now correct for both dev and production.
     const command = isDev 
         ? (process.platform === 'win32' ? 'python' : 'python3') 
-        : path.join(process.resourcesPath, 'backend', 'yt-link-backend', backendName);
+        : path.join(process.resourcesPath, 'backend', backendName);
 
     const args = isDev ? [path.join(__dirname, 'service', 'app.py'), port.toString()] : [port.toString()];
     
     sendLog(`[Electron] Starting backend with command: "${command}"`);
     sendLog(`[Electron] Using arguments: [${args.join(', ')}]`);
     
+    // The 'cwd' option is removed to prevent pathing issues.
     pythonProcess = spawn(command, args);
 
     pythonProcess.on('error', (err) => {
