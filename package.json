@@ -38,7 +38,7 @@
     ],
     "extraResources": [
       {
-        "from": "service/dist/yt-link-backend",
+        "from": "service/dist/",
         "to": "backend"
       },
       {
