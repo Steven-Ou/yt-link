@@ -78,17 +78,18 @@ function startPythonBackend(port) {
     
     const backendName = process.platform === 'win32' ? 'yt-link-backend.exe' : 'yt-link-backend';
     
-    // This path is now correct for both dev and production.
     const command = isDev 
         ? (process.platform === 'win32' ? 'python' : 'python3') 
         : path.join(process.resourcesPath, 'backend', backendName);
 
-    const args = isDev ? [path.join(__dirname, 'service', 'app.py'), port.toString()] : [port.toString()];
+    // The Python script will find ffmpeg on its own, so we only need to pass the port.
+    const args = isDev 
+        ? [path.join(__dirname, 'service', 'app.py'), port.toString()] 
+        : [port.toString()];
     
     sendLog(`[Electron] Starting backend with command: "${command}"`);
     sendLog(`[Electron] Using arguments: [${args.join(', ')}]`);
     
-    // The 'cwd' option is removed to prevent pathing issues.
     pythonProcess = spawn(command, args);
 
     pythonProcess.on('error', (err) => {
