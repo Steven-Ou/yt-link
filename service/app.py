@@ -16,6 +16,13 @@ from urllib.parse import quote
 # This will be set at runtime from command-line arguments
 FFMPEG_EXE = None
 
+# --- Enhanced Startup Logging ---
+print(f"--- PYTHON BACKEND SCRIPT STARTED ---", flush=True)
+print(f"--- sys.argv: {sys.argv}", flush=True)
+print(f"--- len(sys.argv): {len(sys.argv)}", flush=True)
+print(f"--- Is frozen (packaged): {getattr(sys, 'frozen', False)}", flush=True)
+# --- End of Startup Logging ---
+
 try:
     app = Flask(__name__)
     CORS(app)
@@ -211,19 +218,17 @@ try:
         return Response(file_generator(), mimetype='application/octet-stream', headers=headers)
 
     if __name__ == '__main__':
-        # The script now expects the port number and optionally the ffmpeg path.
         port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001
         
         if getattr(sys, 'frozen', False):
-            # In packaged mode, the ffmpeg path is the second argument (index 2)
+            print(f"--- Packaged mode detected. Checking for ffmpeg path in args. ---", flush=True)
             if len(sys.argv) > 2:
                 FFMPEG_EXE = sys.argv[2]
                 print(f"--- FFMPEG path provided by main process: {FFMPEG_EXE} ---", flush=True)
             else:
-                 print(f"--- FATAL: FFMPEG path not provided by main process. ---", file=sys.stderr, flush=True)
+                 print(f"--- FATAL: FFMPEG path not provided by main process. sys.argv only has {len(sys.argv)} items. ---", file=sys.stderr, flush=True)
                  sys.exit(1)
         else:
-            # In dev mode, assume it's in the PATH
             FFMPEG_EXE = 'ffmpeg'
             print(f"--- DEV MODE: Using ffmpeg from PATH ---", flush=True)
 
