@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Check out Git repository
         uses: actions/checkout@v4
+        with:
+          lfs: true # <-- THIS IS THE FIX
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -41,23 +43,10 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
-      - name: Create bin directory
-        run: mkdir -p bin
-
       - name: Set FFmpeg Permissions for macOS
         if: runner.os == 'macOS'
         run: chmod +x bin/ffmpeg bin/ffprobe
           
-      - name: Download and Setup FFmpeg for Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          curl -L "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z" -o ffmpeg.7z
-          7z x ffmpeg.7z -o.
-          mv ffmpeg-*-full_build/bin/ffmpeg.exe bin/
-          mv ffmpeg-*-full_build/bin/ffprobe.exe bin/
-          rm -rf ffmpeg-*-full_build ffmpeg.7z
-
       - name: Build Frontend
         run: npm run build:frontend
 
