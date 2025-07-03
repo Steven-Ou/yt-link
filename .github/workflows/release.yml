@@ -41,8 +41,18 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
-      - name: Setup FFmpeg
-        uses: federicobond/setup-ffmpeg@v3
+      - name: Create bin directory
+        run: mkdir -p bin
+          
+      - name: Download and Setup FFmpeg for Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          curl -L "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z" -o ffmpeg.7z
+          7z x ffmpeg.7z -o.
+          mv ffmpeg-*-full_build/bin/ffmpeg.exe bin/
+          mv ffmpeg-*-full_build/bin/ffprobe.exe bin/
+          rm -rf ffmpeg-*-full_build ffmpeg.7z
           
       - name: Build Frontend
         run: npm run build:frontend
