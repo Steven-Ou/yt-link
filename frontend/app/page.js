@@ -147,6 +147,33 @@ const CookieInputField = ({ value, onChange, disabled }) => (
     />
 );
 
+// --- START: URL Cleaning Fix ---
+/**
+ * Cleans a YouTube URL to remove extra parameters like 'list', 'index', etc.,
+ * which can cause issues with single video downloads.
+ * @param {string} urlString - The original YouTube URL.
+ * @returns {string} The cleaned URL.
+ */
+const cleanUrl = (urlString) => {
+    try {
+        const url = new URL(urlString);
+        // Keep only the 'v' parameter for video URLs
+        if (url.searchParams.has('v')) {
+            const videoId = url.searchParams.get('v');
+            const cleanedUrl = new URL(url.origin + url.pathname);
+            cleanedUrl.searchParams.set('v', videoId);
+            return cleanedUrl.toString();
+        }
+        // For other URLs (like playlists without a 'v' param), return as is.
+        return urlString;
+    } catch (error) {
+        // If the URL is invalid, return it as is and let the backend handle it.
+        console.error("Invalid URL for cleaning:", urlString, error);
+        return urlString;
+    }
+};
+// --- END: URL Cleaning Fix ---
+
 export default function Home() {
     const [currentView, setCurrentView] = useState('welcome');
     const [url, setUrl] = useState('');
@@ -161,14 +188,10 @@ export default function Home() {
     useEffect(() => {
         setIsElectron(!!(window && window.electron));
         
-        // **THIS IS THE ONLY ADDITION**: This effect listens for log messages from the
-        // main process (via preload.js) and prints them to the developer console.
         if (window.electron && typeof window.electron.onBackendLog === 'function') {
             const removeListener = window.electron.onBackendLog((logMessage) => {
                 console.log(logMessage);
             });
-            // This is a cleanup function that runs when the component is unmounted.
-            // It's good practice to prevent memory leaks.
             return () => removeListener();
         }
     }, []);
@@ -268,7 +291,12 @@ export default function Home() {
             alert("This feature is only available in the desktop application.");
             return;
         }
-        startJob(jobType, urlValue, operationName);
+        
+        // --- THIS IS THE FIX ---
+        // Clean the URL to remove extra parameters like 'list', 'index', 't', etc., for single video downloads.
+        const finalUrl = jobType === 'singleMp3' ? cleanUrl(urlValue) : urlValue;
+
+        startJob(jobType, finalUrl, operationName);
     };
     
     const downloadMP3 = () => handleJobRequest(url, 'singleMp3', 'Single MP3 Download');
