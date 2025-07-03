@@ -83,9 +83,6 @@ function startPythonBackend(port) {
         ? (process.platform === 'win32' ? 'python' : 'python3') 
         : path.join(process.resourcesPath, 'backend', backendName);
 
-    // --- THIS IS THE FIX ---
-    // In development mode, we now add the "-X utf8" flag to force Python's I/O to use UTF-8.
-    // This prevents UnicodeEncodeError on Windows when printing filenames with special characters.
     const args = isDev 
         ? ['-X', 'utf8', path.join(__dirname, 'service', 'app.py'), port.toString()]
         : [port.toString(), path.join(process.resourcesPath, 'bin', ffmpegName)];
@@ -131,7 +128,7 @@ app.on('quit', () => {
     }
 });
 
-// --- IPC HANDLERS (No changes below this line) ---
+// --- IPC HANDLERS ---
 ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
     if (!isBackendReady) {
         return { error: 'Backend is not ready. Please wait a moment or restart the application.' };
@@ -160,7 +157,9 @@ ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
 ipcMain.handle('get-job-status', async (event, jobId) => {
     if (!isBackendReady) return { status: 'failed', message: 'Backend is not running.' };
     try {
-        const response = await fetch(`http://12-7.0.0.1:${pyPort}/job-status?jobId=${jobId}`);
+        // --- THIS IS THE FIX ---
+        // Corrected the IP address from "12-7.0.0.1" to "127.0.0.1".
+        const response = await fetch(`http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`);
         if (!response.ok) {
             const errorText = await response.text();
             throw new Error(`Backend responded with status: ${response.status} ${errorText}`);
