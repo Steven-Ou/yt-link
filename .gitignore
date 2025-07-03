@@ -3,9 +3,6 @@
 /dist
 /out
 
-# Binaries
-/bin
-
 # Next.js build cache
 /.next/
 # dependencies
