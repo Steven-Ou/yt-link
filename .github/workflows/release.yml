@@ -40,7 +40,7 @@ jobs:
 
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
-
+      
       - name: Download and Setup FFmpeg for macOS
         if: runner.os == 'macOS'
         shell: bash
@@ -58,12 +58,12 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          mkdir -p bin
+          New-Item -ItemType Directory -Force -Path bin
           curl -L "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z" -o ffmpeg.7z
           7z x ffmpeg.7z -o.
-          mv ffmpeg-*-full_build/bin/ffmpeg.exe bin/
-          mv ffmpeg-*-full_build/bin/ffprobe.exe bin/
-          rm -rf ffmpeg-*-full_build ffmpeg.7z
+          Move-Item -Path "ffmpeg-*-full_build/bin/ffmpeg.exe" -Destination "bin/"
+          Move-Item -Path "ffmpeg-*-full_build/bin/ffprobe.exe" -Destination "bin/"
+          Remove-Item -Path "ffmpeg-*-full_build", "ffmpeg.7z" -Recurse -Force
           
       - name: Build Frontend
         run: npm run build:frontend
