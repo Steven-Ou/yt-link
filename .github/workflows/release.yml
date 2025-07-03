@@ -46,6 +46,10 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
+      - name: Verify bin directory contents (macOS)
+        if: runner.os == 'macOS'
+        run: ls -la bin/
+
       - name: Set FFmpeg Permissions for macOS
         if: runner.os == 'macOS'
         run: chmod +x bin/ffmpeg bin/ffprobe
