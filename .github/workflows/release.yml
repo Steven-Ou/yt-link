@@ -22,11 +22,6 @@ jobs:
     steps:
       - name: Check out Git repository
         uses: actions/checkout@v4
-        with:
-          lfs: true # Keep LFS enabled to correctly pull the mac binaries
-
-      - name: Pull LFS objects
-        run: git lfs pull
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -46,9 +41,18 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
 
-      - name: Set FFmpeg Permissions for macOS
+      - name: Download and Setup FFmpeg for macOS
         if: runner.os == 'macOS'
-        run: chmod +x bin/ffmpeg bin/ffprobe
+        shell: bash
+        run: |
+          mkdir -p bin
+          curl -L "https://evermeet.cx/ffmpeg/get" -o ffmpeg.7z
+          7z x ffmpeg.7z
+          mv ffmpeg bin/ffmpeg
+          curl -L "https://evermeet.cx/ffmpeg/get/ffprobe" -o ffprobe.7z
+          7z x ffprobe.7z
+          mv ffprobe bin/ffprobe
+          chmod +x bin/ffmpeg bin/ffprobe
           
       - name: Download and Setup FFmpeg for Windows
         if: runner.os == 'Windows'
