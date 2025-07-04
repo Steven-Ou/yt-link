@@ -41,7 +41,7 @@ Method 1 (Recommended): Right-click the app icon and select "Open" from the cont
 
 Method 2 (If the app "is damaged"): If you see an error message saying the app is damaged and can’t be opened, you will need to run the following command in your Terminal. This command removes the quarantine attribute that causes the error.
 
-sudo xattr -cr /Applications/YT Link.app
+sudo xattr -cr "/Applications/YT Link.app"
 
 You will be prompted to enter your password. After running the command, you should be able to open the app normally.
 
