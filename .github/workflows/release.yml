@@ -10,9 +10,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-13 # Intel (x64) runner
+          - os: macos-13
             arch: x64
-          - os: macos-14 # Apple Silicon (arm64) runner
+          - os: macos-14
             arch: arm64
           - os: windows-latest
             arch: x64
@@ -40,24 +40,31 @@ jobs:
 
       - name: Install Python dependencies
         run: pip install -r service/requirements.txt
-
-      - name: Create bin directory
-        run: mkdir -p bin
-
-      - name: Set FFmpeg Permissions for macOS
+      
+      - name: Download and Setup FFmpeg for macOS
         if: runner.os == 'macOS'
-        run: chmod +x bin/ffmpeg bin/ffprobe
+        shell: bash
+        run: |
+          mkdir -p bin
+          curl -L "https://evermeet.cx/ffmpeg/get" -o ffmpeg.7z
+          7z x ffmpeg.7z
+          mv ffmpeg bin/ffmpeg
+          curl -L "https://evermeet.cx/ffmpeg/get/ffprobe" -o ffprobe.7z
+          7z x ffprobe.7z
+          mv ffprobe bin/ffprobe
+          chmod +x bin/ffmpeg bin/ffprobe
           
       - name: Download and Setup FFmpeg for Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force -Path bin
           curl -L "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z" -o ffmpeg.7z
-          7z x ffmpeg.7z -o.
-          mv ffmpeg-*-full_build/bin/ffmpeg.exe bin/
-          mv ffmpeg-*-full_build/bin/ffprobe.exe bin/
-          rm -rf ffmpeg-*-full_build ffmpeg.7z
-
+          7z x ffmpeg.7z
+          Move-Item -Path "ffmpeg-*-full_build/bin/ffmpeg.exe" -Destination "bin/" -Force
+          Move-Item -Path "ffmpeg-*-full_build/bin/ffprobe.exe" -Destination "bin/" -Force
+          Remove-Item -Path "ffmpeg-*-full_build", "ffmpeg.7z" -Recurse -Force
+          
       - name: Build Frontend
         run: npm run build:frontend
 

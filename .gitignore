@@ -3,6 +3,10 @@
 /dist
 /out
 
+# Ignore Windows FFmpeg/FFprobe binaries, but not the folder or other files.
+/bin/ffmpeg.exe
+/bin/ffprobe.exe
+
 # Next.js build cache
 /.next/
 # dependencies
