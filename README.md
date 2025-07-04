@@ -1,5 +1,5 @@
 YT Link V2
-(Here you can add a brief description of your app and a screenshot)
+A simple and elegant desktop application to download audio from your favorite videos.
 
 Features
 Download single videos as MP3s.
