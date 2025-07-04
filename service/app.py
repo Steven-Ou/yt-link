@@ -12,13 +12,33 @@ import yt_dlp
 import platform
 import subprocess
 from urllib.parse import quote
+import codecs
+
+# --- START: UTF-8 Encoding Fix for Packaged App ---
+# Reconfigure stdout and stderr to use UTF-8 encoding. This is crucial for the
+# packaged Windows app to handle filenames with special characters without crashing.
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
+# --- END: UTF-8 Encoding Fix for Packaged App ---
+
+def sanitize_filename(filename):
+    """
+    Removes characters that are invalid in Windows filenames, preserving unicode characters.
+    """
+    invalid_chars = '<>:"/\\|?*'
+    for char in invalid_chars:
+        filename = filename.replace(char, '_')
+    # Also remove trailing dots and spaces which can be problematic on Windows
+    return filename.strip().rstrip('.')
+
 
 def get_binary_path(binary_name):
     """
     Finds the absolute path to a bundled binary. This is the most reliable method for packaged apps.
     It correctly handles the different directory structures on macOS and Windows/Linux.
     """
-    # --- START: Windows Development Fix ---
     # If not packaged (dev mode) and on Windows, look inside the project's bin folder.
     if not getattr(sys, 'frozen', False) and platform.system() == "Windows":
         # Assuming this script is in 'service/app.py', we go up two levels to the project root.
@@ -27,7 +47,6 @@ def get_binary_path(binary_name):
         if os.path.exists(dev_binary_path):
             print(f"--- DEV MODE (Windows): Using '{binary_name}' from project bin at '{dev_binary_path}' ---", flush=True)
             return dev_binary_path
-    # --- END: Windows Development Fix ---
 
     # If in a packaged app (.pyinstaller)
     if getattr(sys, 'frozen', False):
@@ -110,7 +129,7 @@ try:
         info = job['info']
         
         playlist_title = info.get('title', 'yt-link-playlist')
-        safe_playlist_title = "".join([c for c in playlist_title if c.isalpha() or c.isdigit() or c in (' ', '-')]).rstrip()
+        safe_playlist_title = sanitize_filename(playlist_title)
 
         if not FFMPEG_EXE:
             job.update({'status': 'failed', 'error': "FFMPEG executable not found."})
@@ -128,7 +147,7 @@ try:
             
             entry_info = entries[i] if i < len(entries) else {}
             video_title = entry_info.get('title', f'track_{i+1}')
-            safe_video_title = "".join([c for c in video_title if c.isalpha() or c.isdigit() or c in (' ', '-')]).rstrip()
+            safe_video_title = sanitize_filename(video_title)
             output_filename = f"{i+1:02d} - {safe_video_title}.mp3"
             output_filepath = os.path.join(temp_dir, output_filename)
             
