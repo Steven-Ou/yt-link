@@ -1,18 +1,41 @@
-YT Link V2
-
+<div align="center">
+<br />
+<p>
+<a href="https://github.com/Steven-Ou/yt-link"><img src="https://placehold.co/100x100/E53935/FFFFFF?text=YT" alt="logo"></a>
+</p>
+<h1 align="center">YT Link</h1>
+<p align="center">
 A simple and elegant desktop application to download audio from your favorite videos.
-![YT Link Screenshot](./assets/app.png)
-Features
-Download single videos as MP3s.
+<br />
+<a href="https://github.com/Steven-Ou/yt-link/releases/latest"><strong>Download the App »</strong></a>
+<br />
+<br />
+<a href="https://github.com/Steven-Ou/yt-link/issues">Report Bug</a>
+·
+<a href="https://github.com/Steven-Ou/yt-link/issues">Request Feature</a>
+</p>
+</div>
 
-Download entire playlists as a ZIP archive of MP3s.
+<p align="center">
+<a href="https://github.com/Steven-Ou/yt-link/actions/workflows/release.yml"><img src="https://github.com/Steven-Ou/yt-link/actions/workflows/release.yml/badge.svg" alt="Build Status"></a>
+<a href="https://github.com/Steven-Ou/yt-link/releases/latest"><img src="https://img.shields.io/github/v/release/Steven-Ou/yt-link?color=red&label=latest%20version" alt="Latest Release"></a>
+<a href="https://github.com/Steven-Ou/yt-link/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Steven-Ou/yt-link?color=red" alt="License"></a>
+</p>
 
-Combine all songs in a playlist into a single MP3 file.
+About The Project
+YT Link provides a clean, easy-to-use interface for downloading audio from YouTube. Whether you need a single track or an entire playlist, this application streamlines the process, delivering high-quality MP3 files directly to your computer.
 
-...etc.
+Key Features
+Single Video to MP3: Quickly convert any YouTube video into a high-quality MP3 file.
+
+Playlist to ZIP: Download an entire playlist as a conveniently packaged ZIP archive of MP3s.
+
+Combine Playlist: Merge all tracks from a playlist into a single, continuous MP3 file.
+
+Cross-Platform: Native builds available for both Windows and macOS (Intel & Apple Silicon).
 
 Installation and Usage
-To get started with the YT Link desktop application, follow the instructions for your operating system below.
+To get started, simply download the correct version for your operating system from the latest release.
 
 For Windows Users
 Go to the Releases page.
