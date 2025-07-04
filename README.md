@@ -1,3 +1,5 @@
+Of course\! Here is an improved HTML version of your `README.md` file.
+
 ## `README.html`
 
 ```html
