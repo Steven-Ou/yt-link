@@ -33,7 +33,17 @@ Drag the YT Link application icon into the Applications folder shortcut.
 
 You can now launch the app from your Applications folder.
 
-Note for macOS: The first time you open the app, you may need to right-click the icon and select "Open" from the context menu due to Apple's security settings (Gatekeeper).
+Important Note for macOS Users:
+
+The first time you open the app, you may see a warning because it is not from an identified developer.
+
+Method 1 (Recommended): Right-click the app icon and select "Open" from the context menu. You may need to do this twice.
+
+Method 2 (If the app "is damaged"): If you see an error message saying the app is damaged and can’t be opened, you will need to run the following command in your Terminal. This command removes the quarantine attribute that causes the error.
+
+sudo xattr -cr /Applications/YT Link.app
+
+You will be prompted to enter your password. After running the command, you should be able to open the app normally.
 
 Disclaimer
 This project is for educational purposes only. The software is intended to demonstrate full-stack and desktop application development skills.
