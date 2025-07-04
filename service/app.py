@@ -228,6 +228,10 @@ try:
             'ignoreerrors': job_type != 'singleMp3',
             'noplaylist': job_type == 'singleMp3',
             'outtmpl': os.path.join(APP_TEMP_DIR, str(job_id), '%(playlist_index)s-%(id)s.%(ext)s'),
+            # --- START: yt-dlp Logging Fix ---
+            'quiet': True,
+            'no_warnings': True,
+            # --- END: yt-dlp Logging Fix ---
         }
 
         if data.get('cookies'):
