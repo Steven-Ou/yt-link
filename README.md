@@ -1,8 +1,8 @@
 <div align="center">
+  <h1 align="center">YT Link</h1>
   <a href="https://github.com/Steven-Ou/yt-link">
     <img src="https://raw.githubusercontent.com/Steven-Ou/yt-link/main/assets/app.png" alt="Logo" width="100" height="100">
   </a>
-  <h1 align="center">YT Link</h1>
   <p align="center">
     A simple and elegant desktop application to download audio from your favorite videos.
     <br />
