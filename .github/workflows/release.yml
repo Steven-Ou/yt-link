@@ -47,27 +47,15 @@ jobs:
         run: |
           mkdir -p bin
           
-          if [ "${{ matrix.arch }}" == "arm64" ]; then
-            echo "Downloading ARM64 (Apple Silicon) ffmpeg..."
-            curl -L "https://www.osxexperts.net/ffmpeg711arm.zip" -o ffmpeg.zip
-            unzip -o ffmpeg.zip
-            mv ffmpeg bin/ffmpeg
+          echo "Downloading universal ffmpeg snapshot..."
+          curl -L "https://evermeet.cx/ffmpeg/get/zip" -o ffmpeg.zip
+          unzip -o ffmpeg.zip
+          mv ffmpeg bin/ffmpeg
 
-            echo "Downloading ARM64 (Apple Silicon) ffprobe..."
-            curl -L "https://www.osxexperts.net/ffprobe711arm.zip" -o ffprobe.zip
-            unzip -o ffprobe.zip
-            mv ffprobe bin/ffprobe
-          else
-            echo "Downloading x64 (Intel) ffmpeg..."
-            curl -L "https://www.osxexperts.net/ffmpeg711intel.zip" -o ffmpeg.zip
-            unzip -o ffmpeg.zip
-            mv ffmpeg bin/ffmpeg
-
-            echo "Downloading x64 (Intel) ffprobe..."
-            curl -L "https://www.osxexperts.net/ffprobe711intel.zip" -o ffprobe.zip
-            unzip -o ffprobe.zip
-            mv ffprobe bin/ffprobe
-          fi
+          echo "Downloading universal ffprobe snapshot..."
+          curl -L "https://evermeet.cx/ffmpeg/get/ffprobe/zip" -o ffprobe.zip
+          unzip -o ffprobe.zip
+          mv ffprobe bin/ffprobe
 
           chmod +x bin/ffmpeg bin/ffprobe
           echo "FFmpeg and FFprobe are set up in ./bin"
