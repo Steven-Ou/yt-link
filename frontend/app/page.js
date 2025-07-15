@@ -147,32 +147,61 @@ const CookieInputField = ({ value, onChange, disabled }) => (
     />
 );
 
-// --- START: URL Cleaning Fix ---
-/**
- * Cleans a YouTube URL to remove extra parameters like 'list', 'index', etc.,
- * which can cause issues with single video downloads.
- * @param {string} urlString - The original YouTube URL.
- * @returns {string} The cleaned URL.
- */
 const cleanUrl = (urlString) => {
     try {
         const url = new URL(urlString);
-        // Keep only the 'v' parameter for video URLs
         if (url.searchParams.has('v')) {
             const videoId = url.searchParams.get('v');
             const cleanedUrl = new URL(url.origin + url.pathname);
             cleanedUrl.searchParams.set('v', videoId);
             return cleanedUrl.toString();
         }
-        // For other URLs (like playlists without a 'v' param), return as is.
         return urlString;
     } catch (error) {
-        // If the URL is invalid, return it as is and let the backend handle it.
         console.error("Invalid URL for cleaning:", urlString, error);
         return urlString;
     }
 };
-// --- END: URL Cleaning Fix ---
+
+/**
+ * --- FIX FOR INVALID PLAYLIST URLS ---
+ * Validates and corrects a YouTube playlist URL.
+ * It can handle full URLs, partial URLs, or just the playlist ID.
+ * @param {string} urlString - The user-provided URL or ID.
+ * @returns {string} A full, valid YouTube playlist URL, or the original string if it can't be parsed.
+ */
+const validateAndFixPlaylistUrl = (urlString) => {
+    if (!urlString || typeof urlString !== 'string') return '';
+  
+    try {
+      // Check if it's already a valid URL with a 'list' parameter
+      const parsedUrl = new URL(urlString);
+      if (parsedUrl.hostname.includes('youtube.com') && parsedUrl.searchParams.has('list')) {
+        // Return only the playlist part of the URL to avoid ambiguity
+        const listId = parsedUrl.searchParams.get('list');
+        return `https://www.youtube.com/playlist?list=${listId}`;
+      }
+    } catch (e) {
+      // Not a full URL, proceed to regex checks
+    }
+  
+    // Check if the input is just a playlist ID (e.g., "PL...")
+    const playlistIdRegex = /^(PL[a-zA-Z0-9_-]+)/;
+    const idMatch = urlString.match(playlistIdRegex);
+    if (idMatch && idMatch[1]) {
+      return `https://www.youtube.com/playlist?list=${idMatch[1]}`;
+    }
+    
+    // Check if it's a fragment that contains the list parameter (e.g., from a bad copy-paste)
+    const listParamRegex = /[?&]list=([^&]+)/;
+    const paramMatch = urlString.match(listParamRegex);
+    if (paramMatch && paramMatch[1]) {
+      return `https://www.youtube.com/playlist?list=${paramMatch[1]}`;
+    }
+  
+    // If no valid playlist ID can be found, return the original string
+    return urlString;
+};
 
 export default function Home() {
     const [currentView, setCurrentView] = useState('welcome');
@@ -292,9 +321,13 @@ export default function Home() {
             return;
         }
         
-        // --- THIS IS THE FIX ---
-        // Clean the URL to remove extra parameters like 'list', 'index', 't', etc., for single video downloads.
-        const finalUrl = jobType === 'singleMp3' ? cleanUrl(urlValue) : urlValue;
+        let finalUrl = urlValue;
+        // Apply the correct URL cleaning/validation based on job type
+        if (jobType === 'playlistZip' || jobType === 'combineMp3') {
+            finalUrl = validateAndFixPlaylistUrl(urlValue);
+        } else if (jobType === 'singleMp3') {
+            finalUrl = cleanUrl(urlValue);
+        }
 
         startJob(jobType, finalUrl, operationName);
     };
