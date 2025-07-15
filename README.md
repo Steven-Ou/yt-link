@@ -71,25 +71,28 @@ To get started, simply download the correct version for your operating system fr
 </table>
 
 Using Cookies for Private & Age-Restricted Content
-Some videos or playlists require you to be logged in to view them. To download this content, you'll need to provide your YouTube browser cookies to the application.
-
-Install a Cookie Exporter Extension:
-
-The easiest way to get your cookies is with a browser extension. A recommended one is "Get cookies.txt LOCALLY", which is available for both Chrome and Firefox.
-
-Export Your Cookies:
-
-Go to youtube.com in your browser and make sure you are logged in.
-
-Click the cookie extension's icon in your browser toolbar.
-
-Click the "Export" or "Copy to Clipboard" button. This will copy the cookie data, which starts with # Netscape HTTP Cookie File.
-
-Paste into YT Link:
-
-In the YT Link application, paste the copied text into the "Paste YouTube Cookies Here" field.
-
-You can now enter the URL of the private or age-restricted video/playlist and start your download.
+<p>Some videos or playlists require you to be logged in to view them. To download this content, you'll need to provide your YouTube browser cookies to the application.</p>
+<ol>
+<li>
+<strong>Install a Cookie Exporter Extension</strong><br>
+The easiest way to get your cookies is with a browser extension. A recommended one is "Get cookies.txt LOCALLY", which is available for both <a href="https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc">Chrome</a> and <a href="https://addons.mozilla.org/en-US/firefox/addon/get-cookies-txt-locally/">Firefox</a>.
+</li>
+<li>
+<strong>Export Your Cookies</strong>
+<ul>
+<li>Go to <code>youtube.com</code> in your browser and make sure you are logged in.</li>
+<li>Click the cookie extension's icon in your browser toolbar.</li>
+<li>Click the <strong>"Export"</strong> or <strong>"Copy to Clipboard"</strong> button. This will copy the cookie data, which starts with <code># Netscape HTTP Cookie File</code>.</li>
+</ul>
+</li>
+<li>
+<strong>Paste into YT Link</strong>
+<ul>
+<li>In the YT Link application, paste the copied text into the "Paste YouTube Cookies Here" field.</li>
+<li>You can now enter the URL of the private or age-restricted video/playlist and start your download.</li>
+</ul>
+</li>
+</ol>
 
 <div style="background-color: #fffbdd; border-left: 6px solid #ffb900; padding: 10px 20px; margin-top: 20px; border-radius: 5px;">
 <p><strong>Important Note for macOS Users:</strong></p>
