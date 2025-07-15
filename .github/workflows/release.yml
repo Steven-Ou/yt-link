@@ -55,9 +55,9 @@ jobs:
           echo "Building for architecture: $ARCH_TYPE"
 
           # Dynamically get the download URL for the latest FFMPEG RELEASE for the specific architecture
-          FFMPEG_INFO_URL="https://evermeet.cx/ffmpeg/info/ffmpeg/release/${ARCH_TYPE}"
+          FFMPEG_INFO_URL="https://evermeet.cx/ffmpeg/info/ffmpeg/release"
           echo "Fetching ffmpeg info from: $FFMPEG_INFO_URL"
-          FFMPEG_DOWNLOAD_URL=$(curl -sL "$FFMPEG_INFO_URL" | jq -r '.download.zip')
+          FFMPEG_DOWNLOAD_URL=$(curl -sL "$FFMPEG_INFO_URL" | jq -r '.[] | select(.arch=="'${ARCH_TYPE}'") | .download.zip')
           echo "Got ffmpeg download URL: $FFMPEG_DOWNLOAD_URL"
           
           # Download and extract ffmpeg
@@ -66,9 +66,9 @@ jobs:
           mv ffmpeg bin/ffmpeg
 
           # Dynamically get the download URL for the latest FFPROBE RELEASE for the specific architecture
-          FFPROBE_INFO_URL="https://evermeet.cx/ffmpeg/info/ffprobe/release/${ARCH_TYPE}"
+          FFPROBE_INFO_URL="https://evermeet.cx/ffmpeg/info/ffprobe/release"
           echo "Fetching ffprobe info from: $FFPROBE_INFO_URL"
-          FFPROBE_DOWNLOAD_URL=$(curl -sL "$FFPROBE_INFO_URL" | jq -r '.download.zip')
+          FFPROBE_DOWNLOAD_URL=$(curl -sL "$FFPROBE_INFO_URL" | jq -r '.[] | select(.arch=="'${ARCH_TYPE}'") | .download.zip')
           echo "Got ffprobe download URL: $FFPROBE_DOWNLOAD_URL"
 
           # Download and extract ffprobe
