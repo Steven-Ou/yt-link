@@ -100,15 +100,24 @@ try:
         os.makedirs(job_temp_dir, exist_ok=True)
         jobs[job_id]['temp_dir'] = job_temp_dir
         
-        ydl_opts['outtmpl'] = os.path.join(job_temp_dir, '%(playlist_index)s-%(id)s.%(ext)s')
+        # Use a more robust template that guarantees a numeric prefix for sorting.
+        ydl_opts['outtmpl'] = os.path.join(job_temp_dir, '%(playlist_index)05d-%(id)s.%(ext)s')
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                # --- FIX FOR TYPEERROR ---
+                # Check if yt-dlp failed to extract info (e.g., due to an invalid URL from the frontend)
                 info_dict = ydl.extract_info(url, download=False)
+                if not info_dict:
+                    raise Exception("Failed to extract video information. The URL may be invalid or private.")
+                # --- END FIX ---
                 
                 if 'entries' in info_dict and info_dict['entries']:
-                    for entry in info_dict['entries']:
-                        if entry: entry['job_id'] = job_id
+                    # Filter out None entries which can happen with unavailable videos in a playlist
+                    valid_entries = [entry for entry in info_dict['entries'] if entry]
+                    info_dict['entries'] = valid_entries
+                    for entry in valid_entries:
+                        entry['job_id'] = job_id
                 else:
                     info_dict['job_id'] = job_id
                 
@@ -140,6 +149,19 @@ try:
             job.update({'status': 'failed', 'error': "No downloaded video files found for processing."})
             raise FileNotFoundError("No downloaded files found for post-processing.")
 
+        # --- FIX FOR FILE ORDERING ---
+        # Sort the downloaded files numerically based on the prefix from yt-dlp's outtmpl.
+        # This ensures the files are processed in the correct playlist order.
+        def sort_key(file_path):
+            try:
+                # Extract the numeric prefix (e.g., '00001' from '00001-videoId.webm')
+                return int(os.path.basename(file_path).split('-')[0])
+            except (ValueError, IndexError):
+                # Fallback for files that don't match the pattern, placing them at the end.
+                return float('inf')
+        downloaded_files.sort(key=sort_key)
+        # --- END FIX ---
+
         mp3_files = []
         entries = info.get('entries', [info])
         for i, file_path in enumerate(downloaded_files):
@@ -148,7 +170,9 @@ try:
             entry_info = entries[i] if i < len(entries) else {}
             video_title = entry_info.get('title', f'track_{i+1}')
             safe_video_title = sanitize_filename(video_title)
-            output_filename = f"{i+1:02d} - {safe_video_title}.mp3"
+            
+            # Use a consistent naming scheme for processed files
+            output_filename = f"{i+1:03d} - {safe_video_title}.mp3"
             output_filepath = os.path.join(temp_dir, output_filename)
             
             command = [ FFMPEG_EXE, '-i', file_path, '-vn', '-ab', '192k', '-ar', '44100', '-y', output_filepath ]
@@ -162,8 +186,12 @@ try:
         final_file_name = None
 
         if job_type == 'singleMp3':
-            final_file_path = mp3_files[0]
-            final_file_name = os.path.basename(final_file_path)
+            # For single files, use the video title directly without a number prefix
+            single_video_title = sanitize_filename(info.get('title', 'yt-link-track'))
+            final_file_name = f"{single_video_title}.mp3"
+            # Rename the numbered file to the final clean name
+            final_file_path = os.path.join(temp_dir, final_file_name)
+            os.rename(mp3_files[0], final_file_path)
 
         elif job_type == 'playlistZip':
             job['message'] = 'Creating ZIP archive...'
@@ -180,8 +208,8 @@ try:
             
             concat_list_path = os.path.join(temp_dir, 'concat_list.txt')
             with open(concat_list_path, 'w', encoding='utf-8') as f:
-                sorted_mp3s = sorted(mp3_files, key=lambda p: int(os.path.basename(p).split('-')[0]))
-                for mp3_file in sorted_mp3s:
+                # The mp3_files list is already sorted correctly from above
+                for mp3_file in mp3_files:
                     safe_path = mp3_file.replace("'", "'\\''")
                     f.write(f"file '{safe_path}'\n")
             
