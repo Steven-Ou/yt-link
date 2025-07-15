@@ -47,13 +47,32 @@ jobs:
         run: |
           mkdir -p bin
           
-          echo "Downloading universal ffmpeg snapshot..."
-          curl -L "https://evermeet.cx/ffmpeg/get/zip" -o ffmpeg.zip
+          # Determine architecture for API query
+          ARCH_TYPE="x64"
+          if [ "${{ matrix.arch }}" == "arm64" ]; then
+            ARCH_TYPE="arm64"
+          fi
+          echo "Building for architecture: $ARCH_TYPE"
+
+          # Dynamically get the download URL for the latest FFMPEG RELEASE for the specific architecture
+          FFMPEG_INFO_URL="https://evermeet.cx/ffmpeg/info/ffmpeg/release/${ARCH_TYPE}"
+          echo "Fetching ffmpeg info from: $FFMPEG_INFO_URL"
+          FFMPEG_DOWNLOAD_URL=$(curl -sL "$FFMPEG_INFO_URL" | jq -r '.download.zip')
+          echo "Got ffmpeg download URL: $FFMPEG_DOWNLOAD_URL"
+          
+          # Download and extract ffmpeg
+          curl -L "$FFMPEG_DOWNLOAD_URL" -o ffmpeg.zip
           unzip -o ffmpeg.zip
           mv ffmpeg bin/ffmpeg
 
-          echo "Downloading universal ffprobe snapshot..."
-          curl -L "https://evermeet.cx/ffmpeg/get/ffprobe/zip" -o ffprobe.zip
+          # Dynamically get the download URL for the latest FFPROBE RELEASE for the specific architecture
+          FFPROBE_INFO_URL="https://evermeet.cx/ffmpeg/info/ffprobe/release/${ARCH_TYPE}"
+          echo "Fetching ffprobe info from: $FFPROBE_INFO_URL"
+          FFPROBE_DOWNLOAD_URL=$(curl -sL "$FFPROBE_INFO_URL" | jq -r '.download.zip')
+          echo "Got ffprobe download URL: $FFPROBE_DOWNLOAD_URL"
+
+          # Download and extract ffprobe
+          curl -L "$FFPROBE_DOWNLOAD_URL" -o ffprobe.zip
           unzip -o ffprobe.zip
           mv ffprobe bin/ffprobe
 
