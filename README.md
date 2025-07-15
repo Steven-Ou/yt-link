@@ -48,7 +48,7 @@ Key Features
 To get started, simply download the correct version for your operating system from the latest release. <br>
 <h4>Notes:</h4> <br>
  If there's alot of songs inside a playlist, it would take a while, make sure to do ctrl + shift+ i (for mac it would be command + option + i) to see the log, so you won't panic!
-
+<br>
 <table width="100%">
 <tr>
 <td width="50%" valign="top" style="padding-right: 15px; border-right: 1px solid #d0d7de;">
