@@ -47,8 +47,9 @@ Key Features
 <h4> Installation and Usage</h4> <br>
 To get started, simply download the correct version for your operating system from the latest release. <br>
 <h4>Notes:</h4> <br>
- If there's alot of songs inside a playlist, it would take a while, make sure to do ctrl + shift+ i (for mac it would be command + option + i) to see the log, so you won't panic!
+ If a playlist contains many songs, it may take a while. To avoid panic, make sure to press Ctrl + Shift + I (for Mac, use Command + Option + I) to view the log.
 <br>
+
 <table width="100%">
 <tr>
 <td width="50%" valign="top" style="padding-right: 15px; border-right: 1px solid #d0d7de;">
