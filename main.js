@@ -92,13 +92,17 @@ function createWindow() {
         },
         title: "YT Link"
     });
+    
+    // Load the frontend URL into the newly created window immediately.
+    // This will show the UI to the user while the backend starts in the background.
+    loadMainWindow();
 
     // Find an available port to run the backend service on, starting the search from 5001.
-    sendLog('[Electron] Finding a free port...');
+    sendLog('[Electron] Finding a free port for the backend...');
     portfinder.getPortPromise({ port: 5001 })
         .then(freePort => {
             // Once a free port is found, store it and start the Python backend.
-            sendLog(`[Electron] Found free port: ${freePort}`);
+            sendLog(`[Electron] Found free port: ${freePort}. Starting Python backend.`);
             pyPort = freePort;
             startPythonBackend(pyPort);
         })
@@ -110,9 +114,6 @@ function createWindow() {
             app.quit();
         });
 
-    // Load the frontend URL into the newly created window.
-    loadMainWindow();
-    
     // If the application is not packaged (i.e., in development mode), open the DevTools.
     if (!app.isPackaged) {
         mainWindow.webContents.openDevTools();
@@ -145,7 +146,7 @@ function startPythonBackend(port) {
         : path.join(process.resourcesPath, 'backend', backendName);
 
     const args = isDev 
-        ? ['-X', 'utf8', path.join(__dirname, 'service', 'app.py'), port.toString()]
+        ? ['-u', path.join(__dirname, 'service', 'app.py'), port.toString()] // Use -u for unbuffered output in dev
         : [port.toString(), path.join(process.resourcesPath, 'bin', ffmpegName)];
     
     sendLog(`[Electron] Starting backend with command: "${command}"`);
@@ -255,9 +256,6 @@ ipcMain.handle('start-job', async (event, { jobType, url, cookies }) => {
 ipcMain.handle('get-job-status', async (event, jobId) => {
     if (!isBackendReady) return { status: 'failed', message: 'Backend is not running.' };
     try {
-        // --- THIS IS THE FIX ---
-        // Corrected the IP address from "12-7.0.0.1" to "127.0.0.1".
-        // A typo in the IP address would cause all requests to fail.
         const response = await fetch(`http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`);
         if (!response.ok) {
             const errorText = await response.text();
