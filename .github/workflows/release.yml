@@ -46,13 +46,36 @@ jobs:
         shell: bash
         run: |
           mkdir -p bin
-          curl -L "https://evermeet.cx/ffmpeg/get" -o ffmpeg.7z
-          7z x ffmpeg.7z
-          mv ffmpeg bin/ffmpeg
-          curl -L "https://evermeet.cx/ffmpeg/get/ffprobe" -o ffprobe.7z
-          7z x ffprobe.7z
-          mv ffprobe bin/ffprobe
+          FFMPEG_URL_X64="https://evermeet.cx/ffmpeg/get"
+          FFPROBE_URL_X64="https://evermeet.cx/ffmpeg/get/ffprobe"
+          FFMPEG_URL_ARM64="https://www.osxexperts.net/ffmpeg_arm64.zip"
+          FFPROBE_URL_ARM64="https://www.osxexperts.net/ffprobe_arm64.zip"
+
+          if [ "${{ matrix.arch }}" == "arm64" ]; then
+            echo "Downloading ARM64 (Apple Silicon) ffmpeg..."
+            curl -L "$FFMPEG_URL_ARM64" -o ffmpeg.zip
+            unzip -o ffmpeg.zip
+            mv ffmpeg bin/ffmpeg
+
+            echo "Downloading ARM64 (Apple Silicon) ffprobe..."
+            curl -L "$FFPROBE_URL_ARM64" -o ffprobe.zip
+            unzip -o ffprobe.zip
+            mv ffprobe bin/ffprobe
+          else
+            echo "Downloading x64 (Intel) ffmpeg..."
+            curl -L "$FFMPEG_URL_X64" -o ffmpeg.7z
+            7z x ffmpeg.7z
+            mv ffmpeg bin/ffmpeg
+
+            echo "Downloading x64 (Intel) ffprobe..."
+            curl -L "$FFPROBE_URL_X64" -o ffprobe.7z
+            7z x ffprobe.7z
+            mv ffprobe bin/ffprobe
+          fi
+
           chmod +x bin/ffmpeg bin/ffprobe
+          echo "FFmpeg and FFprobe are set up in ./bin"
+          ls -l bin
           
       - name: Download and Setup FFmpeg for Windows
         if: runner.os == 'Windows'
