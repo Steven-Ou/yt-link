@@ -59,13 +59,13 @@ jobs:
             mv ffprobe bin/ffprobe
           else
             echo "Downloading x64 (Intel) ffmpeg..."
-            curl -L "https://evermeet.cx/ffmpeg/ffmpeg-7.0-x64.7z" -o ffmpeg.7z
-            7z x ffmpeg.7z
+            curl -L "https://www.osxexperts.net/ffmpeg711intel.zip" -o ffmpeg.zip
+            unzip -o ffmpeg.zip
             mv ffmpeg bin/ffmpeg
 
             echo "Downloading x64 (Intel) ffprobe..."
-            curl -L "https://evermeet.cx/ffmpeg/ffprobe-7.0-x64.7z" -o ffprobe.7z
-            7z x ffprobe.7z
+            curl -L "https://www.osxexperts.net/ffprobe711intel.zip" -o ffprobe.zip
+            unzip -o ffprobe.zip
             mv ffprobe bin/ffprobe
           fi
 
