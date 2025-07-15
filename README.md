@@ -32,7 +32,6 @@ Key Features
 <td align="center" width="25%">
 <h4>Playlist Downloads</h4>
 <p>Download an entire playlist as a ZIP archive or a single combined MP3 file.</p>
-<p>Notes: If there's alot of songs inside a playlist, it would take a while, make sure to do ctrl + shift+ i (for mac it would be command + option + i) to see the log, so you won't panic!</p>
 </td>
 <td align="center" width="25%">
 <h4>Cookie Support</h4>
