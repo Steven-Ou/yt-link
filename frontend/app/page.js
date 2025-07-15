@@ -173,33 +173,17 @@ const cleanUrl = (urlString) => {
 const validateAndFixPlaylistUrl = (urlString) => {
     if (!urlString || typeof urlString !== 'string') return '';
   
-    try {
-      // Check if it's already a valid URL with a 'list' parameter
-      const parsedUrl = new URL(urlString);
-      if (parsedUrl.hostname.includes('youtube.com') && parsedUrl.searchParams.has('list')) {
-        // Return only the playlist part of the URL to avoid ambiguity
-        const listId = parsedUrl.searchParams.get('list');
-        return `https://www.youtube.com/playlist?list=${listId}`;
-      }
-    } catch (e) {
-      // Not a full URL, proceed to regex checks
+    // Regex to find a YouTube playlist ID (PL...). It's more reliable than parsing the whole URL string.
+    const playlistIdRegex = /(PL[a-zA-Z0-9_-]{16,})/;
+    const match = urlString.match(playlistIdRegex);
+  
+    if (match && match[1]) {
+      // If we found a valid playlist ID, construct the correct, minimal URL.
+      return `https://www.youtube.com/playlist?list=${match[1]}`;
     }
   
-    // Check if the input is just a playlist ID (e.g., "PL...")
-    const playlistIdRegex = /^(PL[a-zA-Z0-9_-]+)/;
-    const idMatch = urlString.match(playlistIdRegex);
-    if (idMatch && idMatch[1]) {
-      return `https://www.youtube.com/playlist?list=${idMatch[1]}`;
-    }
-    
-    // Check if it's a fragment that contains the list parameter (e.g., from a bad copy-paste)
-    const listParamRegex = /[?&]list=([^&]+)/;
-    const paramMatch = urlString.match(listParamRegex);
-    if (paramMatch && paramMatch[1]) {
-      return `https://www.youtube.com/playlist?list=${paramMatch[1]}`;
-    }
-  
-    // If no valid playlist ID can be found, return the original string
+    // If no valid playlist ID can be found, return the original string and let the backend handle it.
+    // This provides a fallback in case yt-dlp can still parse it.
     return urlString;
 };
 
