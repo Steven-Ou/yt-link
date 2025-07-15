@@ -46,6 +46,7 @@ Key Features
 
 Installation and Usage
 To get started, simply download the correct version for your operating system from the latest release.
+Notes: If there's alot of songs inside a playlist, it would take a while, make sure to do ctrl + shift+ i (for mac it would be command + option + i) to see the log, so you won't panic!
 
 <table width="100%">
 <tr>
