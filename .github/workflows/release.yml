@@ -10,10 +10,10 @@ jobs:
     strategy:
       matrix:
         include:
+          # We build a single universal app for macOS on an x64 runner.
+          # electron-builder will handle creating the universal binary.
           - os: macos-13
-            arch: x64
-          - os: macos-14
-            arch: arm64
+            arch: universal
           - os: windows-latest
             arch: x64
 
@@ -47,37 +47,18 @@ jobs:
         run: |
           mkdir -p bin
           
-          # Determine architecture for API query
-          ARCH_TYPE="x64"
-          if [ "${{ matrix.arch }}" == "arm64" ]; then
-            ARCH_TYPE="arm64"
-          fi
-          echo "Building for architecture: $ARCH_TYPE"
-
-          # Dynamically get the download URL for the latest FFMPEG RELEASE for the specific architecture
-          FFMPEG_INFO_URL="https://evermeet.cx/ffmpeg/info/ffmpeg/release"
-          echo "Fetching ffmpeg info from: $FFMPEG_INFO_URL"
-          FFMPEG_DOWNLOAD_URL=$(curl -sL "$FFMPEG_INFO_URL" | jq -r '.[] | select(.arch=="'${ARCH_TYPE}'") | .download.zip')
-          echo "Got ffmpeg download URL: $FFMPEG_DOWNLOAD_URL"
-          
-          # Download and extract ffmpeg
-          curl -L "$FFMPEG_DOWNLOAD_URL" -o ffmpeg.zip
+          echo "Downloading universal ffmpeg snapshot as a zip..."
+          curl -L "https://evermeet.cx/ffmpeg/get/zip" -o ffmpeg.zip
           unzip -o ffmpeg.zip
           mv ffmpeg bin/ffmpeg
 
-          # Dynamically get the download URL for the latest FFPROBE RELEASE for the specific architecture
-          FFPROBE_INFO_URL="https://evermeet.cx/ffmpeg/info/ffprobe/release"
-          echo "Fetching ffprobe info from: $FFPROBE_INFO_URL"
-          FFPROBE_DOWNLOAD_URL=$(curl -sL "$FFPROBE_INFO_URL" | jq -r '.[] | select(.arch=="'${ARCH_TYPE}'") | .download.zip')
-          echo "Got ffprobe download URL: $FFPROBE_DOWNLOAD_URL"
-
-          # Download and extract ffprobe
-          curl -L "$FFPROBE_DOWNLOAD_URL" -o ffprobe.zip
+          echo "Downloading universal ffprobe snapshot as a zip..."
+          curl -L "https://evermeet.cx/ffmpeg/get/ffprobe/zip" -o ffprobe.zip
           unzip -o ffprobe.zip
           mv ffprobe bin/ffprobe
 
           chmod +x bin/ffmpeg bin/ffprobe
-          echo "FFmpeg and FFprobe are set up in ./bin"
+          echo "Universal FFmpeg and FFprobe are set up in ./bin"
           ls -l bin
           
       - name: Download and Setup FFmpeg for Windows
@@ -102,9 +83,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          if [ "${{ matrix.arch }}" == "arm64" ]; then
-            npm run dist -- --arm64
+          if [ "${{ matrix.os }}" == "macOS" ]; then
+            # Build a single universal DMG that works on both Intel and Apple Silicon
+            npm run dist -- --universal
           else
+            # Build for Windows
             npm run dist -- --x64
           fi
 
@@ -114,7 +97,8 @@ jobs:
         run: |
           if [ "${{ runner.os }}" == "macOS" ]; then
             ARTIFACT_PATH=$(ls dist/*.dmg)
-            ARTIFACT_NAME="YT-Link-macOS-${{ matrix.arch }}.dmg"
+            # Name the artifact to indicate it's universal
+            ARTIFACT_NAME="YT-Link-macOS-universal.dmg"
           elif [ "${{ runner.os }}" == "Windows" ]; then
             ARTIFACT_PATH=$(ls dist/*.zip)
             ARTIFACT_NAME="YT-Link-Windows-${{ matrix.arch }}.zip"
