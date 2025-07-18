@@ -31,7 +31,7 @@ Key Features
 </td>
 <td align="center" width="25%">
 <h4>Playlist Downloads</h4>
-<p>Download an entire playlist as a ZIP archive or a single combined MP3 file.</p>
+<p>Download an entire playlist as a ZIP archive.</p>
 </td>
 <td align="center" width="25%">
 <h4>Combine Playlist</h4>
