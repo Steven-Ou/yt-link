@@ -25,23 +25,23 @@ YT Link provides a clean, easy-to-use interface for downloading audio from YouTu
 Key Features
 <table width="100%">
 <tr>
-<td align="center" width="25%">
+<td align="center" width="20%">
 <h4>Single Video to MP3</h4>
 <p>Quickly convert any YouTube video into a high-quality MP3 file.</p>
 </td>
-<td align="center" width="25%">
+<td align="center" width="20%">
 <h4>Playlist Downloads</h4>
 <p>Download an entire playlist as a ZIP archive.</p>
 </td>
-<td align="center" width="25%">
+<td align="center" width="20%">
 <h4>Combine Playlist</h4>
 <p>Download the playlist, and then it will stitch all into a single combined MP3 file.</p> 
 </td>  
-<td align="center" width="25%">
+<td align="center" width="20%">
 <h4>Cookie Support</h4>
 <p>Download age-restricted and private content by providing your browser's cookies.</p>
 </td>
-<td align="center" width="25%">
+<td align="center" width="20%">
 <h4>Universal macOS & Windows</h4>
 <p>A single macOS app for both Intel and Apple Silicon, plus a build for Windows.</p>
 </td>
