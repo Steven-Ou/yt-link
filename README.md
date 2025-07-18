@@ -34,6 +34,10 @@ Key Features
 <p>Download an entire playlist as a ZIP archive or a single combined MP3 file.</p>
 </td>
 <td align="center" width="25%">
+<h4>Combine Playlist</h4>
+<p>Download the playlist, and then it will stitch all into a single combined MP3 file.</p> 
+</td>  
+<td align="center" width="25%">
 <h4>Cookie Support</h4>
 <p>Download age-restricted and private content by providing your browser's cookies.</p>
 </td>
