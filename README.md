@@ -25,27 +25,34 @@ YT Link provides a clean, easy-to-use interface for downloading audio from YouTu
 Key Features
 <table width="100%">
 <tr>
-<td align="center" width="25%">
+<td align="center" width="20%">
 <h4>Single Video to MP3</h4>
 <p>Quickly convert any YouTube video into a high-quality MP3 file.</p>
 </td>
-<td align="center" width="25%">
+<td align="center" width="20%">
 <h4>Playlist Downloads</h4>
-<p>Download an entire playlist as a ZIP archive or a single combined MP3 file.</p>
+<p>Download an entire playlist as a ZIP archive.</p>
 </td>
-<td align="center" width="25%">
+<td align="center" width="20%">
+<h4>Combine Playlist</h4>
+<p>Download the playlist, and then it will stitch all into a single combined MP3 file.</p> 
+</td>  
+<td align="center" width="20%">
 <h4>Cookie Support</h4>
 <p>Download age-restricted and private content by providing your browser's cookies.</p>
 </td>
-<td align="center" width="25%">
+<td align="center" width="20%">
 <h4>Universal macOS & Windows</h4>
 <p>A single macOS app for both Intel and Apple Silicon, plus a build for Windows.</p>
 </td>
 </tr>
 </table>
 
-Installation and Usage
-To get started, simply download the correct version for your operating system from the latest release.
+<h4> Installation and Usage</h4> <br>
+To get started, simply download the correct version for your operating system from the latest release. <br>
+<h4>Notes:</h4> <br>
+ If a playlist contains many songs, it may take a while. To avoid panic, make sure to press Ctrl + Shift + I (for Mac, use Command + Option + I) to view the log.
+<br>
 
 <table width="100%">
 <tr>
