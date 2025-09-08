@@ -9,4 +9,8 @@ function DownloadPageContent() {
   const [jobId, setJobId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const searchParams = useSearchParams();
+
+  
 }
