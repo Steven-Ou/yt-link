@@ -12,5 +12,10 @@ function DownloadPageContent() {
 
   const searchParams = useSearchParams();
 
-  
+  useEffect(()=>{
+    const urlFromParams = searchParams.get('url');
+    if(urlFromParams){
+        setUrl(decodeURIComponent(urlFromParams));
+    }
+  },[searchParams])
 }
