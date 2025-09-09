@@ -20,6 +20,8 @@ function DownloadPageContent() {
   },[searchParams])
 
   const startJob = async (jobType)=>{
-    
+    setIsLoading(true);
+    setJobId(null);
+    setError(null);
   }
 }
