@@ -23,5 +23,12 @@ function DownloadPageContent() {
     setIsLoading(true);
     setJobId(null);
     setError(null);
-  }
+    try{
+
+    }catch(err){
+
+    }finally{
+
+    }
+  };
 }
