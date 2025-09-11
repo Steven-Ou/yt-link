@@ -32,8 +32,10 @@ function DownloadPageContent() {
         if(!response.ok){
             throw new Error('Failed to start job on the backend.');
         }
+        const data = await response.json();
+        setJobId(data.jobId);
     }catch(err){
-
+        setError(err.message);
     }finally{
 
     }
