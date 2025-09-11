@@ -28,7 +28,10 @@ function DownloadPageContent() {
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({url,jobType}),
-        })
+        });
+        if(!response.ok){
+            throw new Error('Failed to start job on the backend.');
+        }
     }catch(err){
 
     }finally{
