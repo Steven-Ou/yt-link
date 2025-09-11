@@ -24,7 +24,9 @@ function DownloadPageContent() {
     setJobId(null);
     setError(null);
     try{
-
+        const response = await fetch('http://localhost:5001/start-job',{
+            method:
+        })
     }catch(err){
 
     }finally{
