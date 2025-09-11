@@ -12,32 +12,32 @@ function DownloadPageContent() {
 
   const searchParams = useSearchParams();
 
-  useEffect(()=>{
-    const urlFromParams = searchParams.get('url');
-    if(urlFromParams){
-        setUrl(decodeURIComponent(urlFromParams));
+  useEffect(() => {
+    const urlFromParams = searchParams.get("url");
+    if (urlFromParams) {
+      setUrl(decodeURIComponent(urlFromParams));
     }
-  },[searchParams])
+  }, [searchParams]);
 
-  const startJob = async (jobType)=>{
+  const startJob = async (jobType) => {
     setIsLoading(true);
     setJobId(null);
     setError(null);
-    try{
-        const response = await fetch('http://localhost:5001/start-job',{
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({url,jobType}),
-        });
-        if(!response.ok){
-            throw new Error('Failed to start job on the backend.');
-        }
-        const data = await response.json();
-        setJobId(data.jobId);
-    }catch(err){
-        setError(err.message);
-    }finally{
-
+    try {
+      const response = await fetch("http://localhost:5001/start-job", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, jobType }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to start job on the backend.");
+      }
+      const data = await response.json();
+      setJobId(data.jobId);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 }
