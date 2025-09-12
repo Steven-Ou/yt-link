@@ -46,6 +46,7 @@ function DownloadPageContent() {
       <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm lg:flex flex-col">
         <h1 className="text-4xl font-bold mb-8">Download Video</h1>
         <p className="text-gray-400 mb-6">
+          The video will be downloaded in the best available MP4 format.
 
         </p>
         <div>
