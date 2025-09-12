@@ -67,8 +67,7 @@ function DownloadPageContent() {
           </div>
         </div>
 
-        {error && <p>
-          </p>}
+        {error && <p className="mt-6 text-red-500">Error: {error}</p>}
       </div>
     </main>
   );
