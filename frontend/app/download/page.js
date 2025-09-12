@@ -71,7 +71,7 @@ function DownloadPageContent() {
 
         {jobId &&(
           <div>
-            
+            <UpdateStatus/>
           </div>
         )}
       </div>
