@@ -69,9 +69,9 @@ function DownloadPageContent() {
 
         {error && <p className="mt-6 text-red-500">Error: {error}</p>}
 
-        {jobId &&(
-          <div>
-            <UpdateStatus/>
+        {jobId && (
+          <div className="mt-8 w-full max-w-xl">
+            <UpdateStatus jobId={jobId} />
           </div>
         )}
       </div>
