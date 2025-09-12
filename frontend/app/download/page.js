@@ -42,6 +42,16 @@ function DownloadPageContent() {
   };
 
   return(
-    
+    <main>
+      <div>
+        <h1></h1>
+        <p>
+
+        </p>
+        <div>
+          
+        </div>
+      </div>
+    </main>
   )
 }
