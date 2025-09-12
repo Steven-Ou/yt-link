@@ -49,7 +49,7 @@ function DownloadPageContent() {
           The video will be downloaded in the best available MP4 format.
 
         </p>
-        <div>
+        <div className="w-full max-w-xl">
           <input/>
           <div>
 
