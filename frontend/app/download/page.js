@@ -57,7 +57,11 @@ function DownloadPageContent() {
             placeholder="YouTube URL is passed from the previous page"
             className="w-full px-4 py-3 mb-4 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
           <div className="flex justify-center space-x-4">
+            <button  onClick={() => startJob('downloadVideo')}
+              disabled={isLoading || !url}
+              className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300 ease-in-out disabled:bg-gray-400">
 
+            </button>
           </div>
         </div>
       </div>
