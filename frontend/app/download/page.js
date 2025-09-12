@@ -4,12 +4,14 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import UpdateStatus from "../components/UpdateStatus";
 
+// A wrapper component is needed to use useSearchParams with Suspense
 function DownloadPageContent() {
   const [url, setUrl] = useState("");
   const [jobId, setJobId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // This hook reads the parameters from the URL (e.g., ?url=...)
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -46,8 +48,10 @@ function DownloadPageContent() {
       <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm lg:flex flex-col">
         <h1 className="text-4xl font-bold mb-8">Download Video</h1>
         <p className="text-gray-400 mb-6">
-          The video will be downloaded in the best available MP4 format.
+          The video will be downloaded in the best available MP4 format, perfect
+          for editing.
         </p>
+
         <div className="w-full max-w-xl">
           <input
             type="text"
@@ -55,12 +59,14 @@ function DownloadPageContent() {
             onChange={(e) => setUrl(e.target.value)}
             placeholder="YouTube URL is passed from the previous page"
             className="w-full px-4 py-3 mb-4 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            readOnly
           />
+
           <div className="flex justify-center space-x-4">
             <button
               onClick={() => startJob("downloadVideo")}
               disabled={isLoading || !url}
-              className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300 ease-in-out disabled:bg-gray-400"
+              className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out disabled:bg-gray-400 text-lg"
             >
               {isLoading ? "Processing..." : "Download Video as MP4"}
             </button>
@@ -76,5 +82,14 @@ function DownloadPageContent() {
         )}
       </div>
     </main>
+  );
+}
+
+// Next.js requires using a Suspense boundary for components that use useSearchParams
+export default function DownloadPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <DownloadPageContent />
+    </Suspense>
   );
 }
