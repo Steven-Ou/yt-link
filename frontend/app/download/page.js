@@ -50,7 +50,12 @@ function DownloadPageContent() {
 
         </p>
         <div className="w-full max-w-xl">
-          <input/>
+          <input
+           type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="YouTube URL is passed from the previous page"
+            className="w-full px-4 py-3 mb-4 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
           <div>
 
           </div>
