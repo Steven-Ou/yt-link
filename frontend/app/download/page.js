@@ -42,14 +42,17 @@ function DownloadPageContent() {
   };
 
   return(
-    <main>
+    <main className="flex min-h-screen flex-col items-center justify-between p-12 bg-gray-900 text-white">
       <div>
         <h1></h1>
         <p>
 
         </p>
         <div>
-          
+          <input/>
+          <div>
+
+          </div>
         </div>
       </div>
     </main>
