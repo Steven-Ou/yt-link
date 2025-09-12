@@ -43,7 +43,7 @@ function DownloadPageContent() {
 
   return(
     <main className="flex min-h-screen flex-col items-center justify-between p-12 bg-gray-900 text-white">
-      <div>
+      <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm lg:flex flex-col">
         <h1></h1>
         <p>
 
