@@ -66,6 +66,9 @@ function DownloadPageContent() {
             </button>
           </div>
         </div>
+
+        {error && <p>
+          </p>}
       </div>
     </main>
   );
