@@ -175,7 +175,7 @@ try:
                 if not f.endswith((".mp3", ".zip", ".txt"))
             ]
             if not download_files:
-            
+                raise FileNotFoundError("No download video file found.")
         playlist_title = info.get("title", "yt-link-playlist")
         safe_playlist_title = sanitize_filename(playlist_title)
 
