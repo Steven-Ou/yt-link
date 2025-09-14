@@ -179,6 +179,9 @@ try:
                 raise FileNotFoundError("No download video file found.")
             video_file = max(downloaded_files, key=os.path.getsize)
             file_ext = os.path.splitext(video_file)[1]
+            final_file_name = f"{video_title}{file_ext}"
+            final_file_path = os.path.join(temp_dir, final_file_name)
+            os.rename(video_file, final_file_path)
 
         playlist_title = info.get("title", "yt-link-playlist")
         safe_playlist_title = sanitize_filename(playlist_title)
