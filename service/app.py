@@ -375,31 +375,31 @@ try:
             "url": data.get("url"),
             "job_type": job_type,
         }
-        
-        if job_type == 'singleVideo':
-        ydl_opts = {
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-            'progress_hooks': [progress_hook],
-            'nocheckcertificate': True,
-            'outtmpl': os.path.join(APP_TEMP_DIR, str(job_id), '%(id)s.%(ext)s'),
-            'quiet': True,
-            'no_warnings': True,
-            'noprogress': True,
-        }
-        
-        ydl_opts = {
-            "format": "bestaudio/best",
-            "progress_hooks": [progress_hook],
-            "nocheckcertificate": True,
-            "ignoreerrors": job_type != "singleMp3",
-            "noplaylist": job_type == "singleMp3",
-            "outtmpl": os.path.join(
-                APP_TEMP_DIR, str(job_id), "%(playlist_index)s-%(id)s.%(ext)s"
-            ),
-            "quiet": True,
-            "no_warnings": True,
-            "noprogress": True,  # This disables the console progress bar that causes the error
-        }
+
+        if job_type == "singleVideo":
+            ydl_opts = {
+                "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                "progress_hooks": [progress_hook],
+                "nocheckcertificate": True,
+                "outtmpl": os.path.join(APP_TEMP_DIR, str(job_id), "%(id)s.%(ext)s"),
+                "quiet": True,
+                "no_warnings": True,
+                "noprogress": True,
+            }
+        else:
+            ydl_opts = {
+                "format": "bestaudio/best",
+                "progress_hooks": [progress_hook],
+                "nocheckcertificate": True,
+                "ignoreerrors": job_type != "singleMp3",
+                "noplaylist": job_type == "singleMp3",
+                "outtmpl": os.path.join(
+                    APP_TEMP_DIR, str(job_id), "%(playlist_index)s-%(id)s.%(ext)s"
+                ),
+                "quiet": True,
+                "no_warnings": True,
+                "noprogress": True,
+            }
 
         if data.get("cookies"):
             cookie_file = os.path.join(APP_TEMP_DIR, f"cookies_{job_id}.txt")
