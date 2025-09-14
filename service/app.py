@@ -191,6 +191,11 @@ try:
                     "message": "Video download complete!",
                 }
             )
+            print(
+                f"--- [Job {job_id}] Video processing complete. Output: {final_file_name}",
+                flush=True,
+            )
+            return
 
         playlist_title = info.get("title", "yt-link-playlist")
         safe_playlist_title = sanitize_filename(playlist_title)
