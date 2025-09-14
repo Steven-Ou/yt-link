@@ -169,11 +169,13 @@ try:
         # adding in the downloading single video not as an mp3
         if job_type == "singleVideo":
             video_title = sanitize_filename(info.get("title", "yt-link-video"))
-            download_file = [
+            download_files = [
                 os.path.join(temp_dir, f)
                 for f in os.listdir(temp_dir)
                 if not f.endswith((".mp3", ".zip", ".txt"))
             ]
+            if not download_files:
+            
         playlist_title = info.get("title", "yt-link-playlist")
         safe_playlist_title = sanitize_filename(playlist_title)
 
