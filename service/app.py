@@ -375,7 +375,18 @@ try:
             "url": data.get("url"),
             "job_type": job_type,
         }
-
+        
+        if job_type == 'singleVideo':
+        ydl_opts = {
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            'progress_hooks': [progress_hook],
+            'nocheckcertificate': True,
+            'outtmpl': os.path.join(APP_TEMP_DIR, str(job_id), '%(id)s.%(ext)s'),
+            'quiet': True,
+            'no_warnings': True,
+            'noprogress': True,
+        }
+        
         ydl_opts = {
             "format": "bestaudio/best",
             "progress_hooks": [progress_hook],
