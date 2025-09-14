@@ -121,10 +121,11 @@ try:
         os.makedirs(job_temp_dir, exist_ok=True)
         jobs[job_id]["temp_dir"] = job_temp_dir
 
-        # Use a more robust template that guarantees a numeric prefix for sorting.
-        ydl_opts["outtmpl"] = os.path.join(
-            job_temp_dir, "%(playlist_index)05d-%(id)s.%(ext)s"
-        )
+        # Single file jobs will use the template set in start_job_endpoint.
+        if job_type in ["playlistZip", "combineMp3"]:
+            ydl_opts["outtmpl"] = os.path.join(
+                job_temp_dir, "%(playlist_index)05d-%(id)s.%(ext)s"
+            )
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -177,8 +178,8 @@ try:
             if not download_files:
                 raise FileNotFoundError("No download video file found.")
             video_file = max(downloaded_files, key=os.path.getsize)
-            
-            
+            file_ext = os.path.splitext(video_file)[1]
+
         playlist_title = info.get("title", "yt-link-playlist")
         safe_playlist_title = sanitize_filename(playlist_title)
 
