@@ -183,6 +183,15 @@ try:
             final_file_path = os.path.join(temp_dir, final_file_name)
             os.rename(video_file, final_file_path)
 
+            job.update(
+                {
+                    "file_path": final_file_path,
+                    "file_name": final_file_name,
+                    "status": "completed",
+                    "message": "Video download complete!",
+                }
+            )
+
         playlist_title = info.get("title", "yt-link-playlist")
         safe_playlist_title = sanitize_filename(playlist_title)
 
