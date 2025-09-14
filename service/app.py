@@ -165,10 +165,15 @@ try:
         job = jobs[job_id]
         temp_dir = job["temp_dir"]
         info = job["info"]
-        
-        #adding in the downloading single video not as an mp3
+
+        # adding in the downloading single video not as an mp3
         if job_type == "singleVideo":
-            
+            video_title = sanitize_filename(info.get("title", "yt-link-video"))
+            download_file = [
+                os.path.join(temp_dir, f)
+                for f in os.listdir(temp_dir)
+                if not f.endswith((".mp3", ".zip", ".txt"))
+            ]
         playlist_title = info.get("title", "yt-link-playlist")
         safe_playlist_title = sanitize_filename(playlist_title)
 
