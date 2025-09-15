@@ -14,7 +14,7 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^5.15.20",
     "@mui/material": "^5.15.20",
-    "axios": "^1.7.2",
+    "axios": "^1.12.2",
     "next": "14.2.4",
     "postcss": "^8",
     "react": "^18",
