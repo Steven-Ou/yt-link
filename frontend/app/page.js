@@ -658,6 +658,8 @@ export default function Home() {
             <JobStatusDisplay jobInfo={activeJobs["combineMp3"]} />
           </Container>
         );
+        case "video":
+          
       default:
         return <Typography>Select an option from the menu.</Typography>;
     }
