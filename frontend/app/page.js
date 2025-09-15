@@ -351,6 +351,7 @@ export default function Home() {
   const [url, setUrl] = useState("");
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [combineVideoUrl, setCombineVideoUrl] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
   const [cookieData, setCookieData] = useState("");
   const [activeJobs, setActiveJobs] = useState({});
   const pollingIntervals = useRef({});
