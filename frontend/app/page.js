@@ -658,18 +658,18 @@ export default function Home() {
             <JobStatusDisplay jobInfo={activeJobs["combineMp3"]} />
           </Container>
         );
-        case "video":
-          return(
-            <Container>
-              <Typography>
-                Download Single Video
-              </Typography>
-              <TextField/>
-              <CookieInputField/>
-              <Button/>
-              <JobStatusDisplay/>
-            </Container>
-          );
+      case "video":
+        return (
+          <Container maxWidth="sm" sx={{ mt: 4 }}>
+            <Typography variant="h6" gutterBottom>
+              Download Single Video
+            </Typography>
+            <TextField />
+            <CookieInputField />
+            <Button />
+            <JobStatusDisplay />
+          </Container>
+        );
       default:
         return <Typography>Select an option from the menu.</Typography>;
     }
