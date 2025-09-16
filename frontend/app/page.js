@@ -673,7 +673,11 @@ export default function Home() {
               style={{ marginBottom: 16 }}
               disabled={anyJobLoading}
             />
-            <CookieInputField />
+            <CookieInputField
+              value={cookieData}
+              onChange={(e) => setCookieData(e.target.value)}
+              disabled={anyJobLoading}
+            />
             <Button />
             <JobStatusDisplay />
           </Container>
