@@ -664,7 +664,15 @@ export default function Home() {
             <Typography variant="h6" gutterBottom>
               Download Single Video
             </Typography>
-            <TextField />
+            <TextField
+              label="YouTube Video URL"
+              variant="outlined"
+              fullWidth
+              value={videoUrl}
+              onChange={(e) => setVideoUrl(e.target.value)}
+              style={{ marginBottom: 16 }}
+              disabled={anyJobLoading}
+            />
             <CookieInputField />
             <Button />
             <JobStatusDisplay />
