@@ -678,7 +678,21 @@ export default function Home() {
               onChange={(e) => setCookieData(e.target.value)}
               disabled={anyJobLoading}
             />
-            <Button />
+            <Button
+              variant="contained"
+              color="primary"
+              fullWidth
+              onClick={downloadVideo}
+              disabled={
+                isLoading("singleVideo") ||
+                (anyJobLoading && !isLoading("singleVideo"))
+              }
+            >
+              {isLoading("singleVideo") && (
+                <CircularProgress size={24} sx={{ mr: 1 }} />
+              )}
+              {isLoading("singleVideo") ? "Processing..." : "Download Video"}
+            </Button>
             <JobStatusDisplay />
           </Container>
         );
