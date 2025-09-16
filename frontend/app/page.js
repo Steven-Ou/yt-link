@@ -664,7 +664,10 @@ export default function Home() {
               <Typography>
                 Download Single Video
               </Typography>
-
+              <TextField/>
+              <CookieInputField/>
+              <Button/>
+              <JobStatusDisplay/>
             </Container>
           );
       default:
