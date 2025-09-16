@@ -659,7 +659,14 @@ export default function Home() {
           </Container>
         );
         case "video":
-          
+          return(
+            <Container>
+              <Typography>
+                Download Single Video
+              </Typography>
+
+            </Container>
+          );
       default:
         return <Typography>Select an option from the menu.</Typography>;
     }
