@@ -440,6 +440,12 @@ def download__file(job_id: str):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print("--- FATAL: Not enough arguments. Expected port and FFmpeg path. ---", file=sys.stderr, flush=True)
+        sys.exit(1)
+        
+    port = int(sys.argv[1])
+    ffmpeg_path_arg = sys.argv[2]
     if not FFMPEG_EXE:
         print(
             "--- FATAL: FFMPEG executable could not be found. ---",
