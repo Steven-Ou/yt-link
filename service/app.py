@@ -355,6 +355,7 @@ def start_job_endpoint():
             "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             "outtmpl": os.path.join(APP_TEMP_DIR, job_id, "%(id)s.%(ext)s"),
             "noplaylist": True,
+            "merge_output_format":"mp4",
         }
     else:
         ydl_opts = {
