@@ -355,6 +355,9 @@ try:
 
             if playlist_count > 1:
                 message = f"Downloading {playlist_index}/{playlist_count}: {percent_str} at {speed_str} (ETA: {eta_str})"
+            else:
+                message = f"Downloading: {percent_str} at {speed_str} (ETA: {eta_str})"
+
             jobs[job_id].update(
                 {
                     "status": "downloading",
