@@ -347,6 +347,9 @@ try:
 
         if d["status"] == "downloading":
             percent_str = d.get("_percent_str", "0.0%").strip()
+            speed_str = d.get("_speed_str", "N/A").strip()
+            eta_str = d.get("_eta_str", "N/A").strip()
+
             playlist_index = d.get("info_dict", {}).get("playlist_index", 1)
             playlist_count = jobs[job_id].get("info", {}).get("playlist_count", 1)
 
