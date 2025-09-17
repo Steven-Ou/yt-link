@@ -764,6 +764,18 @@ export default function Home() {
                     </ListItem>
                     <ListItem disablePadding sx={{ pl: 4 }}>
                       <ListItemButton
+                        selected={currentView === "video"}
+                        onClick={() => setCurrentView("video")}
+                      >
+                        <ListItemIcon>
+                          <OndemandVideoIcon />
+                        </ListItemIcon>
+                        <ListItemText primary="Single Video" />
+                      </ListItemButton>
+                    </ListItem>
+
+                    <ListItem disablePadding sx={{ pl: 4 }}>
+                      <ListItemButton
                         selected={currentView === "zip"}
                         onClick={() => setCurrentView("zip")}
                       >
