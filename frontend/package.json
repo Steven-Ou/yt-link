@@ -23,7 +23,7 @@
     "autoprefixer": "^10.4.19"
   },
   "devDependencies": {
-    "eslint": "^9",
+    "eslint": "^8.57.0",
     "eslint-config-next": "14.2.4"
   }
 }
