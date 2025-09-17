@@ -176,14 +176,25 @@ def manual_post_processing(job_id: str, job_type: str):
 
         if len(downloaded_files) == 1:
             print(
-                f"--- [Job {job_id}] Single pre-merged file found. Renaming to final output.",
+                f"--- [Job {job_id}] Single file found. Re-encoding for compatibility.",
                 flush=True,
             )
-            os.rename(downloaded_files[0], job.file_path)
+            job.message = "Re-encoding video for compatibility..."
+            command = [
+                FFMPEG_EXE,
+                "-i",
+                downloaded_files[0],
+                "-c:v",
+                "libx264",  # Re-encode video to H.264
+                "-c:a",
+                "aac",  # Re-encode audio to AAC
+                "-y",
+                job.file_path,
+            ]
 
         elif len(downloaded_files) >= 2:
             print(
-                f"--- [Job {job_id}] Multiple streams found. Merging with FFmpeg.",
+                f"--- [Job {job_id}] Multiple streams found. Merging and re-encoding.",
                 flush=True,
             )
             job.message = "Merging video and audio streams..."
@@ -197,36 +208,28 @@ def manual_post_processing(job_id: str, job_type: str):
                 video_stream,
                 "-i",
                 audio_stream,
-                "-c",
-                "copy",
+                "-c:v",
+                "libx264",  # Re-encode video to H.264
+                "-c:a",
+                "aac",  # Re-encode audio to AAC
                 "-y",
                 job.file_path,
             ]
 
-            print(
-                f"--- [Job {job_id}] Executing FFmpeg command: {' '.join(command)}",
-                flush=True,
-            )
-            process = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="ignore",
-            )
+        print(
+            f"--- [Job {job_id}] Executing FFmpeg command: {' '.join(command)}",
+            flush=True,
+        )
+        process = subprocess.run(
+            command, capture_output=True, text=True, encoding="utf-8", errors="ignore"
+        )
 
-            if process.stdout:
-                print(
-                    f"--- [Job {job_id}] FFmpeg STDOUT:\n{process.stdout}", flush=True
-                )
-            if process.stderr:
-                print(
-                    f"--- [Job {job_id}] FFmpeg STDERR:\n{process.stderr}", flush=True
-                )
-            if process.returncode != 0:
-                raise Exception(
-                    f"FFMPEG failed to merge streams. Check logs for details."
-                )
+        if process.stdout:
+            print(f"--- [Job {job_id}] FFmpeg STDOUT:\n{process.stdout}", flush=True)
+        if process.stderr:
+            print(f"--- [Job {job_id}] FFmpeg STDERR:\n{process.stderr}", flush=True)
+        if process.returncode != 0:
+            raise Exception(f"FFMPEG failed to process video. Check logs for details.")
 
         job.status = "completed"
         job.message = "Video download complete!"
@@ -235,7 +238,6 @@ def manual_post_processing(job_id: str, job_type: str):
             flush=True,
         )
         return
-
     # --- Existing MP3 Logic (No Changes Needed Here) ---
     playlist_title = job.info.get("title", "yt-link-playlist") or "yt-link-playlist"
     safe_playlist_title = sanitize_filename(playlist_title)
