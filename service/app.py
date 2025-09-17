@@ -17,6 +17,7 @@ from typing import Dict, Any, List, Optional
 
 FFMPEG_EXE: Optional[str] = None
 
+
 # --- Job Class Definition (No Changes Needed) ---
 class Job:
     def __init__(self, job_id: str, url: str, job_type: str):
@@ -147,6 +148,16 @@ def manual_post_processing(job_id: str, job_type: str):
     assert job.temp_dir is not None, "Job temp_dir not set"
     assert job.info is not None, "Job info not set"
 
+    print(
+        f"--- [Job {job_id}] Starting post-processing. FFMPEG_EXE is set to: '{FFMPEG_EXE}'",
+        flush=True,
+    )
+    if not FFMPEG_EXE or not os.path.exists(FFMPEG_EXE):
+        error_msg = f"FFMPEG executable not found or path is incorrect: '{FFMPEG_EXE}'"
+        print(
+            f"--- [Job {job_id}] FATAL ERROR: {error_msg}", file=sys.stderr, flush=True
+        )
+        raise FileNotFoundError(error_msg)
     # This check is vital and must be at the top.
     assert FFMPEG_EXE is not None, "FFMPEG executable path was not resolved at startup."
 
@@ -169,7 +180,9 @@ def manual_post_processing(job_id: str, job_type: str):
             if not f.endswith((".mp4", ".mp3", ".zip", ".txt"))
         ]
         if not downloaded_files:
-            raise FileNotFoundError("No downloaded media files found for post-processing.")
+            raise FileNotFoundError(
+                "No downloaded media files found for post-processing."
+            )
 
         # yt-dlp downloads separate files; we need to find them to merge them.
         # Often, one is .webm (video) and the other is .m4a (audio)
