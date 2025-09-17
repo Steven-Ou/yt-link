@@ -15,6 +15,7 @@ import yt_dlp
 from urllib.parse import quote
 from typing import Dict, Any, List, Optional
 
+FFMPEG_EXE: Optional[str] = None
 
 # --- Job Class Definition (No Changes Needed) ---
 class Job:
