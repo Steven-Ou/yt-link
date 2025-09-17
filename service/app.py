@@ -450,16 +450,19 @@ if __name__ == "__main__":
 
     port = int(sys.argv[1])
     ffmpeg_path_arg = sys.argv[2]
-    
+
     FFMPEG_EXE = ffmpeg_path_arg
 
-    if not FFMPEG_EXE:
+    print(f"--- Python backend starting on port {port} ---", flush=True)
+    print(f"--- Using FFmpeg from path: {FFMPEG_EXE} ---", flush=True)
+
+    if not os.path.exists(FFMPEG_EXE):
         print(
-            "--- FATAL: FFMPEG executable could not be found. ---",
+            f"--- FATAL: Provided FFmpeg path does not exist: '{FFMPEG_EXE}' ---",
             file=sys.stderr,
             flush=True,
         )
         sys.exit(1)
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001
+
     print(f"Flask-Backend-Ready:{port}", flush=True)
     app.run(host="127.0.0.1", port=port, debug=False)
