@@ -313,8 +313,7 @@ const cleanUrl = (urlString) => {
     let videoId = null;
     if (url.pathname.includes("/shorts/")) {
       videoId = url.pathname.split("/shorts/")[1];
-    }
-    if (url.searchParams.has("v")) {
+    } else if (url.searchParams.has("v")) {
       const videoId = url.searchParams.get("v");
       const cleanedUrl = `${url.protocol}//${url.hostname}${url.pathname}?v=${videoId}`;
       cleanedUrl.searchParams.set("v", videoId);
