@@ -153,14 +153,6 @@ def manual_post_processing(job_id: str, job_type: str):
     playlist_title = job.info.get("title", "yt-link-playlist") or "yt-link-playlist"
     safe_playlist_title = sanitize_filename(playlist_title)
 
-    downloaded_files = [
-        os.path.join(job.temp_dir, f)
-        for f in os.listdir(job.temp_dir)
-        if not f.endswith((".mp4", ".mp3", ".zip", ".txt"))
-    ]
-    if not downloaded_files:
-        raise FileNotFoundError("No downloaded media files found for post-processing.")
-
     # --- FIX FOR SINGLE VIDEO: Find both video and audio streams ---
     if job_type == "singleVideo":
         job.message = "Merging video and audio streams..."
@@ -169,6 +161,14 @@ def manual_post_processing(job_id: str, job_type: str):
         )
         job.file_name = f"{video_title}.mp4"
         job.file_path = os.path.join(job.temp_dir, job.file_name)
+
+        downloaded_files = [
+            os.path.join(job.temp_dir, f)
+            for f in os.listdir(job.temp_dir)
+            if not f.endswith((".mp4", ".mp3", ".zip", ".txt"))
+        ]
+        if not downloaded_files:
+            raise FileNotFoundError("No downloaded media files found for post-processing.")
 
         # yt-dlp downloads separate files; we need to find them to merge them.
         # Often, one is .webm (video) and the other is .m4a (audio)
