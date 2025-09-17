@@ -512,7 +512,9 @@ export default function Home() {
     }
 
     let finalUrl = urlValue;
-    // Apply the correct URL cleaning/validation based on job type
+    if (jobType === "singleMp3" || jobType === "singleVideo") {
+      finalUrl = cleanUrl(urlValue);
+    }
     if (jobType === "playlistZip" || jobType === "combineMp3") {
       finalUrl = validateAndFixPlaylistUrl(urlValue);
     } else if (jobType === "singleMp3") {
