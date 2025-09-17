@@ -42,6 +42,7 @@ import {
   Window as WindowsIcon,
   Apple as AppleIcon,
   Folder as FolderIcon,
+  OndemandVideo as OndemandVideoIcon,
 } from "@mui/icons-material";
 
 const drawerWidth = 240;
