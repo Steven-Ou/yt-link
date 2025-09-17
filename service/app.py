@@ -353,6 +353,8 @@ try:
             playlist_index = d.get("info_dict", {}).get("playlist_index", 1)
             playlist_count = jobs[job_id].get("info", {}).get("playlist_count", 1)
 
+            if playlist_count > 1:
+                message = f"Downloading {playlist_index}/{playlist_count}: {percent_str} at {speed_str} (ETA: {eta_str})"
             jobs[job_id].update(
                 {
                     "status": "downloading",
