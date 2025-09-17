@@ -6,15 +6,15 @@
   "main": "main.js",
   "scripts": {
     "start": "npm run clean && npm run prepare:bins && concurrently \"npm:dev-frontend\" \"npm:dev-electron\"",
-    "clean": "rimraf frontend/.next frontend/out",
-    "prepare:bins": "chmod +x bin/ffmpeg bin/ffprobe || echo 'Could not set permissions, likely on Windows'",
-    "dev": "npm run clean && npm run prepare:bins && concurrently \"npm:dev-frontend\" \"npm:dev-electron\"",
-    "dev:clean": "npm run clean --prefix frontend && npm run dev",
+    "dev": "npm start",
     "dev-frontend": "cd frontend && npm install && npm run dev",
     "dev-electron": "wait-on http://localhost:3000 && electron .",
     "build:frontend": "cd frontend && npm install && npm run build",
     "build:backend": "cd service && pip install -r requirements.txt && python -m PyInstaller app.py --noconfirm --onefile --name yt-link-backend --distpath ./dist",
-    "dist": "electron-builder --publish never"
+    "build": "npm run build:frontend && npm run build:backend && npm run dist",
+    "dist": "electron-builder --publish never",
+    "clean": "rimraf frontend/.next frontend/out service/dist service/build",
+    "prepare:bins": "chmod +x bin/ffmpeg bin/yt-dlp || echo 'Could not set permissions on binaries'"
   },
   "dependencies": {
     "node-fetch": "^2.6.7",
@@ -36,6 +36,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "package.json",
       "frontend/out/**/*"
     ],
     "extraResources": [
