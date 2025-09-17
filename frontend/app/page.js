@@ -310,9 +310,9 @@ const CookieInputField = ({ value, onChange, disabled }) => (
 const cleanUrl = (urlString) => {
   try {
     const url = new URL(urlString);
-
+    let videoId = null;
     if (url.pathname.includes("/shorts/")) {
-      return url.toString();
+      videoId = url.pathname.split("/shorts/")[1];
     }
     if (url.searchParams.has("v")) {
       const videoId = url.searchParams.get("v");
