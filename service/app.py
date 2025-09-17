@@ -200,11 +200,21 @@ def manual_post_processing(job_id: str, job_type: str):
             "-y",  # Overwrite output file if it exists
             job.file_path,
         ]
+        print(
+            f"--- [Job {job_id}] Executing FFmpeg command: {' '.join(command)}",
+            flush=True,
+        )
         process = subprocess.run(
             command, capture_output=True, text=True, encoding="utf-8", errors="ignore"
         )
+
+        if process.stdout:
+            print(f"--- [Job {job_id}] FFmpeg STDOUT:\n{process.stdout}", flush=True)
+        if process.stderr:
+            print(f"--- [Job {job_id}] FFmpeg STDERR:\n{process.stderr}", flush=True)
+
         if process.returncode != 0:
-            raise Exception(f"FFMPEG failed to merge streams: {process.stderr}")
+            raise Exception(f"FFMPEG failed to merge streams. Check logs for details.")
 
         job.status = "completed"
         job.message = "Video download complete!"
