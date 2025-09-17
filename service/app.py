@@ -158,63 +158,75 @@ def manual_post_processing(job_id: str, job_type: str):
             f"--- [Job {job_id}] FATAL ERROR: {error_msg}", file=sys.stderr, flush=True
         )
         raise FileNotFoundError(error_msg)
-    # This check is vital and must be at the top.
-    assert FFMPEG_EXE is not None, "FFMPEG executable path was not resolved at startup."
 
-    # --- This logic is now unified for all job types ---
-    playlist_title = job.info.get("title", "yt-link-playlist") or "yt-link-playlist"
-    safe_playlist_title = sanitize_filename(playlist_title)
+    downloaded_files = [
+        os.path.join(job.temp_dir, f)
+        for f in os.listdir(job.temp_dir)
+        if not f.endswith((".mp4", ".mp3", ".zip", ".txt"))
+    ]
+    if not downloaded_files:
+        raise FileNotFoundError("No downloaded media files found for post-processing.")
 
-    # --- FIX FOR SINGLE VIDEO: Find both video and audio streams ---
     if job_type == "singleVideo":
-        job.message = "Merging video and audio streams..."
         video_title = sanitize_filename(
             job.info.get("title", "yt-link-video") or "yt-link-video"
         )
         job.file_name = f"{video_title}.mp4"
         job.file_path = os.path.join(job.temp_dir, job.file_name)
 
-        downloaded_files = [
-            os.path.join(job.temp_dir, f)
-            for f in os.listdir(job.temp_dir)
-            if not f.endswith((".mp4", ".mp3", ".zip", ".txt"))
-        ]
-        if not downloaded_files:
-            raise FileNotFoundError(
-                "No downloaded media files found for post-processing."
+        if len(downloaded_files) == 1:
+            print(
+                f"--- [Job {job_id}] Single pre-merged file found. Renaming to final output.",
+                flush=True,
+            )
+            os.rename(downloaded_files[0], job.file_path)
+
+        elif len(downloaded_files) >= 2:
+            print(
+                f"--- [Job {job_id}] Multiple streams found. Merging with FFmpeg.",
+                flush=True,
+            )
+            job.message = "Merging video and audio streams..."
+
+            video_stream = max(downloaded_files, key=os.path.getsize)
+            audio_stream = min(downloaded_files, key=os.path.getsize)
+
+            command = [
+                FFMPEG_EXE,
+                "-i",
+                video_stream,
+                "-i",
+                audio_stream,
+                "-c",
+                "copy",
+                "-y",
+                job.file_path,
+            ]
+
+            print(
+                f"--- [Job {job_id}] Executing FFmpeg command: {' '.join(command)}",
+                flush=True,
+            )
+            process = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="ignore",
             )
 
-        # yt-dlp downloads separate files; we need to find them to merge them.
-        # Often, one is .webm (video) and the other is .m4a (audio)
-        video_stream = max(downloaded_files, key=os.path.getsize)
-        audio_stream = min(downloaded_files, key=os.path.getsize)
-
-        command = [
-            FFMPEG_EXE,
-            "-i",
-            video_stream,
-            "-i",
-            audio_stream,
-            "-c",
-            "copy",  # Copy streams without re-encoding
-            "-y",  # Overwrite output file if it exists
-            job.file_path,
-        ]
-        print(
-            f"--- [Job {job_id}] Executing FFmpeg command: {' '.join(command)}",
-            flush=True,
-        )
-        process = subprocess.run(
-            command, capture_output=True, text=True, encoding="utf-8", errors="ignore"
-        )
-
-        if process.stdout:
-            print(f"--- [Job {job_id}] FFmpeg STDOUT:\n{process.stdout}", flush=True)
-        if process.stderr:
-            print(f"--- [Job {job_id}] FFmpeg STDERR:\n{process.stderr}", flush=True)
-
-        if process.returncode != 0:
-            raise Exception(f"FFMPEG failed to merge streams. Check logs for details.")
+            if process.stdout:
+                print(
+                    f"--- [Job {job_id}] FFmpeg STDOUT:\n{process.stdout}", flush=True
+                )
+            if process.stderr:
+                print(
+                    f"--- [Job {job_id}] FFmpeg STDERR:\n{process.stderr}", flush=True
+                )
+            if process.returncode != 0:
+                raise Exception(
+                    f"FFMPEG failed to merge streams. Check logs for details."
+                )
 
         job.status = "completed"
         job.message = "Video download complete!"
@@ -225,6 +237,9 @@ def manual_post_processing(job_id: str, job_type: str):
         return
 
     # --- Existing MP3 Logic (No Changes Needed Here) ---
+    playlist_title = job.info.get("title", "yt-link-playlist") or "yt-link-playlist"
+    safe_playlist_title = sanitize_filename(playlist_title)
+
     def sort_key(file_path: str) -> int:
         try:
             return int(os.path.basename(file_path).split("-")[0])
@@ -232,7 +247,6 @@ def manual_post_processing(job_id: str, job_type: str):
             return sys.maxsize
 
     downloaded_files.sort(key=sort_key)
-
     mp3_files: List[str] = []
     entries = job.info.get("entries", [job.info])
     for i, file_path in enumerate(downloaded_files):
@@ -260,7 +274,6 @@ def manual_post_processing(job_id: str, job_type: str):
         if process.returncode != 0:
             raise Exception(f"FFMPEG failed for {file_path}: {process.stderr}")
         mp3_files.append(output_filepath)
-
     if job_type == "singleMp3":
         single_video_title = sanitize_filename(
             job.info.get("title", "yt-link-track") or "yt-link-track"
@@ -268,7 +281,6 @@ def manual_post_processing(job_id: str, job_type: str):
         job.file_name = f"{single_video_title}.mp3"
         job.file_path = os.path.join(job.temp_dir, job.file_name)
         os.rename(mp3_files[0], job.file_path)
-
     elif job_type == "playlistZip":
         job.message = "Creating ZIP archive..."
         job.file_name = f"{safe_playlist_title}.zip"
@@ -276,7 +288,6 @@ def manual_post_processing(job_id: str, job_type: str):
         with zipfile.ZipFile(job.file_path, "w") as zipf:
             for mp3_file in mp3_files:
                 zipf.write(mp3_file, os.path.basename(mp3_file))
-
     elif job_type == "combineMp3":
         job.message = "Combining all tracks into one MP3..."
         job.file_name = f"{safe_playlist_title} (Combined).mp3"
@@ -308,7 +319,6 @@ def manual_post_processing(job_id: str, job_type: str):
         )
         if combine_process.returncode != 0:
             raise Exception(f"FFMPEG combine failed: {combine_process.stderr}")
-
     job.status = "completed"
     job.message = "Processing complete!"
     print(
