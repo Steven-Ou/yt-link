@@ -315,9 +315,9 @@ const cleanUrl = (urlString) => {
       videoId = url.pathname.split("/shorts/")[1];
     } else if (url.searchParams.has("v")) {
       const videoId = url.searchParams.get("v");
-      const cleanedUrl = `${url.protocol}//${url.hostname}${url.pathname}?v=${videoId}`;
-      cleanedUrl.searchParams.set("v", videoId);
-      return cleanedUrl.toString();
+    }
+    if (videoId) {
+      return `https://www.youtube.com/watch?v=${videoId}`;
     }
     return urlString;
   } catch (error) {
