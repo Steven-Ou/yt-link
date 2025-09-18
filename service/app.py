@@ -154,6 +154,8 @@ def manual_post_processing(job_id: str, job_type: str):
     )
     if not FFMPEG_EXE or not os.path.exists(FFMPEG_EXE):
         error_msg = f"FFMPEG executable not found or path is incorrect: '{FFMPEG_EXE}'"
+        job.status = "failed"
+        job.error = error_msg
         print(
             f"--- [Job {job_id}] FATAL ERROR: {error_msg}", file=sys.stderr, flush=True
         )
@@ -174,34 +176,27 @@ def manual_post_processing(job_id: str, job_type: str):
         job.file_name = f"{video_title}.mp4"
         job.file_path = os.path.join(job.temp_dir, job.file_name)
 
+        command = []
         if len(downloaded_files) == 1:
-            print(
-                f"--- [Job {job_id}] Single file found. Re-encoding for compatibility.",
-                flush=True,
-            )
             job.message = "Re-encoding video for compatibility..."
+            print(f"--- [Job {job_id}] Single file found. Re-encoding...", flush=True)
             command = [
                 FFMPEG_EXE,
                 "-i",
                 downloaded_files[0],
                 "-c:v",
-                "libx264",  # Re-encode video to H.264
+                "libx264",
                 "-c:a",
-                "aac",  # Re-encode audio to AAC
+                "aac",
                 "-y",
                 job.file_path,
             ]
 
         elif len(downloaded_files) >= 2:
-            print(
-                f"--- [Job {job_id}] Multiple streams found. Merging and re-encoding.",
-                flush=True,
-            )
             job.message = "Merging video and audio streams..."
-
+            print(f"--- [Job {job_id}] Multiple streams found. Merging...", flush=True)
             video_stream = max(downloaded_files, key=os.path.getsize)
             audio_stream = min(downloaded_files, key=os.path.getsize)
-
             command = [
                 FFMPEG_EXE,
                 "-i",
@@ -209,9 +204,9 @@ def manual_post_processing(job_id: str, job_type: str):
                 "-i",
                 audio_stream,
                 "-c:v",
-                "libx264",  # Re-encode video to H.264
+                "libx264",
                 "-c:a",
-                "aac",  # Re-encode audio to AAC
+                "aac",
                 "-y",
                 job.file_path,
             ]
@@ -224,21 +219,16 @@ def manual_post_processing(job_id: str, job_type: str):
             command, capture_output=True, text=True, encoding="utf-8", errors="ignore"
         )
 
-        if process.stdout:
-            print(f"--- [Job {job_id}] FFmpeg STDOUT:\n{process.stdout}", flush=True)
-        if process.stderr:
-            print(f"--- [Job {job_id}] FFmpeg STDERR:\n{process.stderr}", flush=True)
         if process.returncode != 0:
-            raise Exception(f"FFMPEG failed to process video. Check logs for details.")
+            job.status = "failed"
+            job.error = f"FFMPEG Error: {process.stderr}"
+            raise Exception(f"FFMPEG failed to process video. Check logs.")
 
         job.status = "completed"
         job.message = "Video download complete!"
-        print(
-            f"--- [Job {job_id}] Video processing complete. Output: {job.file_name}",
-            flush=True,
-        )
+        print(f"--- [Job {job_id}] Video processing complete.", flush=True)
         return
-    # --- Existing MP3 Logic (No Changes Needed Here) ---
+
     playlist_title = job.info.get("title", "yt-link-playlist") or "yt-link-playlist"
     safe_playlist_title = sanitize_filename(playlist_title)
 
