@@ -109,6 +109,7 @@ function createWindow() {
     title: "YT Link",
   });
 
+  autoUpdater.checkForUpdatesAndNotify();
   // Load the frontend URL into the newly created window immediately.
   // This will show the UI to the user while the backend starts in the background.
   loadMainWindow();
