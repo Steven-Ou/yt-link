@@ -129,7 +129,13 @@ function createWindow() {
       "You are on the latest version."
     );
   });
-
+  autoUpdater.on("error", (err) => {
+    sendLog(`[AutoUpdater] Error: ${err.message}`);
+    mainWindow.webContents.send(
+      "update-status",
+      `Error in auto-updater: ${err.message}`
+    );
+  });
   // Load the frontend URL into the newly created window immediately.
   // This will show the UI to the user while the backend starts in the background.
   loadMainWindow();
