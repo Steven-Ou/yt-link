@@ -115,6 +115,7 @@ function createWindow() {
     sendLog("[AutoUpdater] Checking for update...");
     mainWindow.webContents.send("update-status", "Checking for update...");
   });
+  
   autoUpdater.on("update-available", (info) => {
     sendLog(`[AutoUpdater] Update available: ${info.version}`);
     mainWindow.webContents.send(
@@ -122,6 +123,7 @@ function createWindow() {
       `Update available: ${info.version}`
     );
   });
+
   autoUpdater.on("update-not-available", () => {
     sendLog("[AutoUpdater] Update not available.");
     mainWindow.webContents.send(
@@ -129,6 +131,7 @@ function createWindow() {
       "You are on the latest version."
     );
   });
+
   autoUpdater.on("error", (err) => {
     sendLog(`[AutoUpdater] Error: ${err.message}`);
     mainWindow.webContents.send(
@@ -136,6 +139,7 @@ function createWindow() {
       `Error in auto-updater: ${err.message}`
     );
   });
+
   autoUpdater.on("download-progress", (progressObj) => {
     const log_message = `Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}% (${progressObj.transferred}/${progressObj.total})`;
     sendLog(`[AutoUpdater] ${log_message}`);
@@ -143,6 +147,26 @@ function createWindow() {
       "update-status",
       `Downloading update... ${Math.round(progressObj.percent)}%`
     );
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    sendLog(`[AutoUpdater] Update downloaded: ${info.version}`);
+    mainWindow.webContents.send(
+      "update-status",
+      "Update downloaded. Restart the app to apply the update."
+    );
+    dialog
+      .showMessageBox({
+        type: "info",
+        title: "Update Ready",
+        message: `A new version (${info.version}) has been downloaded. Please restart the application to apply the update.`,
+        buttons: ["Restart Now", "Later"],
+      })
+      .then((buttonIndex) => {
+        if (buttonIndex.response === 0) {
+          autoUpdater.quitAndInstall();
+        }
+      });
   });
   // Load the frontend URL into the newly created window immediately.
   // This will show the UI to the user while the backend starts in the background.
