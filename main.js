@@ -122,6 +122,13 @@ function createWindow() {
       `Update available: ${info.version}`
     );
   });
+  autoUpdater.on("update-not-available", () => {
+    sendLog("[AutoUpdater] Update not available.");
+    mainWindow.webContents.send(
+      "update-status",
+      "You are on the latest version."
+    );
+  });
 
   // Load the frontend URL into the newly created window immediately.
   // This will show the UI to the user while the backend starts in the background.
