@@ -353,9 +353,8 @@ def progress_hook(d: Dict[str, Any]):
         job.message = message
     elif d["status"] == "finished":
         job.status = "processing"
-        job.message = (
-            "Download finished, processing file..."  # Changed message for clarity
-        )
+        job.message = "Download finished, preparing to process file..."
+
 
 
 # --- start_job_endpoint (Minor Change) ---
