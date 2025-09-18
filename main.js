@@ -20,7 +20,8 @@ const portfinder = require("portfinder");
 const fetch = require("node-fetch");
 // Node.js module for interacting with the file system. Used for saving downloaded files.
 const fs = require("fs");
-
+//will automatically check for updates when the app starts.
+const {autoUpdater} = require('electron-updater');
 // --- GLOBAL VARIABLES ---
 // Holds the reference to the spawned Python child process.
 let pythonProcess = null;
