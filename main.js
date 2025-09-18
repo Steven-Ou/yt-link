@@ -115,6 +115,14 @@ function createWindow() {
     sendLog("[AutoUpdater] Checking for update...");
     mainWindow.webContents.send("update-status", "Checking for update...");
   });
+  autoUpdater.on("update-available", (info) => {
+    sendLog(`[AutoUpdater] Update available: ${info.version}`);
+    mainWindow.webContents.send(
+      "update-status",
+      `Update available: ${info.version}`
+    );
+  });
+
   // Load the frontend URL into the newly created window immediately.
   // This will show the UI to the user while the backend starts in the background.
   loadMainWindow();
