@@ -136,6 +136,14 @@ function createWindow() {
       `Error in auto-updater: ${err.message}`
     );
   });
+  autoUpdater.on("download-progress", (progressObj) => {
+    const log_message = `Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}% (${progressObj.transferred}/${progressObj.total})`;
+    sendLog(`[AutoUpdater] ${log_message}`);
+    mainWindow.webContents.send(
+      "update-status",
+      `Downloading update... ${Math.round(progressObj.percent)}%`
+    );
+  });
   // Load the frontend URL into the newly created window immediately.
   // This will show the UI to the user while the backend starts in the background.
   loadMainWindow();
