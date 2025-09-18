@@ -17,6 +17,7 @@
     "prepare:bins": "chmod +x bin/ffmpeg bin/yt-dlp || echo 'Could not set permissions on binaries'"
   },
   "dependencies": {
+    "electron-updater": "^6.6.2",
     "node-fetch": "^2.6.7",
     "portfinder": "^1.0.32"
   },
