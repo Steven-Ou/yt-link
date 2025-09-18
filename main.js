@@ -21,7 +21,7 @@ const fetch = require("node-fetch");
 // Node.js module for interacting with the file system. Used for saving downloaded files.
 const fs = require("fs");
 //will automatically check for updates when the app starts.
-const {autoUpdater} = require('electron-updater');
+const { autoUpdater } = require("electron-updater");
 // --- GLOBAL VARIABLES ---
 // Holds the reference to the spawned Python child process.
 let pythonProcess = null;
@@ -110,6 +110,11 @@ function createWindow() {
   });
 
   autoUpdater.checkForUpdatesAndNotify();
+
+  autoUpdater.on("checking-for-update", () => {
+    sendLog("[AutoUpdater] Checking for update...");
+    mainWindow.webContents.send("update-status", "Checking for update...");
+  });
   // Load the frontend URL into the newly created window immediately.
   // This will show the UI to the user while the backend starts in the background.
   loadMainWindow();
