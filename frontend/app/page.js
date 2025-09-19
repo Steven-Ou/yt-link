@@ -409,17 +409,27 @@ export default function Home() {
           );
         };
 
-        if (
-          data.status === "completed" ||
-          data.status === "failed" ||
-          data.status === "not_found"
-        ) {
+        if (data.status === "completed") {
           clearInterval(pollingIntervals.current[jobId]);
           delete pollingIntervals.current[jobId];
-          const finalMessage =
-            data.status === "completed"
-              ? "File saved successfully!"
-              : data.error || `Job ${data.status}.`;
+
+          // Trigger the automatic download in main.js
+          const downloadResult = await window.electron.downloadFile({ jobId });
+
+          if (downloadResult.error) {
+            throw new Error(downloadResult.error);
+          }
+
+          const finalMessage = `File saved to: ${downloadResult.path}`;
+          updateJobState(jobId, {
+            ...data,
+            status: "completed",
+            message: finalMessage,
+          });
+        } else if (data.status === "failed" || data.status === "not_found") {
+          clearInterval(pollingIntervals.current[jobId]);
+          delete pollingIntervals.current[jobId];
+          const finalMessage = data.error || `Job ${data.status}.`;
           updateJobState(jobId, { ...data, message: finalMessage });
         } else {
           updateJobState(jobId, data);
@@ -429,7 +439,7 @@ export default function Home() {
         delete pollingIntervals.current[jobId];
         setActiveJobs((prev) =>
           prev.map((job) =>
-            job.job_id === jobId
+            job.job_id === jobId || job.id === jobId
               ? { ...job, status: "failed", message: `Error: ${error.message}` }
               : job
           )
