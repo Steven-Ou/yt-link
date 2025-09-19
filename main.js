@@ -31,7 +31,10 @@ let mainWindow = null;
 let pyPort = null;
 // A flag to track if the Python backend has successfully started and is ready to accept requests.
 let isBackendReady = false;
-
+const { dialog } = require("electron");
+const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
 /**
  * A centralized logging function.
  * It logs messages to the main process console and also sends them to the
