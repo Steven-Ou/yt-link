@@ -265,12 +265,16 @@ def manual_post_processing(job_id: str, job_type: str):
     processed_mp4s = [f for f in os.listdir(job.temp_dir) if f.endswith(".mp4")]
     if job_type == "singleVideo" and len(processed_mp4s) == 1:
         video_title = sanitize_filename(job.info.get("title", "video"))
-        job.file_name = f"{video_title}.mp4"
-        job.file_path = os.path.join(job.temp_dir, processed_mp4s[0])
-        os.rename(
-            os.path.join(job.temp_dir, processed_mp4s[0]),
-            os.path.join(job.temp_dir, job.file_name),
-        )
+        original_file_path = os.path.join(job.temp_dir, processed_mp4s[0])
+
+        new_file_name = f"{video_title}.mp4"
+        new_file_path = os.path.join(job.temp_dir, new_file_name)
+
+        os.rename(original_file_path, new_file_path)
+
+        job.file_name = new_file_name
+        job.file_path = new_file_path  # This is the crucial fix
+
         job.status, job.message = "completed", "Video processing complete!"
         return
 
