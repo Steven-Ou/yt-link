@@ -561,16 +561,17 @@ export default function Home() {
   const handleVideoUrlChange = async (e) => {
     const newUrl = e.target.value;
     setVideoUrl(newUrl);
+
     const cleanedUrl = cleanUrl(newUrl);
 
     const youtubeRegex =
       /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
 
-    if (youtubeRegex.test(newUrl) && window.electron) {
+    if (youtubeRegex.test(cleanedUrl) && window.electron) {
       setIsLoadingFormats(true);
       setVideoFormats([]);
       try {
-        const formats = await window.electron.getVideoFormats(newUrl);
+        const formats = await window.electron.getVideoFormats(cleanedUrl);
         if (formats && !formats.error) {
           setVideoFormats(formats);
           if (formats.length > 0) {
