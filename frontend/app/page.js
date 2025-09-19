@@ -758,7 +758,7 @@ export default function Home() {
               )}
               {isLoading("singleVideo") ? "Processing..." : "Download Video"}
             </Button>
-            <JobStatusDisplay />
+            <JobStatusDisplay jobInfo={activeJobs["singleVideo"]} />
           </Container>
         );
       default:
