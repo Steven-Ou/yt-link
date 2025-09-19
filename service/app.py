@@ -172,12 +172,25 @@ def get_job_status():
 
 @app.route("/download/<job_id>", methods=["GET"])
 def download_file_route(job_id: str):
-    print(f"Download request received for job_id: {job_id}")
+    print(f"Download request received for job_id: {job_id}")  # Basic logging
     job = jobs.get(job_id)
-    if not (job and job.status == "completed" and job.file_path and job.file_name):
-        return jsonify({"error": "File not ready or job not found"}), 404
-    if not os.path.exists(job.file_path):
+
+    if not job:
+        print(f"Job not found for job_id: {job_id}")
+        return jsonify({"error": "Job not found"}), 404
+
+    if job.status != "completed":
+        print(f"Job {job_id} not completed. Status is: {job.status}")
+        return jsonify({"error": "File not ready"}), 404
+
+    file_path = job.file_path
+    file_name = job.file_name
+
+    if not file_path or not os.path.exists(file_path):
+        print(f"File not found on server at path: {file_path}")
         return jsonify({"error": "File not found on server."}), 404
+
+    print(f"File found: {file_path}. Preparing to send.")
 
     def file_generator(
         file_path: str, temp_dir: Optional[str]
@@ -189,17 +202,18 @@ def download_file_route(job_id: str):
             if temp_dir and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
             jobs.pop(job_id, None)
+            print(f"Cleaned up job and temp files for job_id: {job_id}")
 
-    encoded_file_name = quote(job.file_name)
+    encoded_file_name = quote(file_name)
     fallback_file_name = (
-        job.file_name.encode("ascii", "ignore").decode("ascii").replace('"', "")
+        file_name.encode("ascii", "ignore").decode("ascii").replace('"', "")
         or "download.dat"
     )
     headers = {
         "Content-Disposition": f'attachment; filename="{fallback_file_name}"; filename*="UTF-8\'\'{encoded_file_name}"'
     }
     return Response(
-        file_generator(job.file_path, job.temp_dir),
+        file_generator(file_path, job.temp_dir),
         mimetype="application/octet-stream",
         headers=headers,
     )
