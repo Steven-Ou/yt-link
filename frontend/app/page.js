@@ -765,6 +765,7 @@ export default function Home() {
         return <Typography>Select an option from the menu.</Typography>;
     }
   };
+  const jobsArray = Object.values(activeJobs);
 
   return (
     <ThemeProvider theme={customTheme}>
