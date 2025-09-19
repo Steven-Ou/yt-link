@@ -320,16 +320,29 @@ const cleanUrl = (urlString) => {
   try {
     const url = new URL(urlString);
     let videoId = null;
-    if (url.pathname.includes("/shorts/")) {
-      videoId = url.pathname.split("/shorts/")[1];
-    } else if (url.searchParams.has("v")) {
-      const videoId = url.searchParams.get("v");
+
+    // Handle standard youtube.com URLs (e.g., /watch?v=...)
+    if (url.hostname.includes("youtube.com") && url.searchParams.has("v")) {
+      videoId = url.searchParams.get("v");
     }
+    // Handle youtu.be short URLs (e.g., youtu.be/VIDEO_ID)
+    else if (url.hostname === "youtu.be") {
+      videoId = url.pathname.substring(1);
+    }
+    // Handle /shorts/ URLs
+    else if (url.pathname.includes("/shorts/")) {
+      videoId = url.pathname.split("/shorts/")[1];
+    }
+
     if (videoId) {
+      // Rebuild the URL with *only* the video parameter to strip playlist info
       return `https://www.youtube.com/watch?v=${videoId}`;
     }
+
+    // If no video ID can be extracted, return the original string
     return urlString;
   } catch (error) {
+    // If URL is invalid and can't be parsed, return it as is for the backend to handle
     console.error("Invalid URL for cleaning:", urlString, error);
     return urlString;
   }
