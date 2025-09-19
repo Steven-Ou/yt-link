@@ -69,16 +69,18 @@ def get_formats_endpoint():
     url = data["url"]
 
     try:
-        # Updated yt-dlp options
+        # Added more browser-like headers to reduce chances of being blocked.
         ydl_opts = {
             "quiet": True,
             "no_warnings": True,
             "nocheckcertificate": True,
             "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
                 "Referer": "https://www.youtube.com/",
             },
-            "rm_cache_dir": True, # Clear cache to avoid being blocked
+            "rm_cache_dir": True,  # Clear cache to avoid being blocked
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -142,14 +144,16 @@ def start_job_endpoint():
     job_type = data["jobType"]
     jobs[job_id] = Job(job_id=job_id, url=data["url"], job_type=job_type)
 
-    # Initialize ydl_opts here
+    # Added more browser-like headers here as well for consistency.
     ydl_opts: Dict[str, Any] = {
         "progress_hooks": [progress_hook],
         "nocheckcertificate": True,
         "quiet": True,
         "no_warnings": True,
         "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
             "Referer": "https://www.youtube.com/",
         },
         "rm_cache_dir": True,
