@@ -396,23 +396,24 @@ ipcMain.handle("get-job-status", async (event, jobId) => {
  * Handles the final step of downloading a completed file from the backend.
  */
 ipcMain.handle("download-file", async (event, { jobId }) => {
-  if (!pyPort || !jobId) {
-    return { error: "Backend not ready or Job ID is missing." };
-  }
-
   try {
-    const jobStatusResponse = await axios.get(
-      `http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`
-    );
-    const job = jobStatusResponse.data;
+    // Step 1: Get the job details (including the final filename) from your Python backend.
+    const jobStatusUrl = `http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`;
+    const jobStatusResponse = await fetch(jobStatusUrl);
+    if (!jobStatusResponse.ok) {
+      throw new Error("Failed to get job status from the backend.");
+    }
+    const job = await jobStatusResponse.json();
 
-    if (!job || job.status !== "completed" || !job.file_name) {
+    if (job.status !== "completed" || !job.file_name) {
       return { error: "Job is not complete or file name is missing." };
     }
 
-    const downloadsPath = app.getPath('downloads');
-    const savePath = path.join(downloadsPath,job.file_name);
+    // Step 2: Determine the full save path in the user's "Downloads" folder.
+    const downloadsPath = app.getPath("downloads");
+    const savePath = path.join(downloadsPath, job.file_name);
 
+    // Step 3: Fetch the file from the backend and write it to the save path.
     const downloadUrl = `http://127.0.0.1:${pyPort}/download/${jobId}`;
     const response = await axios({
       method: "GET",
@@ -420,23 +421,26 @@ ipcMain.handle("download-file", async (event, { jobId }) => {
       responseType: "stream",
     });
 
-    const writer = fs.createWriteStream(saveDialog.filePath);
+    const writer = fs.createWriteStream(savePath);
     response.data.pipe(writer);
 
+    // Step 4: Wait for the file to be fully saved, then resolve the promise.
     return new Promise((resolve, reject) => {
-      writer.on("finish", () =>
-        resolve({ success: true, path: saveDialog.filePath })
-      );
-      writer.on("error", (err) =>
-        reject({ error: `Failed to save file: ${err.message}` })
-      );
+      writer.on("finish", () => {
+        // A nice UX touch: open the folder and highlight the new file.
+        shell.showItemInFolder(savePath);
+        resolve({ success: true, path: savePath });
+      });
+      writer.on("error", (err) => {
+        console.error("Failed to save file:", err);
+        reject({ error: `Failed to save file: ${err.message}` });
+      });
     });
   } catch (error) {
     console.error("Download failed:", error.message);
     return { error: `Download failed: ${error.message}` };
   }
 });
-
 /**
  * IPC Handler: 'open-folder'
  * Opens the folder containing the downloaded file in the native file explorer.
