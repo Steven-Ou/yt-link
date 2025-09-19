@@ -17,7 +17,7 @@
     "prepare:bins": "chmod +x bin/ffmpeg bin/yt-dlp || echo 'Could not set permissions on binaries'"
   },
   "dependencies": {
-    "electron-updater": "^6.6.2",
+    "electron-updater": "^6.2.2",
     "node-fetch": "^2.6.7",
     "portfinder": "^1.0.32"
   },
@@ -32,6 +32,11 @@
   "build": {
     "appId": "com.stevenou.yt-link",
     "productName": "YT Link",
+    "publish": {
+      "provider": "github",
+      "owner": "steven-ou",
+      "repo": "yt-link"
+    },
     "directories": {
       "output": "dist"
     },
@@ -62,11 +67,6 @@
       "target": "zip",
       "icon": "frontend/public/icon.ico"
     },
-    "afterPack": "./scripts/afterPack.js",
-    "publish": {
-      "provider": "github",
-      "owner": "steven-ou",
-      "repo": "yt-link"
-    }
+    "afterPack": "./scripts/afterPack.js"
   }
 }
