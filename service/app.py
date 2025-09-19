@@ -138,52 +138,47 @@ def start_job_endpoint():
     job_type = data["jobType"]
     jobs[job_id] = Job(job_id=job_id, url=data["url"], job_type=job_type)
 
-    ydl_opts: Dict[str, Any]
+    # Initialize ydl_opts here
+    ydl_opts: Dict[str, Any] = {
+        "progress_hooks": [progress_hook],
+        "nocheckcertificate": True,
+        "quiet": True,
+        "no_warnings": True,
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
+        },
+    }
 
     if job_type == "singleVideo":
         quality = data.get("quality", "best")
 
-        # It correctly handles the 'best' quality option vs. a specific resolution.
         if quality == "best":
-            # Use a simpler format string when 'best' is selected.
-            format_string = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best"
+            format_string = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
         else:
-            # Use the detailed format string only when a specific height is chosen.
-            format_string = (
-                f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best"
-            )
+            format_string = f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
 
-        ydl_opts = {
-            "format": format_string,
-            "outtmpl": os.path.join(APP_TEMP_DIR, job_id, "%(id)s.%(ext)s"),
-            "noplaylist": True,
-            # This is the key for cross-platform stability, ensuring ffmpeg merges correctly.
-            "merge_output_format": "mp4",
-        }
+        ydl_opts.update(
+            {
+                "format": format_string,
+                "outtmpl": os.path.join(APP_TEMP_DIR, job_id, "%(id)s.%(ext)s"),
+                "noplaylist": True,
+                "merge_output_format": "mp4",
+            }
+        )
 
     else:  # Handles singleMp3, playlistZip, and combineMp3
-        ydl_opts = {
-            "format": "bestaudio[ext=m4a]/bestaudio",
-            "outtmpl": os.path.join(
-                APP_TEMP_DIR, job_id, "%(playlist_index)s-%(id)s.%(ext)s"
-            ),
-            "noplaylist": job_type == "singleMp3",
-            "ignoreerrors": True,
-            "extract_flat": "in_playlist",
-            "playlistend": 50,
-        }
-
-    ydl_opts.update(
-        {
-            "progress_hooks": [progress_hook],
-            "nocheckcertificate": True,
-            "quiet": True,
-            "no_warnings": True,
-            "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
-            },
-        }
-    )
+        ydl_opts.update(
+            {
+                "format": "bestaudio[ext=m4a]/bestaudio",
+                "outtmpl": os.path.join(
+                    APP_TEMP_DIR, job_id, "%(playlist_index)s-%(id)s.%(ext)s"
+                ),
+                "noplaylist": job_type == "singleMp3",
+                "ignoreerrors": True,
+                "extract_flat": "in_playlist",
+                "playlistend": 50,
+            }
+        )
 
     if data.get("cookies"):
         cookie_file = os.path.join(APP_TEMP_DIR, f"cookies_{job_id}.txt")
