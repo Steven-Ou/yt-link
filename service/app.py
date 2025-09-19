@@ -247,6 +247,18 @@ def manual_post_processing(job_id: str, job_type: str):
         job.status, job.error = "failed", "FFMPEG executable not found"
         raise FileNotFoundError(job.error)
 
+    processed_mp4s = [f for f in os.listdir(job.temp_dir) if f.endswith(".mp4")]
+    if job_type == "singleVideo" and len(processed_mp4s) == 1:
+        video_title = sanitize_filename(job.info.get("title", "video"))
+        job.file_name = f"{video_title}.mp4"
+        job.file_path = os.path.join(job.temp_dir, processed_mp4s[0])
+        os.rename(
+            os.path.join(job.temp_dir, processed_mp4s[0]),
+            os.path.join(job.temp_dir, job.file_name),
+        )
+        job.status, job.message = "completed", "Video processing complete!"
+        return
+
     downloaded_files = [
         os.path.join(job.temp_dir, f)
         for f in os.listdir(job.temp_dir)
