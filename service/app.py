@@ -69,14 +69,18 @@ def get_formats_endpoint():
     url = data["url"]
 
     try:
+        # Updated yt-dlp options
         ydl_opts = {
             "quiet": True,
             "no_warnings": True,
             "nocheckcertificate": True,
             "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36",
+                "Referer": "https://www.youtube.com/",
             },
+            "rm_cache_dir": True, # Clear cache to avoid being blocked
         }
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False) or {}
 
