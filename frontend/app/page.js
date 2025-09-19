@@ -582,7 +582,6 @@ export default function Home() {
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               style={{ marginBottom: 16 }}
-              disabled={anyJobLoading}
             />
             <CookieInputField
               value={cookieData}
