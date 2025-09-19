@@ -396,7 +396,7 @@ ipcMain.handle("get-job-status", async (event, jobId) => {
  * Handles the final step of downloading a completed file from the backend.
  */
 ipcMain.handle("download-file", async (event, { jobId }) => {
-  if (!pythonPort || !jobId) {
+  if (!pyPort || !jobId) {
     return { error: "Backend not ready or Job ID is missing." };
   }
 
