@@ -551,7 +551,7 @@ export default function Home() {
       "Single Video Download",
       selectedQuality
     );
-    
+
   const isLoading = (jobType) => {
     const status = activeJobs[jobType]?.status;
     return (
@@ -895,59 +895,6 @@ export default function Home() {
         <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
           <Toolbar />
           {renderContent()}
-          {jobsArray.length > 0 && (
-            <Paper elevation={3} sx={{ p: 2, mt: 4 }}>
-              <Typography variant="h6">Active Jobs</Typography>
-              <List>
-                {jobsArray.map((job) => (
-                  <ListItem key={job.id || job.jobType} divider>
-                    <Stack sx={{ width: "100%" }}>
-                      <Box
-                        sx={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                        }}
-                      >
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            maxWidth: "50%",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {job.url}
-                        </Typography>
-                        <Typography variant="caption">
-                          {job.job_type}
-                        </Typography>
-                        <Typography variant="caption">{job.status}</Typography>
-                      </Box>
-                      <Typography variant="body2" color="text.secondary">
-                        {job.message}
-                      </Typography>
-                      {job.status === "downloading" && (
-                        <LinearProgress
-                          variant="determinate"
-                          value={job.progress || 0}
-                        />
-                      )}
-                      {job.status === "completed" && (
-                        <Button
-                          onClick={() => downloadFile(job.job_id)}
-                          size="small"
-                        >
-                          Download File
-                        </Button>
-                      )}
-                      {job.error && <Alert severity="error">{job.error}</Alert>}
-                    </Stack>
-                  </ListItem>
-                ))}
-              </List>
-            </Paper>
-          )}
         </Box>
       </Box>
     </ThemeProvider>
