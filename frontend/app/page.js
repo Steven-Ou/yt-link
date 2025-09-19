@@ -321,54 +321,33 @@ const cleanUrl = (urlString) => {
     const url = new URL(urlString);
     let videoId = null;
 
-    // Handle standard youtube.com URLs (e.g., /watch?v=...)
     if (url.hostname.includes("youtube.com") && url.searchParams.has("v")) {
       videoId = url.searchParams.get("v");
-    }
-    // Handle youtu.be short URLs (e.g., youtu.be/VIDEO_ID)
-    else if (url.hostname === "youtu.be") {
+    } else if (url.hostname === "youtu.be") {
       videoId = url.pathname.substring(1);
-    }
-    // Handle /shorts/ URLs
-    else if (url.pathname.includes("/shorts/")) {
+    } else if (url.pathname.includes("/shorts/")) {
       videoId = url.pathname.split("/shorts/")[1];
     }
 
     if (videoId) {
-      // Rebuild the URL with *only* the video parameter to strip playlist info
       return `https://www.youtube.com/watch?v=${videoId}`;
     }
-
-    // If no video ID can be extracted, return the original string
     return urlString;
   } catch (error) {
-    // If URL is invalid and can't be parsed, return it as is for the backend to handle
     console.error("Invalid URL for cleaning:", urlString, error);
     return urlString;
   }
 };
 
-/**
- * --- FIX FOR INVALID PLAYLIST URLS ---
- * Validates and corrects a YouTube playlist URL.
- * It can handle full URLs, partial URLs, or just the playlist ID.
- * @param {string} urlString - The user-provided URL or ID.
- * @returns {string} A full, valid YouTube playlist URL, or the original string if it can't be parsed.
- */
 const validateAndFixPlaylistUrl = (urlString) => {
   if (!urlString || typeof urlString !== "string") return "";
 
-  // Regex to find a YouTube playlist ID (PL...). It's more reliable than parsing the whole URL string.
   const playlistIdRegex = /(PL[a-zA-Z0-9_-]{16,})/;
   const match = urlString.match(playlistIdRegex);
 
   if (match && match[1]) {
-    // If we found a valid playlist ID, construct the correct, minimal URL.
     return `https://www.youtube.com/playlist?list=${match[1]}`;
   }
-
-  // If no valid playlist ID can be found, return the original string and let the backend handle it.
-  // This provides a fallback in case yt-dlp can still parse it.
   return urlString;
 };
 
@@ -380,7 +359,7 @@ export default function Home() {
   const [videoUrl, setVideoUrl] = useState("");
   const [cookieData, setCookieData] = useState("");
 
-  const [activeJobs, setActiveJobs] = useState({});
+  const [activeJobs, setActiveJobs] = useState([]);
   const pollingIntervals = useRef({});
   const [isElectron, setIsElectron] = useState(false);
   const [expandedDownloads, setExpandedDownloads] = useState(true);
@@ -401,11 +380,11 @@ export default function Home() {
   }, []);
 
   const isAnyJobLoading = () =>
-    Object.values(activeJobs).some((job) =>
+    activeJobs.some((job) =>
       ["queued", "downloading", "processing"].includes(job.status)
     );
 
-  const pollJobStatus = useCallback((jobId, jobType) => {
+  const pollJobStatus = useCallback((jobId) => {
     if (pollingIntervals.current[jobId]) {
       clearInterval(pollingIntervals.current[jobId]);
     }
@@ -422,77 +401,63 @@ export default function Home() {
           throw new Error(data.error);
         }
 
-        if (data.status === "completed") {
+        const updateJobState = (jobId, newStatus) => {
+          setActiveJobs((prev) =>
+            prev.map((job) =>
+              job.job_id === jobId ? { ...job, ...newStatus } : job
+            )
+          );
+        };
+
+        if (
+          data.status === "completed" ||
+          data.status === "failed" ||
+          data.status === "not_found"
+        ) {
           clearInterval(pollingIntervals.current[jobId]);
           delete pollingIntervals.current[jobId];
-
-          setActiveJobs((prev) => ({
-            ...prev,
-            [jobType]: {
-              ...prev[jobType],
-              status: "completed",
-              message: "Download successful. Saving file...",
-            },
-          }));
-
-          const downloadResult = await window.electron.downloadFile({ jobId });
-
-          if (downloadResult.error) {
-            throw new Error(downloadResult.error);
-          }
-
-          setActiveJobs((prev) => ({
-            ...prev,
-            [jobType]: {
-              ...prev[jobType],
-              status: "completed",
-              message: "File saved successfully!",
-              savedFilePath: downloadResult.path,
-            },
-          }));
-        } else if (data.status === "failed" || data.status === "not_found") {
-          clearInterval(pollingIntervals.current[jobId]);
-          delete pollingIntervals.current[jobId];
-          setActiveJobs((prev) => ({
-            ...prev,
-            [jobType]: {
-              ...prev[jobType],
-              ...data,
-              message: data.error || `Job ${data.status}.`,
-            },
-          }));
+          const finalMessage =
+            data.status === "completed"
+              ? "File saved successfully!"
+              : data.error || `Job ${data.status}.`;
+          updateJobState(jobId, { ...data, message: finalMessage });
         } else {
-          setActiveJobs((prev) => ({
-            ...prev,
-            [jobType]: { ...prev[jobType], ...data },
-          }));
+          updateJobState(jobId, data);
         }
       } catch (error) {
         clearInterval(pollingIntervals.current[jobId]);
         delete pollingIntervals.current[jobId];
-        setActiveJobs((prev) => ({
-          ...prev,
-          [jobType]: {
-            ...prev[jobType],
-            status: "failed",
-            message: `Error: ${error.message}`,
-          },
-        }));
+        setActiveJobs((prev) =>
+          prev.map((job) =>
+            job.job_id === jobId
+              ? { ...job, status: "failed", message: `Error: ${error.message}` }
+              : job
+          )
+        );
       }
     }, 2000);
   }, []);
 
   const startJob = async (jobType, urlValue, operationName) => {
-    setActiveJobs((prev) => ({
-      ...prev,
-      [jobType]: {
-        id: null,
-        status: "queued",
-        message: `Initiating ${operationName}...`,
-      },
-    }));
+    const tempId = `temp_${Date.now()}`;
+    const newJob = {
+      id: tempId,
+      job_id: null,
+      status: "queued",
+      message: `Initiating ${operationName}...`,
+      jobType: jobType,
+      url: urlValue,
+    };
+
+    setActiveJobs((prev) => [...prev, newJob]);
+
     try {
-      const payload = { jobType, url: urlValue, cookies: cookieData || null };
+      const payload = {
+        jobType,
+        url: urlValue,
+        cookies: cookieData || null,
+        quality: selectedQuality,
+      };
       const result = await window.electron.startJob(payload);
 
       if (result.error) {
@@ -500,24 +465,30 @@ export default function Home() {
       }
 
       if (result.jobId) {
-        setActiveJobs((prev) => ({
-          ...prev,
-          [jobType]: {
-            id: result.jobId,
-            status: "queued",
-            message: "Job started, waiting for worker...",
-            job_id: result.jobId,
-          },
-        }));
-        pollJobStatus(result.jobId, jobType);
+        setActiveJobs((prev) =>
+          prev.map((job) =>
+            job.id === tempId
+              ? {
+                  ...job,
+                  job_id: result.jobId,
+                  status: "queued",
+                  message: "Job started, waiting for worker...",
+                }
+              : job
+          )
+        );
+        pollJobStatus(result.jobId);
       } else {
         throw new Error("Failed to get Job ID from the backend.");
       }
     } catch (error) {
-      setActiveJobs((prev) => ({
-        ...prev,
-        [jobType]: { status: "failed", message: `Error: ${error.message}` },
-      }));
+      setActiveJobs((prev) =>
+        prev.map((job) =>
+          job.id === tempId
+            ? { ...job, status: "failed", message: `Error: ${error.message}` }
+            : job
+        )
+      );
     }
   };
 
@@ -539,13 +510,11 @@ export default function Home() {
     }
 
     let finalUrl = urlValue;
-    if (jobType === "singleMp3" || jobType === "singleVideo") {
+    if (jobType === "singleVideo" || jobType === "singleMp3") {
       finalUrl = cleanUrl(urlValue);
     }
     if (jobType === "playlistZip" || jobType === "combineMp3") {
       finalUrl = validateAndFixPlaylistUrl(urlValue);
-    } else if (jobType === "singleMp3") {
-      finalUrl = cleanUrl(urlValue);
     }
 
     startJob(jobType, finalUrl, operationName);
@@ -558,25 +527,12 @@ export default function Home() {
   const downloadCombinedPlaylistMp3 = () =>
     handleJobRequest(combineVideoUrl, "combineMp3", "Combine Playlist to MP3");
   const downloadVideo = () =>
-    handleJobRequest(
-      videoUrl,
-      "singleVideo",
-      "Single Video Download",
-      selectedQuality
-    );
+    handleJobRequest(videoUrl, "singleVideo", "Single Video Download");
 
-  const isLoading = (jobType) => {
-    const status = activeJobs[jobType]?.status;
-    return (
-      status === "queued" || status === "downloading" || status === "processing"
-    );
-  };
   const handleVideoUrlChange = async (e) => {
     const newUrl = e.target.value;
     setVideoUrl(newUrl);
-
     const cleanedUrl = cleanUrl(newUrl);
-
     const youtubeRegex =
       /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
 
@@ -587,11 +543,7 @@ export default function Home() {
         const formats = await window.electron.getVideoFormats(cleanedUrl);
         if (formats && !formats.error) {
           setVideoFormats(formats);
-          if (formats.length > 0) {
-            setSelectedQuality(formats[0].height);
-          } else {
-            setSelectedQuality("best");
-          }
+          setSelectedQuality(formats[0]?.height || "best");
         } else if (formats && formats.error) {
           console.error("Could not fetch video formats:", formats.error);
         }
@@ -602,6 +554,14 @@ export default function Home() {
       setVideoFormats([]);
       setSelectedQuality("best");
     }
+  };
+
+  const renderJobsForView = (jobType) => {
+    return activeJobs
+      .filter((job) => job.jobType === jobType)
+      .map((job) => (
+        <JobStatusDisplay key={job.id || job.job_id} jobInfo={job} />
+      ));
   };
 
   const renderContent = () => {
@@ -634,17 +594,19 @@ export default function Home() {
               color="primary"
               fullWidth
               onClick={downloadMP3}
-              disabled={
-                isLoading("singleMp3") ||
-                (anyJobLoading && !isLoading("singleMp3"))
-              }
+              disabled={anyJobLoading}
             >
-              {isLoading("singleMp3") && (
-                <CircularProgress size={24} sx={{ mr: 1 }} />
-              )}
-              {isLoading("singleMp3") ? "Processing..." : "Download MP3"}
+              {anyJobLoading &&
+              activeJobs.some(
+                (j) =>
+                  j.jobType === "singleMp3" &&
+                  j.status !== "completed" &&
+                  j.status !== "failed"
+              )
+                ? "Processing..."
+                : "Download MP3"}
             </Button>
-            <JobStatusDisplay jobInfo={activeJobs["singleMp3"]} />
+            {renderJobsForView("singleMp3")}
           </Container>
         );
       case "zip":
@@ -673,19 +635,19 @@ export default function Home() {
               onClick={downloadPlaylistZip}
               fullWidth
               style={{ marginBottom: 16 }}
-              disabled={
-                isLoading("playlistZip") ||
-                (anyJobLoading && !isLoading("playlistZip"))
-              }
+              disabled={anyJobLoading}
             >
-              {isLoading("playlistZip") && (
-                <CircularProgress size={24} sx={{ mr: 1 }} />
-              )}
-              {isLoading("playlistZip")
+              {anyJobLoading &&
+              activeJobs.some(
+                (j) =>
+                  j.jobType === "playlistZip" &&
+                  j.status !== "completed" &&
+                  j.status !== "failed"
+              )
                 ? "Processing..."
                 : "Download Playlist As Zip"}
             </Button>
-            <JobStatusDisplay jobInfo={activeJobs["playlistZip"]} />
+            {renderJobsForView("playlistZip")}
           </Container>
         );
       case "combine":
@@ -714,19 +676,19 @@ export default function Home() {
               onClick={downloadCombinedPlaylistMp3}
               fullWidth
               style={{ marginBottom: 16 }}
-              disabled={
-                isLoading("combineMp3") ||
-                (anyJobLoading && !isLoading("combineMp3"))
-              }
+              disabled={anyJobLoading}
             >
-              {isLoading("combineMp3") && (
-                <CircularProgress size={24} sx={{ mr: 1 }} />
-              )}
-              {isLoading("combineMp3")
+              {anyJobLoading &&
+              activeJobs.some(
+                (j) =>
+                  j.jobType === "combineMp3" &&
+                  j.status !== "completed" &&
+                  j.status !== "failed"
+              )
                 ? "Processing..."
                 : "Download Playlist As Single MP3"}
             </Button>
-            <JobStatusDisplay jobInfo={activeJobs["combineMp3"]} />
+            {renderJobsForView("combineMp3")}
           </Container>
         );
       case "video":
@@ -777,24 +739,25 @@ export default function Home() {
               color="primary"
               fullWidth
               onClick={downloadVideo}
-              disabled={
-                isLoading("singleVideo") ||
-                (anyJobLoading && !isLoading("singleVideo"))
-              }
+              disabled={anyJobLoading}
             >
-              {isLoading("singleVideo") && (
-                <CircularProgress size={24} sx={{ mr: 1 }} />
-              )}
-              {isLoading("singleVideo") ? "Processing..." : "Download Video"}
+              {anyJobLoading &&
+              activeJobs.some(
+                (j) =>
+                  j.jobType === "singleVideo" &&
+                  j.status !== "completed" &&
+                  j.status !== "failed"
+              )
+                ? "Processing..."
+                : "Download Video"}
             </Button>
-            <JobStatusDisplay jobInfo={activeJobs["singleVideo"]} />
+            {renderJobsForView("singleVideo")}
           </Container>
         );
       default:
         return <Typography>Select an option from the menu.</Typography>;
     }
   };
-  const jobsArray = Object.values(activeJobs);
 
   return (
     <ThemeProvider theme={customTheme}>
