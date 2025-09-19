@@ -634,7 +634,6 @@ export default function Home() {
               onClick={downloadPlaylistZip}
               fullWidth
               style={{ marginBottom: 16 }}
-              disabled={anyJobLoading}
             >
               {anyJobLoading &&
               activeJobs.some(
