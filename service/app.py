@@ -69,7 +69,7 @@ def get_formats_endpoint():
     url = data["url"]
 
     try:
-        # Added more browser-like headers to reduce chances of being blocked.
+        # Added retries and a socket timeout to make the connection more resilient.
         ydl_opts = {
             "quiet": True,
             "no_warnings": True,
@@ -81,6 +81,8 @@ def get_formats_endpoint():
                 "Referer": "https://www.youtube.com/",
             },
             "rm_cache_dir": True,  # Clear cache to avoid being blocked
+            "retries": 10,  # Retry failed downloads
+            "socket_timeout": 20,  # Timeout for socket operations
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -144,7 +146,7 @@ def start_job_endpoint():
     job_type = data["jobType"]
     jobs[job_id] = Job(job_id=job_id, url=data["url"], job_type=job_type)
 
-    # Added more browser-like headers here as well for consistency.
+    # Added retries and a socket timeout here as well.
     ydl_opts: Dict[str, Any] = {
         "progress_hooks": [progress_hook],
         "nocheckcertificate": True,
@@ -157,6 +159,8 @@ def start_job_endpoint():
             "Referer": "https://www.youtube.com/",
         },
         "rm_cache_dir": True,
+        "retries": 10,
+        "socket_timeout": 20,
     }
 
     if job_type == "singleVideo":
@@ -287,7 +291,7 @@ def manual_post_processing(job_id: str, job_type: str):
         job.status, job.error = "failed", "FFMPEG executable not found"
         raise FileNotFoundError(job.error)
     ignore_extensions = (".mp3", ".zip", ".txt", ".part")
-    downloaded_files = [
+    downloaded_.p..s = [
         os.path.join(job.temp_dir, f)
         for f in os.listdir(job.temp_dir)
         if not f.endswith(ignore_extensions)
