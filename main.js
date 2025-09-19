@@ -115,7 +115,7 @@ function createWindow() {
     sendLog("[AutoUpdater] Checking for update...");
     mainWindow.webContents.send("update-status", "Checking for update...");
   });
-  
+
   autoUpdater.on("update-available", (info) => {
     sendLog(`[AutoUpdater] Update available: ${info.version}`);
     mainWindow.webContents.send(
@@ -311,25 +311,27 @@ app.on("quit", () => {
 
 // --- IPC HANDLERS ---
 
-ipcMain.handle('get-video-formats', async (event, url) => {
-    if (!isBackendReady) {
-        return { error: 'Backend is not ready.' };
+ipcMain.handle("get-video-formats", async (event, url) => {
+  if (!isBackendReady) {
+    return { error: "Backend is not ready." };
+  }
+  try {
+    const response = await fetch(`http://127.0.0.1:${pyPort}/get-formats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Backend responded with status: ${response.status} ${errorText}`
+      );
     }
-    try {
-        const response = await fetch(`http://127.0.0.1:${pyPort}/get-formats`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url }),
-        });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Backend responded with status: ${response.status} ${errorText}`);
-        }
-        return await response.json();
-    } catch (error) {
-        sendLog(`[Electron] ERROR: Failed to get video formats: ${error.message}`);
-        return { error: `Failed to get video formats: ${error.message}` };
-    }
+    return await response.json();
+  } catch (error) {
+    sendLog(`[Electron] ERROR: Failed to get video formats: ${error.message}`);
+    return { error: `Failed to get video formats: ${error.message}` };
+  }
 });
 
 // These functions handle asynchronous messages from the renderer process (frontend).
