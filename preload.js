@@ -1,16 +1,22 @@
-const { contextBridge, ipcRenderer } = require('electron');
-console.log("--- PRELOAD SCRIPT EXECUTING ---");
-contextBridge.exposeInMainWorld('electron', {
-    // **LOGGING FIX**: This function allows the frontend to receive logs from the main process.
-    onBackendLog: (callback) => {
-        const handler = (_event, message) => callback(message);
-        ipcRenderer.on('backend-log', handler);
-        // Return a function to remove the listener for cleanup
-        return () => ipcRenderer.removeListener('backend-log', handler);
-    },
+const { contextBridge, ipcRenderer } = require("electron");
 
-    startJob: (payload) => ipcRenderer.invoke('start-job', payload),
-    getJobStatus: (jobId) => ipcRenderer.invoke('get-job-status', jobId),
-    downloadFile: (jobId) => ipcRenderer.invoke('download-file', jobId),
-    openFolder: (path) => ipcRenderer.invoke('open-folder', path),
+contextBridge.exposeInMainWorld("electron", {
+  startJob: (payload) => ipcRenderer.invoke("start-job", payload),
+  getJobStatus: (jobId) => ipcRenderer.invoke("get-job-status", jobId),
+
+  getVideoFormats: (url) => ipcRenderer.invoke("get-video-formats", url),
+
+  downloadFile: (options) => ipcRenderer.invoke("download-file", options),
+  openFolder: (filePath) => ipcRenderer.invoke("open-folder", filePath),
+  onBackendLog: (callback) => {
+    const channel = "backend-log";
+    ipcRenderer.on(channel, (event, ...args) => callback(...args));
+    return () => {
+      ipcRenderer.removeAllListeners(channel);
+    };
+  },
+  onBackendReady: (callback) => {
+    ipcRenderer.on("backend-ready", callback);
+    return () => ipcRenderer.removeAllListeners("backend-ready");
+  },
 });
