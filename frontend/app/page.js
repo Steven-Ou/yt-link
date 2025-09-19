@@ -317,8 +317,12 @@ const CookieInputField = ({ value, onChange, disabled }) => (
 );
 
 const cleanUrl = (urlString) => {
+  let fullUrl = urlString;
+  if (!/^https?:\/\//i.test(fullUrl)) {
+    fullUrl = `https://${fullUrl}`;
+  }
   try {
-    const url = new URL(urlString);
+    const url = new URL(fullUrl);
     let videoId = null;
 
     if (url.hostname.includes("youtube.com") && url.searchParams.has("v")) {
@@ -745,7 +749,7 @@ export default function Home() {
                 )}
               </Select>
             </FormControl>
-            
+
             <Button
               variant="contained"
               color="primary"
