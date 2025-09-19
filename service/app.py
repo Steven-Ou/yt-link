@@ -19,7 +19,6 @@ from urllib.parse import quote
 from typing import Dict, Any, List, Optional, Generator
 
 # --- Configuration ---
-# Quieter logging to make real errors more visible
 log = logging.getLogger("werkzeug")
 log.setLevel(logging.ERROR)
 
@@ -70,10 +69,14 @@ def get_formats_endpoint():
     url = data["url"]
 
     try:
+        # Added browser-like headers to prevent getting blocked by YouTube.
         ydl_opts = {
             "quiet": True,
             "no_warnings": True,
             "nocheckcertificate": True,
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
+            },
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False) or {}
@@ -140,18 +143,19 @@ def start_job_endpoint():
 
     if job_type == "singleVideo":
         quality = data.get("quality", "best")
+        # Changed the format string to prioritize pre-merged files.
+        # This avoids the ffmpeg error on Mac by letting YouTube do the merge.
         format_string = (
-            f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+            f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[vcodec^=avc][height<={quality}]/best[ext=mp4]/best"
             if quality != "best"
-            else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+            else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[vcodec^=avc]/best[ext=mp4]/best"
         )
         ydl_opts = {
             "format": format_string,
             "outtmpl": os.path.join(APP_TEMP_DIR, job_id, "%(id)s.%(ext)s"),
             "noplaylist": True,
         }
-
-    else:  # Handles singleMp3, playlistZip, and combineMp3
+    else:
         ydl_opts = {
             "format": "bestaudio[ext=m4a]/bestaudio",
             "outtmpl": os.path.join(
