@@ -139,23 +139,17 @@ def download_thread(url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: s
 
 
 def manual_post_processing(job_id: str, job_type: str):
-    """Handles file conversion, zipping, and combining after download."""
     job = jobs[job_id]
-    assert job.temp_dir is not None, "Job temp_dir not set"
-    assert job.info is not None, "Job info not set"
+    assert job.temp_dir is not None and job.info is not None
 
-    print(
-        f"--- [Job {job_id}] Starting post-processing. FFMPEG_EXE is set to: '{FFMPEG_EXE}'",
-        flush=True,
-    )
     if not FFMPEG_EXE or not os.path.exists(FFMPEG_EXE):
-        error_msg = f"FFMPEG executable not found or path is incorrect: '{FFMPEG_EXE}'"
-        job.status = "failed"
-        job.error = error_msg
+        job.status, job.error = "failed", "FFMPEG executable not found"
         print(
-            f"--- [Job {job_id}] FATAL ERROR: {error_msg}", file=sys.stderr, flush=True
+            f"--- [Job {job_id}] FATAL ERROR: FFMPEG not found",
+            file=sys.stderr,
+            flush=True,
         )
-        raise FileNotFoundError(error_msg)
+        raise FileNotFoundError(job.error)
 
     downloaded_files = [
         os.path.join(job.temp_dir, f)
@@ -166,15 +160,13 @@ def manual_post_processing(job_id: str, job_type: str):
         raise FileNotFoundError("No downloaded media files found for post-processing.")
 
     if job_type == "singleVideo":
-        video_title = sanitize_filename(
-            job.info.get("title", "yt-link-video") or "yt-link-video"
-        )
+        video_title = sanitize_filename(job.info.get("title", "yt-link-video"))
         job.file_name = f"{video_title}.mp4"
         job.file_path = os.path.join(job.temp_dir, job.file_name)
 
         command = []
         if len(downloaded_files) == 1:
-            job.message = "Re-encoding video for compatibility (this may take a while)..."
+            job.message = "Re-encoding for compatibility (this may take a while)..."
             print(f"--- [Job {job_id}] Single file found. Re-encoding...", flush=True)
             command = [
                 FFMPEG_EXE,
@@ -189,7 +181,7 @@ def manual_post_processing(job_id: str, job_type: str):
             ]
 
         elif len(downloaded_files) >= 2:
-            job.message = "Merging video and audio streams..."
+            job.message = "Merging streams (this may take a while)..."
             print(f"--- [Job {job_id}] Multiple streams found. Merging...", flush=True)
             video_stream = max(downloaded_files, key=os.path.getsize)
             audio_stream = min(downloaded_files, key=os.path.getsize)
@@ -207,22 +199,17 @@ def manual_post_processing(job_id: str, job_type: str):
                 job.file_path,
             ]
 
-        print(
-            f"--- [Job {job_id}] Executing FFmpeg command: {' '.join(command)}",
-            flush=True,
-        )
         process = subprocess.run(
             command, capture_output=True, text=True, encoding="utf-8", errors="ignore"
         )
 
         if process.returncode != 0:
-            job.status = "failed"
-            job.error = f"FFMPEG Error: {process.stderr}"
-            raise Exception(f"FFMPEG failed to process video. Check logs.")
+            job.status, job.error = "failed", f"FFMPEG Error: {process.stderr}"
+            print(f"--- [Job {job_id}] FFmpeg STDERR:\n{process.stderr}", flush=True)
+            raise Exception(job.error)
 
-        job.status = "completed"
-        job.message = "Video download complete!"
-        print(f"--- [Job {job_id}] Video processing complete.", flush=True)
+        job.status, job.message = "completed", "Video processing complete!"
+        print(f"--- [Job {job_id}] Video processing complete.")
         return
 
     playlist_title = job.info.get("title", "yt-link-playlist") or "yt-link-playlist"
