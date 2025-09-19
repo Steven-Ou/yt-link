@@ -410,13 +410,8 @@ ipcMain.handle("download-file", async (event, { jobId }) => {
       return { error: "Job is not complete or file name is missing." };
     }
 
-    const saveDialog = await dialog.showSaveDialog({
-      defaultPath: job.file_name,
-    });
-
-    if (saveDialog.canceled || !saveDialog.filePath) {
-      return { success: false, message: "Save canceled." };
-    }
+    const downloadsPath = app.getPath('downloads');
+    const savePath = path.join(downloadsPath,job.file_name);
 
     const downloadUrl = `http://127.0.0.1:${pyPort}/download/${jobId}`;
     const response = await axios({
