@@ -29,6 +29,7 @@ let pythonProcess = null;
 let mainWindow = null;
 // Stores the port number that the Python backend will run on.
 let pyPort = null;
+let exePath = null; 
 // A flag to track if the Python backend has successfully started and is ready to accept requests.
 let isBackendReady = false;
 const axios = require("axios");
