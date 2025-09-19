@@ -657,12 +657,10 @@ export default function Home() {
               value={combineVideoUrl}
               onChange={(e) => setCombineVideoUrl(e.target.value)}
               style={{ marginBottom: 16 }}
-              disabled={anyJobLoading}
             />
             <CookieInputField
               value={cookieData}
               onChange={(e) => setCookieData(e.target.value)}
-              disabled={anyJobLoading}
             />
             <Button
               variant="contained"
