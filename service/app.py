@@ -216,19 +216,25 @@ def get_job_status():
 
 @app.route("/download/<job_id>", methods=["GET"])
 def download_file_route(job_id: str):
+    print(f"Download request received for job_id: {job_id}")  # Basic logging
     job = jobs.get(job_id)
 
     if not job:
+        print(f"Job not found for job_id: {job_id}")
         return jsonify({"error": "Job not found"}), 404
 
     if job.status != "completed":
+        print(f"Job {job_id} not completed. Status is: {job.status}")
         return jsonify({"error": "File not ready"}), 404
 
     file_path = job.file_path
     file_name = job.file_name
 
     if not file_path or not os.path.exists(file_path):
+        print(f"File not found on server at path: {file_path}")
         return jsonify({"error": "File not found on server."}), 404
+
+    print(f"File found: {file_path}. Preparing to send.")
 
     def file_generator(
         file_path: str, temp_dir: Optional[str]
@@ -240,6 +246,7 @@ def download_file_route(job_id: str):
             if temp_dir and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
             jobs.pop(job_id, None)
+            print(f"Cleaned up job and temp files for job_id: {job_id}")
 
     encoded_file_name = quote(file_name)
     fallback_file_name = (
@@ -263,14 +270,21 @@ def download_thread(url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: s
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Let yt-dlp handle the download process directly. It will internally
-            # loop through playlist items if the URL is a playlist.
-            # This is more efficient and robust than manually looping.
-            info_dict = ydl.extract_info(url, download=True)
+            info_dict = ydl.extract_info(url, download=False)
             if not info_dict:
                 raise DownloadError("Failed to extract video information.")
 
+            entries = info_dict.get("entries")
+            if isinstance(entries, list):
+                valid_entries = [entry for entry in entries if isinstance(entry, dict)]
+                for entry in valid_entries:
+                    entry["job_id"] = job_id
+                info_dict["entries"] = valid_entries
+            else:
+                info_dict["job_id"] = job_id
+
             job.info = info_dict
+            ydl.download([url])
 
         manual_post_processing(job_id, job_type)
 
@@ -292,6 +306,7 @@ def manual_post_processing(job_id: str, job_type: str):
         job.status, job.error = "failed", "FFMPEG executable not found"
         raise FileNotFoundError(job.error)
 
+    # This correctly handles cases where the best audio is in an MP4, WEBM, or M4A container.
     ignore_extensions = (".mp3", ".zip", ".txt", ".part")
     downloaded_files = [
         os.path.join(job.temp_dir, f)
@@ -302,14 +317,16 @@ def manual_post_processing(job_id: str, job_type: str):
     if not downloaded_files:
         job.status = "failed"
         job.error = "No media files found after download. The video may be protected or in an unsupported format."
+        # Add logging to see what files ARE in the directory for easier debugging
         files_in_dir = os.listdir(job.temp_dir)
         print(
             f"--- [Job {job_id}] ERROR: No media files found. Contents of temp dir: {files_in_dir}",
             file=sys.stderr,
             flush=True,
         )
-        return
+        return  # Gracefully set status to failed instead of crashing the backend
 
+    # The rest of the function handles processing these files
     if job_type == "singleVideo":
         video_title = sanitize_filename(job.info.get("title", "video"))
         job.file_name = f"{video_title}.mp4"
@@ -354,6 +371,7 @@ def manual_post_processing(job_id: str, job_type: str):
         job.status, job.message = "completed", "Video processing complete!"
         return
 
+    # This part handles all audio-based jobs (singleMp3, playlistZip, combineMp3)
     playlist_title = sanitize_filename(job.info.get("title", "playlist"))
 
     def sort_key(file_path: str) -> int:
@@ -396,7 +414,7 @@ def manual_post_processing(job_id: str, job_type: str):
 
     if job_type == "singleMp3":
         job.file_name = f"{sanitize_filename(job.info.get('title', 'track'))}.mp3"
-        job.file_path = os.path.join(job.temp_dir, job.file_name)
+        job.file_path = os.path.join(job.temp_dir, job.file_.name)
         if mp3_files:
             os.rename(mp3_files[0], job.file_path)
 
@@ -443,25 +461,110 @@ def manual_post_processing(job_id: str, job_type: str):
 
     job.status, job.message = "completed", "Processing complete!"
 
+    playlist_title = sanitize_filename(job.info.get("title", "playlist"))
+
+    def sort_key(file_path: str) -> int:
+        try:
+            return int(os.path.basename(file_path).split("-")[0])
+        except (ValueError, IndexError):
+            return sys.maxsize
+
+    downloaded_files.sort(key=sort_key)
+
+    mp3_files: List[str] = []
+    entries: List[Dict[str, Any]] = job.info.get("entries", [job.info])
+    for i, file_path in enumerate(downloaded_files):
+        job.message = f"Converting file {i + 1}/{len(entries)} to MP3..."
+        entry_info = entries[i] if i < len(entries) else {}
+        video_title = sanitize_filename(entry_info.get("title", f"track_{i + 1}"))
+        output_filepath = os.path.join(job.temp_dir, f"{i + 1:03d} - {video_title}.mp3")
+
+        command = [
+            ffmpeg_exe,
+            "-i",
+            file_path,
+            "-vn",
+            "-ab",
+            "192k",
+            "-ar",
+            "44100",
+            "-y",
+            output_filepath,
+        ]
+        subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=True,
+            encoding="utf-8",
+            errors="ignore",
+        )
+        mp3_files.append(output_filepath)
+
+    if job_type == "singleMp3":
+        job.file_name = f"{sanitize_filename(job.info.get('title', 'track'))}.mp3"
+        job.file_path = os.path.join(job.temp_dir, job.file_name)
+        os.rename(mp3_files[0], job.file_path)
+
+    elif job_type == "playlistZip":
+        job.message = "Creating ZIP archive..."
+        job.file_name = f"{playlist_title}.zip"
+        job.file_path = os.path.join(job.temp_dir, job.file_name)
+        with zipfile.ZipFile(job.file_path, "w") as zipf:
+            for mp3_file in mp3_files:
+                zipf.write(mp3_file, os.path.basename(mp3_file))
+
+    elif job_type == "combineMp3":
+        job.message = "Combining all tracks..."
+        job.file_name = f"{playlist_title} (Combined).mp3"
+        job.file_path = os.path.join(job.temp_dir, job.file_name)
+        concat_list_path = os.path.join(job.temp_dir, "concat_list.txt")
+
+        with open(concat_list_path, "w", encoding="utf-8") as f:
+            for mp3_file in mp3_files:
+                escaped_filename = mp3_file.replace("'", "'\\''")
+                f.write(f"file '{escaped_filename}'\n")
+
+        combine_command = [
+            ffmpeg_exe,
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            concat_list_path,
+            "-c",
+            "copy",
+            "-y",
+            job.file_path,
+        ]
+        subprocess.run(
+            combine_command,
+            capture_output=True,
+            text=True,
+            check=True,
+            encoding="utf-8",
+            errors="ignore",
+        )
+
+    job.status, job.message = "completed", "Processing complete!"
+
 
 def progress_hook(d: Dict[str, Any]):
-    # This hook is now much simpler, as we're not manually tracking
-    # individual files in a playlist. yt-dlp will call this hook
-    # for each file it downloads in the playlist.
-    if d["status"] == "downloading":
-        job_id = d["info_dict"].get("playlist_autonumber")
-        if job_id and job_id in jobs:
-            job = jobs[job_id]
+    if "info_dict" in d:
+        job_id = d["info_dict"].get("job_id")
+        if not job_id or job_id not in jobs:
+            return
+
+        job = jobs[job_id]
+        if d["status"] == "downloading":
             job.status = "downloading"
             if d.get("total_bytes"):
                 job.progress = d.get("downloaded_bytes", 0) / d["total_bytes"] * 100
 
-            job.message = f"Downloading: {d.get('_percent_str', 'N/A')} at {d.get('_speed_str', 'N/A')}"
+            job.message = f"Downloading: {d.get('_percent_str', 'N/A')} at {d.get('_speed_str', 'N/A')} (ETA: {d.get('_eta_str', 'N/A')})"
 
-    elif d["status"] == "finished":
-        job_id = d["info_dict"].get("playlist_autonumber")
-        if job_id and job_id in jobs:
-            job = jobs[job_id]
+        elif d["status"] == "finished":
             job.status = "processing"
             job.message = "Download finished, preparing to process..."
 
