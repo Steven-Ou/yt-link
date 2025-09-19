@@ -146,10 +146,12 @@ def start_job_endpoint():
         # It correctly handles the 'best' quality option vs. a specific resolution.
         if quality == "best":
             # Use a simpler format string when 'best' is selected.
-            format_string = "bestvideo+bestaudio/best"
+            format_string = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best"
         else:
             # Use the detailed format string only when a specific height is chosen.
-            format_string = f"bestvideo[height<={quality}]+bestaudio/best"
+            format_string = (
+                f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best"
+            )
 
         ydl_opts = {
             "format": format_string,
