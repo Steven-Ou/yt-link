@@ -10,6 +10,7 @@ import zipfile
 import tempfile
 import subprocess
 import codecs
+import time
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import yt_dlp
@@ -55,6 +56,32 @@ CORS(app)
 jobs: Dict[str, Job] = {}
 APP_TEMP_DIR = os.path.join(tempfile.gettempdir(), "yt-link")
 os.makedirs(APP_TEMP_DIR, exist_ok=True)
+
+
+# --- Startup Cleanup ---
+def cleanup_old_job_dirs():
+    """
+    Removes temporary job directories older than 24 hours on startup.
+    This prevents orphaned files from force-quits from accumulating.
+    """
+    now = time.time()
+    for dirname in os.listdir(APP_TEMP_DIR):
+        dirpath = os.path.join(APP_TEMP_DIR, dirname)
+        if os.path.isdir(dirpath):
+            try:
+                # Check if directory name is a valid UUID to be safer
+                uuid.UUID(dirname, version=4)
+                dir_age = now - os.path.getmtime(dirpath)
+                if dir_age > 86400:  # 24 hours in seconds
+                    print(f"Cleaning up old temp directory: {dirpath}")
+                    shutil.rmtree(dirpath, ignore_errors=True)
+            except (ValueError, OSError):
+                # Not a valid job folder or error during removal, skip
+                continue
+
+
+cleanup_old_job_dirs()
+
 
 # --- Flask Routes ---
 
@@ -109,7 +136,7 @@ def get_formats_endpoint():
                         note = f"{note} (~{filesize_mb:.1f} MB)"
 
                     if f.get("acodec") == "none":
-                        note = f"{note} (video/shorts)"
+                        note = f"{note} (video-only)"
                     else:
                         note = f"{note} (video+audio)"
 
@@ -149,6 +176,13 @@ def start_job_endpoint():
 
     ydl_opts: Dict[str, Any]
 
+    # Use the video ID in the filename template for reliable matching later
+    output_template = os.path.join(APP_TEMP_DIR, job_id, "%(id)s.%(ext)s")
+    if job_type in ["playlistZip", "combineMp3"]:
+        output_template = os.path.join(
+            APP_TEMP_DIR, job_id, "%(playlist_index)s-%(id)s.%(ext)s"
+        )
+
     if job_type == "singleVideo":
         quality = data.get("quality", "best")
         format_string = (
@@ -158,25 +192,23 @@ def start_job_endpoint():
         )
         ydl_opts = {
             "format": format_string,
-            "outtmpl": os.path.join(APP_TEMP_DIR, job_id, "%(id)s.%(ext)s"),
+            "outtmpl": output_template,
             "noplaylist": True,
         }
 
     elif job_type == "singleMp3":
         ydl_opts = {
             "format": "bestaudio[ext=m4a]/bestaudio",
-            "outtmpl": os.path.join(APP_TEMP_DIR, job_id, "%(id)s.%(ext)s"),
+            "outtmpl": output_template,
             "noplaylist": True,
         }
 
     else:  # Handles playlistZip and combineMp3
         ydl_opts = {
             "format": "bestaudio[ext=m4a]/bestaudio",
-            "outtmpl": os.path.join(
-                APP_TEMP_DIR, job_id, "%(playlist_index)05d-%(id)s.%(ext)s"
-            ),
+            "outtmpl": output_template,
             "noplaylist": False,
-            "ignoreerrors": True,
+            "ignoreerrors": True,  # Keep this to skip unavailable videos
         }
 
     ydl_opts.update(
@@ -216,7 +248,7 @@ def get_job_status():
 
 @app.route("/download/<job_id>", methods=["GET"])
 def download_file_route(job_id: str):
-    print(f"Download request received for job_id: {job_id}")  # Basic logging
+    print(f"Download request received for job_id: {job_id}")
     job = jobs.get(job_id)
 
     if not job:
@@ -243,6 +275,7 @@ def download_file_route(job_id: str):
             with open(file_path, "rb") as f:
                 yield from f
         finally:
+            # Cleanup is now primarily handled by the thread, but this is a good fallback.
             if temp_dir and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
             jobs.pop(job_id, None)
@@ -274,6 +307,7 @@ def download_thread(url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: s
             if not info_dict:
                 raise DownloadError("Failed to extract video information.")
 
+            # Attach job_id to each entry for the progress hook
             entries = info_dict.get("entries")
             if isinstance(entries, list):
                 valid_entries = [entry for entry in entries if isinstance(entry, dict)]
@@ -296,6 +330,8 @@ def download_thread(url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: s
             file=sys.stderr,
             flush=True,
         )
+    # The 'finally' block is NOT ideal here for cleanup because a successful download
+    # needs the files to stick around. Cleanup now happens on startup and after download.
 
 
 def manual_post_processing(job_id: str, job_type: str):
@@ -306,8 +342,7 @@ def manual_post_processing(job_id: str, job_type: str):
         job.status, job.error = "failed", "FFMPEG executable not found"
         raise FileNotFoundError(job.error)
 
-    # This correctly handles cases where the best audio is in an MP4, WEBM, or M4A container.
-    ignore_extensions = (".mp3", ".zip", ".txt", ".part")
+    ignore_extensions = (".mp3", ".zip", ".txt", ".part", ".mp4")
     downloaded_files = [
         os.path.join(job.temp_dir, f)
         for f in os.listdir(job.temp_dir)
@@ -316,24 +351,24 @@ def manual_post_processing(job_id: str, job_type: str):
 
     if not downloaded_files:
         job.status = "failed"
-        job.error = "No media files found after download. The video may be protected or in an unsupported format."
-        # Add logging to see what files ARE in the directory for easier debugging
+        job.error = "No media files found after download. The video may be protected, private, or in an unsupported format."
         files_in_dir = os.listdir(job.temp_dir)
         print(
             f"--- [Job {job_id}] ERROR: No media files found. Contents of temp dir: {files_in_dir}",
             file=sys.stderr,
             flush=True,
         )
-        return  # Gracefully set status to failed instead of crashing the backend
+        return
 
-    # The rest of the function handles processing these files
     if job_type == "singleVideo":
         video_title = sanitize_filename(job.info.get("title", "video"))
         job.file_name = f"{video_title}.mp4"
         job.file_path = os.path.join(job.temp_dir, job.file_name)
 
+        # Downloaded files may be separate video and audio streams
         if len(downloaded_files) > 1:
             job.message = "Merging video and audio streams..."
+            # Simple assumption: largest is video, smallest is audio
             video_stream = max(downloaded_files, key=os.path.getsize)
             audio_stream = min(downloaded_files, key=os.path.getsize)
             command = [
@@ -349,7 +384,7 @@ def manual_post_processing(job_id: str, job_type: str):
                 "-y",
                 job.file_path,
             ]
-        else:
+        else:  # Or a single combined file
             job.message = "Processing video..."
             command = [
                 ffmpeg_exe,
@@ -368,27 +403,45 @@ def manual_post_processing(job_id: str, job_type: str):
             job.status, job.error = "failed", f"FFMPEG Error: {process.stderr}"
             raise Exception(job.error)
 
-        job.status, job.message = "completed", "Video processing complete!"
-        return
+    else:  # Handles all audio jobs: singleMp3, playlistZip, combineMp3
+        process_audio_job(job, job_type, downloaded_files)
 
-    # This part handles all audio-based jobs (singleMp3, playlistZip, combineMp3)
+    job.status, job.message = "completed", "Processing complete!"
+
+
+def process_audio_job(job: Job, job_type: str, downloaded_files: List[str]):
+    """Refactored logic for handling audio processing."""
+    assert job.temp_dir and job.info, "Job temp_dir or info is not set"
+
     playlist_title = sanitize_filename(job.info.get("title", "playlist"))
 
-    def sort_key(file_path: str) -> int:
-        try:
-            return int(os.path.basename(file_path).split("-")[0])
-        except (ValueError, IndexError):
-            return sys.maxsize
+    # Create a mapping from video ID to its metadata entry
+    entries_list = job.info.get("entries", [job.info])
+    entries_map = {entry.get("id"): entry for entry in entries_list if entry}
 
-    downloaded_files.sort(key=sort_key)
+    mp3_files = []
+    total_files = len(downloaded_files)
 
-    mp3_files: List[str] = []
-    entries: List[Dict[str, Any]] = job.info.get("entries", [job.info])
     for i, file_path in enumerate(downloaded_files):
-        job.message = f"Converting file {i + 1}/{len(downloaded_files)} to MP3..."
-        entry_info = entries[i] if i < len(entries) else {}
+        job.message = f"Converting file {i + 1}/{total_files} to MP3..."
+
+        # Extract video ID from filename (e.g., '1-dQw4w9WgXcQ.m4a' -> 'dQw4w9WgXcQ')
+        base_name = os.path.basename(file_path)
+        video_id = os.path.splitext(base_name.split("-", 1)[-1])[0]
+
+        entry_info = entries_map.get(video_id, {})
         video_title = sanitize_filename(entry_info.get("title", f"track_{i + 1}"))
-        output_filepath = os.path.join(job.temp_dir, f"{i + 1:03d} - {video_title}.mp3")
+
+        # Using playlist index from filename for consistent ordering
+        playlist_index_str = base_name.split("-", 1)[0]
+        prefix = (
+            f"{int(playlist_index_str):03d}"
+            if playlist_index_str.isdigit()
+            else f"{i+1:03d}"
+        )
+
+        output_filename = f"{prefix} - {video_title}.mp3"
+        output_filepath = os.path.join(job.temp_dir, output_filename)
 
         command = [
             ffmpeg_exe,
@@ -412,98 +465,13 @@ def manual_post_processing(job_id: str, job_type: str):
         )
         mp3_files.append(output_filepath)
 
-    if job_type == "singleMp3":
-        job.file_name = f"{sanitize_filename(job.info.get('title', 'track'))}.mp3"
-        job.file_path = os.path.join(job.temp_dir, job.file_.name)
-        if mp3_files:
-            os.rename(mp3_files[0], job.file_path)
-
-    elif job_type == "playlistZip":
-        job.message = "Creating ZIP archive..."
-        job.file_name = f"{playlist_title}.zip"
-        job.file_path = os.path.join(job.temp_dir, job.file_name)
-        with zipfile.ZipFile(job.file_path, "w") as zipf:
-            for mp3_file in mp3_files:
-                zipf.write(mp3_file, os.path.basename(mp3_file))
-
-    elif job_type == "combineMp3":
-        job.message = "Combining all tracks..."
-        job.file_name = f"{playlist_title} (Combined).mp3"
-        job.file_path = os.path.join(job.temp_dir, job.file_name)
-        concat_list_path = os.path.join(job.temp_dir, "concat_list.txt")
-
-        with open(concat_list_path, "w", encoding="utf-8") as f:
-            for mp3_file in mp3_files:
-                escaped_filename = mp3_file.replace("'", "'\\''")
-                f.write(f"file '{escaped_filename}'\n")
-
-        combine_command = [
-            ffmpeg_exe,
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            concat_list_path,
-            "-c",
-            "copy",
-            "-y",
-            job.file_path,
-        ]
-        subprocess.run(
-            combine_command,
-            capture_output=True,
-            text=True,
-            check=True,
-            encoding="utf-8",
-            errors="ignore",
-        )
-
-    job.status, job.message = "completed", "Processing complete!"
-
-    playlist_title = sanitize_filename(job.info.get("title", "playlist"))
-
-    def sort_key(file_path: str) -> int:
-        try:
-            return int(os.path.basename(file_path).split("-")[0])
-        except (ValueError, IndexError):
-            return sys.maxsize
-
-    downloaded_files.sort(key=sort_key)
-
-    mp3_files: List[str] = []
-    entries: List[Dict[str, Any]] = job.info.get("entries", [job.info])
-    for i, file_path in enumerate(downloaded_files):
-        job.message = f"Converting file {i + 1}/{len(entries)} to MP3..."
-        entry_info = entries[i] if i < len(entries) else {}
-        video_title = sanitize_filename(entry_info.get("title", f"track_{i + 1}"))
-        output_filepath = os.path.join(job.temp_dir, f"{i + 1:03d} - {video_title}.mp3")
-
-        command = [
-            ffmpeg_exe,
-            "-i",
-            file_path,
-            "-vn",
-            "-ab",
-            "192k",
-            "-ar",
-            "44100",
-            "-y",
-            output_filepath,
-        ]
-        subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=True,
-            encoding="utf-8",
-            errors="ignore",
-        )
-        mp3_files.append(output_filepath)
+    if not mp3_files:
+        raise Exception("MP3 conversion failed for all files.")
 
     if job_type == "singleMp3":
         job.file_name = f"{sanitize_filename(job.info.get('title', 'track'))}.mp3"
         job.file_path = os.path.join(job.temp_dir, job.file_name)
+        # BUG FIX: Corrected job.file_.name to job.file_name
         os.rename(mp3_files[0], job.file_path)
 
     elif job_type == "playlistZip":
@@ -520,8 +488,12 @@ def manual_post_processing(job_id: str, job_type: str):
         job.file_path = os.path.join(job.temp_dir, job.file_name)
         concat_list_path = os.path.join(job.temp_dir, "concat_list.txt")
 
+        # Sort mp3 files by the numeric prefix to ensure correct order
+        mp3_files.sort()
+
         with open(concat_list_path, "w", encoding="utf-8") as f:
             for mp3_file in mp3_files:
+                # FFmpeg concat demuxer requires special escaping for characters like single quotes
                 escaped_filename = mp3_file.replace("'", "'\\''")
                 f.write(f"file '{escaped_filename}'\n")
 
@@ -538,16 +510,16 @@ def manual_post_processing(job_id: str, job_type: str):
             "-y",
             job.file_path,
         ]
-        subprocess.run(
+        process = subprocess.run(
             combine_command,
             capture_output=True,
             text=True,
-            check=True,
             encoding="utf-8",
             errors="ignore",
         )
-
-    job.status, job.message = "completed", "Processing complete!"
+        if process.returncode != 0:
+            job.status, job.error = "failed", f"FFMPEG Concat Error: {process.stderr}"
+            raise Exception(job.error)
 
 
 def progress_hook(d: Dict[str, Any]):
@@ -561,6 +533,10 @@ def progress_hook(d: Dict[str, Any]):
             job.status = "downloading"
             if d.get("total_bytes"):
                 job.progress = d.get("downloaded_bytes", 0) / d["total_bytes"] * 100
+            elif d.get("total_bytes_estimate"):
+                job.progress = (
+                    d.get("downloaded_bytes", 0) / d["total_bytes_estimate"] * 100
+                )
 
             job.message = f"Downloading: {d.get('_percent_str', 'N/A')} at {d.get('_speed_str', 'N/A')} (ETA: {d.get('_eta_str', 'N/A')})"
 
