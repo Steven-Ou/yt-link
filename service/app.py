@@ -146,37 +146,48 @@ def start_job_endpoint():
     job_id = str(uuid.uuid4())
     jobs[job_id] = Job(job_id=job_id, url=data["url"], job_type=data["jobType"])
 
+    job_type = data["jobType"]
     ydl_opts: Dict[str, Any]
-    if data["jobType"] == "singleVideo":
+
+    # --- REFACTORED OPTIONS FOR EACH JOB TYPE ---
+
+    if job_type == "singleVideo":
         quality = data.get("quality", "best")
         format_string = (
-            f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}]"
+            f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
             if quality != "best"
-            else "best"
+            else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
         )
         ydl_opts = {
             "format": format_string,
             "outtmpl": os.path.join(APP_TEMP_DIR, job_id, "%(id)s.%(ext)s"),
             "noplaylist": True,
         }
-    else:
+    
+    elif job_type == "singleMp3":
         ydl_opts = {
-            "format": "bestaudio/best",
+            "format": "bestaudio[ext=m4a]/bestaudio/best",
+            "outtmpl": os.path.join(APP_TEMP_DIR, job_id, "%(id)s.%(ext)s"),
+            "noplaylist": True,
+        }
+
+    else:  # Handles playlistZip and combineMp3
+        ydl_opts = {
+            "format": "bestaudio[ext=m4a]/bestaudio/best",
             "outtmpl": os.path.join(
                 APP_TEMP_DIR, job_id, "%(playlist_index)05d-%(id)s.%(ext)s"
             ),
-            "ignoreerrors": data["jobType"] != "singleMp3",
-            "noplaylist": data["jobType"] == "singleMp3",
+            "noplaylist": False,
+            "ignoreerrors": True,
         }
 
-    ydl_opts.update(
-        {
-            "progress_hooks": [progress_hook],
-            "nocheckcertificate": True,
-            "quiet": True,
-            "no_warnings": True,
-        }
-    )
+    # Common options for all jobs
+    ydl_opts.update({
+        "progress_hooks": [lambda d: progress_hook(d, job_id)],
+        "nocheckcertificate": True,
+        "quiet": True,
+        "no_warnings": True,
+    })
 
     if data.get("cookies"):
         cookie_file = os.path.join(APP_TEMP_DIR, f"cookies_{job_id}.txt")
@@ -185,7 +196,7 @@ def start_job_endpoint():
         ydl_opts["cookiefile"] = cookie_file
 
     thread = threading.Thread(
-        target=download_thread, args=(data["url"], ydl_opts, job_id, data["jobType"])
+        target=download_thread, args=(data["url"], ydl_opts, job_id)
     )
     thread.start()
     return jsonify({"jobId": job_id})
