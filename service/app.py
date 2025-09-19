@@ -414,7 +414,7 @@ def manual_post_processing(job_id: str, job_type: str):
 
     if job_type == "singleMp3":
         job.file_name = f"{sanitize_filename(job.info.get('title', 'track'))}.mp3"
-        job.file_path = os.path.join(job.temp_dir, job.file_.name)
+        job.file_path = os.path.join(job.temp_dir, job.file_name)
         if mp3_files:
             os.rename(mp3_files[0], job.file_path)
 
