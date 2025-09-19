@@ -619,12 +619,10 @@ export default function Home() {
               value={playlistUrl}
               onChange={(e) => setPlaylistUrl(e.target.value)}
               style={{ marginBottom: 16 }}
-              disabled={anyJobLoading}
             />
             <CookieInputField
               value={cookieData}
               onChange={(e) => setCookieData(e.target.value)}
-              disabled={anyJobLoading}
             />
             <Button
               variant="contained"
