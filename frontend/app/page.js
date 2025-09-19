@@ -695,12 +695,10 @@ export default function Home() {
               value={videoUrl}
               onChange={handleVideoUrlChange}
               style={{ marginBottom: 16 }}
-              disabled={anyJobLoading}
             />
             <CookieInputField
               value={cookieData}
               onChange={(e) => setCookieData(e.target.value)}
-              disabled={anyJobLoading}
             />
             {isLoadingFormats && <CircularProgress size={24} sx={{ mb: 2 }} />}
             {videoFormats.length > 0 && (
