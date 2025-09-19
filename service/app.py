@@ -174,7 +174,7 @@ def manual_post_processing(job_id: str, job_type: str):
 
         command = []
         if len(downloaded_files) == 1:
-            job.message = "Re-encoding video for compatibility..."
+            job.message = "Re-encoding video for compatibility (this may take a while)..."
             print(f"--- [Job {job_id}] Single file found. Re-encoding...", flush=True)
             command = [
                 FFMPEG_EXE,
