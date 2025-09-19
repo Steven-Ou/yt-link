@@ -58,7 +58,6 @@ os.makedirs(APP_TEMP_DIR, exist_ok=True)
 
 # --- Flask Routes ---
 
-
 @app.route("/get-formats", methods=["POST"])
 def get_formats_endpoint():
     data = request.get_json()
@@ -75,35 +74,65 @@ def get_formats_endpoint():
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            formats: List[Dict[str, Any]] = []
+
+            unique_formats = {}
             if info and "formats" in info:
-                format_list = info.get("formats", [])
-                if format_list:
-                    for f in format_list:
-                        if f.get("vcodec") != "none" and f.get("acodec") != "none":
-                            formats.append(
-                                {
-                                    "format_id": f.get("format_id"),
-                                    "ext": f.get("ext"),
-                                    "resolution": f.get("resolution"),
-                                    "height": f.get("height"),
-                                    "note": f.get("format_note"),
-                                }
-                            )
-            # Filter for unique formats by height, keeping the best quality for each resolution
-            unique_formats = {
-                f["height"]: f
-                for f in sorted(formats, key=lambda x: x.get("height", 0), reverse=True)
-                if f.get("height")
-            }.values()
-            return jsonify(list(unique_formats))
+                # Sort formats by height and preference (mp4 is generally preferred)
+                sorted_formats = sorted(
+                    info.get("formats", []),
+                    key=lambda f: (
+                        f.get("height", 0),
+                        1 if f.get("ext") == "mp4" else 0,
+                    ),
+                    reverse=True,
+                )
+
+                # Find high-quality video-only streams
+                for f in sorted_formats:
+                    if f.get("vcodec") != "none" and f.get("acodec") == "none":
+                        height = f.get("height")
+                        if height and height not in unique_formats:
+                            filesize_mb = f.get("filesize") or f.get("filesize_approx")
+                            note = f.get("ext")
+                            if filesize_mb:
+                                note = f"{f.get('ext')} (~{filesize_mb // 1024 // 1024} MB)"
+
+                            unique_formats[height] = {
+                                "format_id": f.get("format_id"),
+                                "ext": f.get("ext"),
+                                "resolution": f"{height}p",
+                                "height": height,
+                                "note": note,
+                            }
+
+            # Also include any available combined streams (video+audio)
+            for f in info.get("formats", []):
+                if f.get("vcodec") != "none" and f.get("acodec") != "none":
+                    height = f.get("height")
+                    if height and height not in unique_formats:
+                        filesize_mb = f.get("filesize") or f.get("filesize_approx")
+                        note = f"{f.get('ext')} (video+audio)"
+                        if filesize_mb:
+                            note = f"{note} (~{filesize_mb // 1024 // 1024} MB)"
+
+                        unique_formats[height] = {
+                            "format_id": f.get("format_id"),
+                            "ext": f.get("ext"),
+                            "resolution": f"{height}p",
+                            "height": height,
+                            "note": note,
+                        }
+
+            # Sort the final list from highest to lowest resolution
+            final_formats = sorted(
+                unique_formats.values(), key=lambda x: x["height"], reverse=True
+            )
+            return jsonify(final_formats)
 
     except yt_dlp.utils.DownloadError as e:
-        # This is the key change: we catch the specific error from yt-dlp
         print(f"DownloadError on get-formats: {e}")
         return jsonify({"error": "Video not found or unavailable."}), 404
     except Exception as e:
-        # Generic catch for any other unexpected errors
         print(f"Generic error on get-formats: {e}")
         return jsonify({"error": str(e)}), 500
 
