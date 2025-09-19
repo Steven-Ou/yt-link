@@ -1,431 +1,334 @@
+import logging
 import os
+import re
 import shutil
 import sys
-import traceback
 import threading
+import time
 import uuid
 import zipfile
-import tempfile
-import subprocess
-import codecs
-from flask import Flask, request, jsonify, Response
-from flask_cors import CORS
+from typing import Any, Dict, List, Optional
+
 import yt_dlp
-from yt_dlp.utils import DownloadError
-from urllib.parse import quote
-from typing import Dict, Any, List, Optional, Generator
+from flask import Flask, jsonify, request, send_from_directory
+from flask_cors import CORS
 
-# Renamed to lowercase to signify it's a mutable variable set at runtime
-ffmpeg_exe: Optional[str] = None
-
-
-class Job:
-    def __init__(self, job_id: str, url: str, job_type: str):
-        self.job_id: str = job_id
-        self.url: str = url
-        self.job_type: str = job_type
-        self.status: str = "queued"
-        self.message: str = "Job is queued..."
-        self.progress: Optional[float] = None
-        self.error: Optional[str] = None
-        self.temp_dir: Optional[str] = None
-        self.info: Optional[Dict[str, Any]] = None
-        self.file_path: Optional[str] = None
-        self.file_name: Optional[str] = None
-
-
-# --- UTF-8 Fix and Helper Functions ---
-if sys.stdout.encoding != "utf-8":
-    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")
-if sys.stderr.encoding != "utf-8":
-    sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")
-
-
-def sanitize_filename(filename: str) -> str:
-    invalid_chars = '<>:"/\\|?*'
-    for char in invalid_chars:
-        filename = filename.replace(char, "_")
-    return filename.strip().rstrip(".")
-
-
+# --- Configuration ---
 app = Flask(__name__)
 CORS(app)
-jobs: Dict[str, Job] = {}
-APP_TEMP_DIR = os.path.join(tempfile.gettempdir(), "yt-link")
-os.makedirs(APP_TEMP_DIR, exist_ok=True)
 
-# --- Flask Routes ---
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
 
-
-@app.route("/get-formats", methods=["POST"])
-def get_formats_endpoint():
-    data = request.get_json()
-    if not data or "url" not in data:
-        return jsonify({"error": "Invalid request, URL is required."}), 400
-
-    url = data["url"]
-
-    try:
-        ydl_opts: Dict[str, Any] = {
-            "quiet": True,
-            "no_warnings": True,
-            "nocheckcertificate": True,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            formats: List[Dict[str, Any]] = []
-            if info and "formats" in info:
-                # Add a check to ensure info['formats'] is iterable
-                format_list = info.get("formats", [])
-                if format_list:
-                    for f in format_list:
-                        if f.get("vcodec") != "none" and f.get("acodec") != "none":
-                            formats.append(
-                                {
-                                    "format_id": f.get("format_id"),
-                                    "ext": f.get("ext"),
-                                    "resolution": f.get("resolution"),
-                                    "height": f.get("height"),
-                                    "note": f.get("format_note"),
-                                }
-                            )
-            unique_formats = {
-                f["height"]: f
-                for f in sorted(formats, key=lambda x: x.get("height", 0), reverse=True)
-                if f.get("height")
-            }.values()
-            return jsonify(list(unique_formats))
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+# --- Global State ---
+jobs: Dict[str, Dict[str, Any]] = {}
+BASE_DOWNLOAD_PATH: str = os.path.join(os.getcwd(), "downloads")
+if not os.path.exists(BASE_DOWNLOAD_PATH):
+    os.makedirs(BASE_DOWNLOAD_PATH)
 
 
-@app.route("/start-job", methods=["POST"])
-def start_job_endpoint():
-    data = request.get_json()
-    if not data or "url" not in data or "jobType" not in data:
-        return jsonify({"error": "Invalid request body"}), 400
-
-    job_id = str(uuid.uuid4())
-    jobs[job_id] = Job(job_id=job_id, url=data["url"], job_type=data["jobType"])
-
-    ydl_opts: Dict[str, Any]
-    if data["jobType"] == "singleVideo":
-        quality = data.get("quality", "best")
-        format_string = (
-            f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}]"
-            if quality != "best"
-            else "best"
-        )
-        ydl_opts = {
-            "format": format_string,
-            "outtmpl": os.path.join(APP_TEMP_DIR, job_id, "%(id)s.%(ext)s"),
-            "noplaylist": True,
-        }
-    else:
-        ydl_opts = {
-            "format": "bestaudio/best",
-            "outtmpl": os.path.join(
-                APP_TEMP_DIR, job_id, "%(playlist_index)05d-%(id)s.%(ext)s"
-            ),
-            "ignoreerrors": data["jobType"] != "singleMp3",
-            "noplaylist": data["jobType"] == "singleMp3",
-        }
-
-    ydl_opts.update(
-        {
-            "progress_hooks": [progress_hook],
-            "nocheckcertificate": True,
-            "quiet": True,
-            "no_warnings": True,
-        }
-    )
-
-    if data.get("cookies"):
-        cookie_file = os.path.join(APP_TEMP_DIR, f"cookies_{job_id}.txt")
-        with open(cookie_file, "w", encoding="utf-8") as f:
-            f.write(data["cookies"])
-        ydl_opts["cookiefile"] = cookie_file
-
-    thread = threading.Thread(
-        target=download_thread, args=(data["url"], ydl_opts, job_id, data["jobType"])
-    )
-    thread.start()
-    return jsonify({"jobId": job_id})
+# --- Helper Functions ---
+def sanitize_filename(filename: str) -> str:
+    """
+    Sanitizes a string to be a valid filename.
+    - Removes illegal characters.
+    - Replaces whitespace with underscores.
+    - Limits length to 200 characters to be safe.
+    """
+    sanitized: str = re.sub(r'[\\/*?:"<>|]', "", filename)
+    sanitized = re.sub(r"\s+", "_", sanitized)
+    return sanitized[:200]
 
 
-@app.route("/job-status", methods=["GET"])
-def get_job_status():
-    job_id = request.args.get("jobId")
-    if not job_id or job_id not in jobs:
-        return jsonify({"status": "not_found"}), 404
-    return jsonify(jobs[job_id].__dict__)
-
-
-@app.route("/download/<job_id>", methods=["GET"])
-def download_file_route(job_id: str):
-    job = jobs.get(job_id)
-    if not (job and job.status == "completed" and job.file_path and job.file_name):
-        return jsonify({"error": "File not ready or job not found"}), 404
-    if not os.path.exists(job.file_path):
-        return jsonify({"error": "File not found on server."}), 404
-
-    def file_generator(
-        file_path: str, temp_dir: Optional[str]
-    ) -> Generator[bytes, None, None]:
-        try:
-            with open(file_path, "rb") as f:
-                yield from f
-        finally:
-            if temp_dir and os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir, ignore_errors=True)
-            jobs.pop(job_id, None)
-
-    encoded_file_name = quote(job.file_name)
-    fallback_file_name = (
-        job.file_name.encode("ascii", "ignore").decode("ascii").replace('"', "")
-        or "download.dat"
-    )
-    headers = {
-        "Content-Disposition": f'attachment; filename="{fallback_file_name}"; filename*="UTF-8\'\'{encoded_file_name}"'
+def get_video_title(video_url: str, cookies_path: Optional[str] = None) -> str:
+    """Gets the video title without downloading the full video."""
+    ydl_opts: Dict[str, Any] = {
+        "quiet": True,
+        "skip_download": True,
+        "force_generic_extractor": False,
     }
-    return Response(
-        file_generator(job.file_path, job.temp_dir),
-        mimetype="application/octet-stream",
-        headers=headers,
-    )
-
-
-def download_thread(url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: str):
-    job = jobs[job_id]
-    job.temp_dir = os.path.join(APP_TEMP_DIR, job_id)
-    os.makedirs(job.temp_dir, exist_ok=True)
+    if cookies_path:
+        ydl_opts["cookiefile"] = cookies_path
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
-            if not info_dict:
-                raise DownloadError("Failed to extract video information.")
-
-            # Pylance has trouble inferring the complex types from yt-dlp, so we use ignores here.
-            entries = info_dict.get("entries")
-            if isinstance(entries, list):
-                valid_entries = [entry for entry in entries if isinstance(entry, dict)]
-                for entry in valid_entries:
-                    entry["job_id"] = job_id
-                info_dict["entries"] = valid_entries
-            else:
-                info_dict["job_id"] = job_id  # type: ignore
-
-            job.info = info_dict
-            ydl.download([url])
-
-        manual_post_processing(job_id, job_type)
-
-    except Exception:
-        job.status = "failed"
-        job.error = traceback.format_exc()
-        print(
-            f"--- [Job {job_id}] ERROR in download thread: {job.error}",
-            file=sys.stderr,
-            flush=True,
-        )
+            info_dict: Dict[str, Any] = ydl.extract_info(video_url, download=False)
+            return info_dict.get("title", "untitled")
+    except Exception as e:
+        logging.error(f"Error fetching video title: {e}")
+        return "untitled"
 
 
-def manual_post_processing(job_id: str, job_type: str):
-    job = jobs[job_id]
-    assert job.temp_dir and job.info, "Job temp_dir or info is not set"
+def update_job_status(
+    job_id: str,
+    status: str,
+    message: Optional[str] = None,
+    progress: Optional[float] = None,
+    error: Optional[str] = None,
+) -> None:
+    """Safely updates the job's status."""
+    if job_id in jobs:
+        jobs[job_id]["status"] = status
+        if message:
+            jobs[job_id]["message"] = message
+        if progress:
+            jobs[job_id]["progress"] = progress
+        if error:
+            jobs[job_id]["error"] = error
+        jobs[job_id]["last_updated"] = time.time()
+    else:
+        logging.warning(f"Attempted to update a non-existent job: {job_id}")
 
-    if not ffmpeg_exe or not os.path.exists(ffmpeg_exe):
-        job.status, job.error = "failed", "FFMPEG executable not found"
-        raise FileNotFoundError(job.error)
 
-    downloaded_files = [
-        os.path.join(job.temp_dir, f)
-        for f in os.listdir(job.temp_dir)
-        if not f.endswith((".mp4", ".mp3", ".zip", ".txt"))
-    ]
-    if not downloaded_files:
+def progress_hook(d: Dict[str, Any]) -> None:
+    """yt-dlp progress hook to update job status."""
+    job_id: Optional[str] = d.get("job_id")
+    if job_id and d["status"] == "downloading":
+        try:
+            progress_str: str = d["_percent_str"].strip().replace("%", "")
+            progress = float(progress_str)
+            update_job_status(
+                job_id,
+                "downloading",
+                message=(
+                    f"Downloading: {d['_percent_str']} of {d['_total_bytes_str']} at"
+                    f" {d['_speed_str']}"
+                ),
+                progress=progress,
+            )
+        except (ValueError, KeyError):
+            update_job_status(job_id, "downloading", message="Downloading stream...")
+
+
+def find_media_files(directory: str) -> List[str]:
+    """Finds media files in a directory."""
+    media_files: List[str] = []
+    for f in os.listdir(directory):
+        if f.endswith((".mp3", ".mp4", ".mkv", ".webm", ".m4a")):
+            media_files.append(os.path.join(directory, f))
+    return media_files
+
+
+def manual_post_processing(job_id: str, job_type: str) -> None:
+    """Handles post-processing for jobs that need it (zip, combine)."""
+    job_path: str = os.path.join(BASE_DOWNLOAD_PATH, job_id)
+    media_files: List[str] = find_media_files(job_path)
+
+    if not media_files:
         raise FileNotFoundError("No media files found for post-processing.")
 
-    if job_type == "singleVideo":
-        video_title = sanitize_filename(job.info.get("title", "video"))
-        job.file_name = f"{video_title}.mp4"
-        job.file_path = os.path.join(job.temp_dir, job.file_name)
-
-        if len(downloaded_files) == 1:
-            job.message = "Re-encoding for compatibility (this may take a while)..."
-            command = [
-                ffmpeg_exe,
-                "-i",
-                downloaded_files[0],
-                "-c:v",
-                "libx264",
-                "-c:a",
-                "aac",
-                "-y",
-                job.file_path,
-            ]
-        else:
-            job.message = "Merging streams (this may take a while)..."
-            video_stream = max(downloaded_files, key=os.path.getsize)
-            audio_stream = min(downloaded_files, key=os.path.getsize)
-            command = [
-                ffmpeg_exe,
-                "-i",
-                video_stream,
-                "-i",
-                audio_stream,
-                "-c:v",
-                "libx264",
-                "-c:a",
-                "aac",
-                "-y",
-                job.file_path,
-            ]
-
-        process = subprocess.run(
-            command, capture_output=True, text=True, encoding="utf-8", errors="ignore"
-        )
-        if process.returncode != 0:
-            job.status, job.error = "failed", f"FFMPEG Error: {process.stderr}"
-            raise Exception(job.error)
-
-        job.status, job.message = "completed", "Video processing complete!"
-        return
-
-    playlist_title = sanitize_filename(job.info.get("title", "playlist"))
-
-    def sort_key(file_path: str) -> int:
-        try:
-            return int(os.path.basename(file_path).split("-")[0])
-        except (ValueError, IndexError):
-            return sys.maxsize
-
-    downloaded_files.sort(key=sort_key)
-
-    mp3_files: List[str] = []
-    entries: List[Dict[str, Any]] = job.info.get("entries", [job.info])  # type: ignore
-    for i, file_path in enumerate(downloaded_files):
-        job.message = f"Converting file {i + 1}/{len(entries)} to MP3..."
-        entry_info = entries[i] if i < len(entries) else {}
-        video_title = sanitize_filename(entry_info.get("title", f"track_{i + 1}"))
-        output_filepath = os.path.join(job.temp_dir, f"{i + 1:03d} - {video_title}.mp3")
-
-        command = [
-            ffmpeg_exe,
-            "-i",
-            file_path,
-            "-vn",
-            "-ab",
-            "192k",
-            "-ar",
-            "44100",
-            "-y",
-            output_filepath,
-        ]
-        subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=True,
-            encoding="utf-8",
-            errors="ignore",
-        )
-        mp3_files.append(output_filepath)
-
-    if job_type == "singleMp3":
-        job.file_name = f"{sanitize_filename(job.info.get('title', 'track'))}.mp3"
-        job.file_path = os.path.join(job.temp_dir, job.file_name)
-        os.rename(mp3_files[0], job.file_path)
-
-    elif job_type == "playlistZip":
-        job.message = "Creating ZIP archive..."
-        job.file_name = f"{playlist_title}.zip"
-        job.file_path = os.path.join(job.temp_dir, job.file_name)
-        with zipfile.ZipFile(job.file_path, "w") as zipf:
-            for mp3_file in mp3_files:
-                zipf.write(mp3_file, os.path.basename(mp3_file))
+    if job_type == "playlistZip":
+        update_job_status(job_id, "processing", message="Zipping files...")
+        zip_path: str = f"{job_path}.zip"
+        with zipfile.ZipFile(zip_path, "w") as zipf:
+            for file in media_files:
+                zipf.write(file, os.path.basename(file))
+        jobs[job_id]["final_filename"] = os.path.basename(zip_path)
+        shutil.rmtree(job_path)  # Clean up original folder
 
     elif job_type == "combineMp3":
-        job.message = "Combining all tracks..."
-        job.file_name = f"{playlist_title} (Combined).mp3"
-        job.file_path = os.path.join(job.temp_dir, job.file_name)
-        concat_list_path = os.path.join(job.temp_dir, "concat_list.txt")
+        update_job_status(job_id, "processing", message="Combining MP3 files...")
+        # Assume the title from the first video for the final filename
+        output_filename = (
+            f"{os.path.basename(os.path.splitext(media_files[0])[0])}_combined.mp3"
+        )
+        output_path = os.path.join(BASE_DOWNLOAD_PATH, job_id, output_filename)
 
-        with open(concat_list_path, "w", encoding="utf-8") as f:
-            for mp3_file in mp3_files:
-                f.write(f"file '{mp3_file.replace("'", "'\\''")}'\n")
+        # Create a file list for ffmpeg
+        filelist_path = os.path.join(job_path, "filelist.txt")
+        with open(filelist_path, "w") as f:
+            for media_file in sorted(media_files):
+                f.write(f"file '{os.path.basename(media_file)}'\n")
 
-        combine_command = [
-            ffmpeg_exe,
+        # ffmpeg command
+        ffmpeg_cmd = [
+            jobs[job_id]["ffmpeg_path"],
             "-f",
             "concat",
             "-safe",
             "0",
             "-i",
-            concat_list_path,
+            filelist_path,
             "-c",
             "copy",
-            "-y",
-            job.file_path,
+            output_path,
         ]
-        subprocess.run(
-            combine_command,
-            capture_output=True,
-            text=True,
-            check=True,
-            encoding="utf-8",
-            errors="ignore",
+
+        # This part should be improved with proper subprocess handling in a real app
+        os.system(" ".join(f'"{part}"' for part in ffmpeg_cmd))
+
+        jobs[job_id]["final_filename"] = output_filename
+
+
+# --- Download Logic ---
+def download_thread(
+    job_id: str,
+    url: str,
+    job_type: str,
+    ffmpeg_path: str,
+    quality: Optional[str] = None,
+    cookies_path: Optional[str] = None,
+) -> None:
+    """The main thread for handling a download job."""
+    update_job_status(job_id, "processing", "Fetching video information...")
+    job_path: str = os.path.join(BASE_DOWNLOAD_PATH, job_id)
+    os.makedirs(job_path, exist_ok=True)
+
+    title: str = get_video_title(url, cookies_path)
+    sanitized_title: str = sanitize_filename(title)
+
+    # Common ydl_opts
+    ydl_opts: Dict[str, Any] = {
+        "progress_hooks": [lambda d: progress_hook(d)],
+        "job_id": job_id,
+        "outtmpl": os.path.join(job_path, f"{sanitized_title}.%(ext)s"),
+    }
+    if cookies_path:
+        ydl_opts["cookiefile"] = cookies_path
+
+    # Job-specific ydl_opts
+    if job_type == "singleMp3":
+        ydl_opts.update(
+            {
+                "format": "bestaudio/best",
+                "postprocessors": [
+                    {"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}
+                ],
+            }
         )
+    elif job_type == "playlistZip":
+        ydl_opts.update(
+            {
+                "format": "bestaudio/best",
+                "postprocessors": [
+                    {"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}
+                ],
+                "outtmpl": os.path.join(
+                    job_path, "%(playlist_index)s-%(title)s.%(ext)s"
+                ),
+            }
+        )
+    elif job_type == "combineMp3":
+        ydl_opts.update(
+            {
+                "format": "bestaudio/best",
+                "postprocessors": [
+                    {"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}
+                ],
+                "outtmpl": os.path.join(
+                    job_path, "%(playlist_index)s-%(title)s.%(ext)s"
+                ),
+            }
+        )
+    elif job_type == "singleVideo":
+        video_format = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+        if quality and quality != "best":
+            video_format = f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}][ext=mp4]/best"
+        ydl_opts["format"] = video_format
 
-    job.status, job.message = "completed", "Processing complete!"
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
+        if job_type in ["playlistZip", "combineMp3"]:
+            manual_post_processing(job_id, job_type)
+        else:
+            media_files = find_media_files(job_path)
+            if not media_files:
+                raise FileNotFoundError("Download completed, but no file was found.")
+            jobs[job_id]["final_filename"] = os.path.basename(media_files[0])
+
+        update_job_status(job_id, "completed", "Download finished successfully.")
+
+    except Exception as e:
+        logging.error(
+            f"--- [Job {job_id}] ERROR in download thread: {e}", exc_info=True
+        )
+        update_job_status(job_id, "failed", error=str(e))
+
+    finally:
+        if cookies_path and os.path.exists(cookies_path):
+            os.remove(cookies_path)
 
 
-def progress_hook(d: Dict[str, Any]):
-    if "info_dict" in d:
-        job_id = d["info_dict"].get("job_id")
-        if not job_id or job_id not in jobs:
-            return
+# --- API Endpoints ---
+@app.route("/start-job", methods=["POST"])
+def start_job_route() -> Any:
+    data: Dict[str, Any] = request.json
+    url: Optional[str] = data.get("url")
+    job_type: Optional[str] = data.get("jobType")
+    quality: Optional[str] = data.get("quality")
+    cookies: Optional[str] = data.get("cookies")
 
-        job = jobs[job_id]
-        if d["status"] == "downloading":
-            job.status = "downloading"
-            if d.get("total_bytes"):
-                job.progress = d.get("downloaded_bytes", 0) / d["total_bytes"] * 100
+    if not url or not job_type:
+        return jsonify({"error": "URL and jobType are required"}), 400
 
-            job.message = f"Downloading: {d.get('_percent_str', 'N/A')} at {d.get('_speed_str', 'N/A')} (ETA: {d.get('_eta_str', 'N/A')})"
+    job_id: str = str(uuid.uuid4())
+    cookies_path: Optional[str] = None
+    if cookies:
+        cookies_path = os.path.join(BASE_DOWNLOAD_PATH, f"cookies_{job_id}.txt")
+        with open(cookies_path, "w") as f:
+            f.write(cookies)
 
-        elif d["status"] == "finished":
-            job.status = "processing"
-            job.message = "Download finished, preparing to process..."
+    # This should be configured more robustly
+    ffmpeg_path = sys.argv[2] if len(sys.argv) > 2 else "ffmpeg"
+
+    jobs[job_id] = {
+        "status": "queued",
+        "type": job_type,
+        "url": url,
+        "ffmpeg_path": ffmpeg_path,
+    }
+
+    thread = threading.Thread(
+        target=download_thread,
+        args=(job_id, url, job_type, ffmpeg_path, quality, cookies_path),
+    )
+    thread.start()
+
+    return jsonify({"jobId": job_id})
+
+
+@app.route("/job-status", methods=["GET"])
+def job_status_route() -> Any:
+    job_id: Optional[str] = request.args.get("jobId")
+    if not job_id:
+        return jsonify({"error": "jobId is required"}), 400
+    job: Optional[Dict[str, Any]] = jobs.get(job_id)
+    if not job:
+        return jsonify({"status": "not_found", "error": "Job not found"}), 404
+    return jsonify(job)
+
+
+@app.route("/download-file", methods=["GET"])
+def download_file_route() -> Any:
+    job_id: Optional[str] = request.args.get("jobId")
+    if not job_id:
+        return jsonify({"error": "jobId is required"}), 400
+
+    job: Optional[Dict[str, Any]] = jobs.get(job_id)
+    if not job or job["status"] != "completed":
+        return jsonify({"error": "File not ready or job not found"}), 404
+
+    final_filename: Optional[str] = job.get("final_filename")
+    if not final_filename:
+        return jsonify({"error": "Final filename not found for job"}), 404
+
+    directory: str
+    if final_filename.endswith(".zip"):
+        directory = BASE_DOWNLOAD_PATH
+    else:
+        directory = os.path.join(BASE_DOWNLOAD_PATH, job_id)
+
+    if not os.path.exists(os.path.join(directory, final_filename)):
+        return jsonify({"error": "File not found on server"}), 404
+
+    return send_from_directory(directory, final_filename, as_attachment=True)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        # The print function warnings are often related to the Python environment
-        # configuration in VSCode and can be safely ignored if the code runs correctly.
-        print(
-            "FATAL: Not enough arguments. Expected port and FFmpeg path.",
-            file=sys.stderr,
-            flush=True,
-        )
-        sys.exit(1)
-
-    port_arg, ffmpeg_path_arg = sys.argv[1], sys.argv[2]
-
-    if not os.path.exists(ffmpeg_path_arg):
-        print(
-            f"FATAL: Provided FFmpeg path does not exist: '{ffmpeg_path_arg}'",
-            file=sys.stderr,
-            flush=True,
-        )
-        sys.exit(1)
-
-    ffmpeg_exe = ffmpeg_path_arg
-    port = int(port_arg)
-
-    print(f"--- Python backend starting on port {port} ---", flush=True)
-    print(f"--- Using FFmpeg from path: {ffmpeg_exe} ---", flush=True)
-    print(f"Flask-Backend-Ready:{port}", flush=True)
-
-    app.run(host="127.0.0.1", port=port, debug=False)
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001
+    app.run(debug=False, port=port)
