@@ -576,6 +576,8 @@ export default function Home() {
           } else {
             setSelectedQuality("best");
           }
+        } else if (formats && formats.error) {
+          console.error("Could not fetch video formats:", formats.error);
         }
       } finally {
         setIsLoadingFormats(false);
