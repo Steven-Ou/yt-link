@@ -711,7 +711,7 @@ export default function Home() {
               variant="outlined"
               fullWidth
               value={videoUrl}
-              onChange={(e) => setVideoUrl(e.target.value)}
+              onChange={handleVideoUrlChange}
               style={{ marginBottom: 16 }}
               disabled={anyJobLoading}
             />
@@ -889,7 +889,7 @@ export default function Home() {
               <Typography variant="h6">Active Jobs</Typography>
               <List>
                 {jobsArray.map((job) => (
-                  <ListItem key={job.job_id} divider>
+                  <ListItem key={job.id || job.jobType} divider>
                     <Stack sx={{ width: "100%" }}>
                       <Box
                         sx={{
