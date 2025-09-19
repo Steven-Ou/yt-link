@@ -398,48 +398,50 @@ ipcMain.handle("get-job-status", async (event, jobId) => {
  * IPC Handler: 'download-file'
  * Handles the final step of downloading a completed file from the backend.
  */
-ipcMain.handle("download-file", async (event, jobId) => {
-  if (!isBackendReady) return { error: "Backend is not running." };
-  try {
-    // First, get the job status to find the correct filename.
-    const jobStatusUrl = `http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`;
-    const statusResponse = await fetch(jobStatusUrl);
-    const job = await statusResponse.json();
+ipcMain.handle("download-file", async (event, { jobId }) => {
+  if (!pythonPort || !jobId) {
+    return { error: "Backend not ready or Job ID is missing." };
+  }
 
-    if (job.status !== "completed" || !job.file_name) {
-      return { error: "File is not ready for download." };
+  try {
+    const jobStatusResponse = await axios.get(
+      `http://127.0.0.1:${pythonPort}/job-status?jobId=${jobId}`
+    );
+    const job = jobStatusResponse.data;
+
+    if (!job || job.status !== "completed" || !job.file_name) {
+      return { error: "Job is not complete or file name is missing." };
     }
 
-    // Construct a safe file path in the user's default 'downloads' directory.
-    const downloadsPath = app.getPath("downloads");
-    const safeFileName = job.file_name.replace(/[\\/]/g, "_"); // Sanitize filename.
-    const filePath = path.join(downloadsPath, safeFileName);
-
-    // Fetch the file content from the backend's /download endpoint.
-    const downloadUrl = `http://127.0.0.1:${pyPort}/download/${jobId}`;
-    const downloadResponse = await fetch(downloadUrl);
-
-    if (!downloadResponse.ok)
-      throw new Error(
-        `Backend download error: ${await downloadResponse.text()}`
-      );
-
-    // Stream the file data directly to a file on disk to handle large files efficiently.
-    const fileStream = fs.createWriteStream(filePath);
-    await new Promise((resolve, reject) => {
-      downloadResponse.body.pipe(fileStream);
-      downloadResponse.body.on("error", reject);
-      fileStream.on("finish", resolve);
+    const saveDialog = await dialog.showSaveDialog({
+      defaultPath: job.file_name,
     });
 
-    return { success: true, path: filePath }; // Inform the frontend of success.
+    if (saveDialog.canceled || !saveDialog.filePath) {
+      return { success: false, message: "Save canceled." };
+    }
+
+    const downloadUrl = `http://127.0.0.1:${pythonPort}/download/${jobId}`;
+    const response = await axios({
+      method: "GET",
+      url: downloadUrl,
+      responseType: "stream",
+    });
+
+    const writer = fs.createWriteStream(saveDialog.filePath);
+    response.data.pipe(writer);
+
+    return new Promise((resolve, reject) => {
+      writer.on("finish", () =>
+        resolve({ success: true, path: saveDialog.filePath })
+      );
+      writer.on("error", (err) =>
+        reject({ error: `Failed to save file: ${err.message}` })
+      );
+    });
   } catch (error) {
-    sendLog(`[Electron] Download Error: ${error.message}`);
-    dialog.showErrorBox(
-      "Download Error",
-      `Could not download the file: ${error.message}`
-    );
-    return { error: error.message };
+    console.error("Download failed:", error.message);
+    return { error: `Download failed: ${error.message}` };
   }
 });
 
