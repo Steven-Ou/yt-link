@@ -6,7 +6,6 @@ import threading
 import uuid
 import zipfile
 import tempfile
-import platform
 import subprocess
 import codecs
 from flask import Flask, request, jsonify, Response
@@ -14,7 +13,7 @@ from flask_cors import CORS
 import yt_dlp
 from yt_dlp.utils import DownloadError
 from urllib.parse import quote
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Generator
 
 # Renamed to lowercase to signify it's a mutable variable set at runtime
 ffmpeg_exe: Optional[str] = None
@@ -65,7 +64,6 @@ def get_formats_endpoint():
         return jsonify({"error": "Invalid request, URL is required."}), 400
 
     url = data["url"]
-    print(f"--- [Formats] Fetching formats for URL: {url}", flush=True)
 
     try:
         ydl_opts: Dict[str, Any] = {
@@ -77,18 +75,20 @@ def get_formats_endpoint():
             info = ydl.extract_info(url, download=False)
             formats: List[Dict[str, Any]] = []
             if info and "formats" in info:
-                for f in info["formats"]:
-                    if f.get("vcodec") != "none" and f.get("acodec") != "none":
-                        formats.append(
-                            {
-                                "format_id": f.get("format_id"),
-                                "ext": f.get("ext"),
-                                "resolution": f.get("resolution"),
-                                "height": f.get("height"),
-                                "note": f.get("format_note"),
-                            }
-                        )
-            # De-duplicate formats to show one option per resolution
+                # Add a check to ensure info['formats'] is iterable
+                format_list = info.get("formats", [])
+                if format_list:
+                    for f in format_list:
+                        if f.get("vcodec") != "none" and f.get("acodec") != "none":
+                            formats.append(
+                                {
+                                    "format_id": f.get("format_id"),
+                                    "ext": f.get("ext"),
+                                    "resolution": f.get("resolution"),
+                                    "height": f.get("height"),
+                                    "note": f.get("format_note"),
+                                }
+                            )
             unique_formats = {
                 f["height"]: f
                 for f in sorted(formats, key=lambda x: x.get("height", 0), reverse=True)
@@ -96,11 +96,6 @@ def get_formats_endpoint():
             }.values()
             return jsonify(list(unique_formats))
     except Exception as e:
-        print(
-            f"--- [Formats] Error fetching formats: {traceback.format_exc()}",
-            file=sys.stderr,
-            flush=True,
-        )
         return jsonify({"error": str(e)}), 500
 
 
@@ -174,7 +169,9 @@ def download_file_route(job_id: str):
     if not os.path.exists(job.file_path):
         return jsonify({"error": "File not found on server."}), 404
 
-    def file_generator(file_path: str, temp_dir: Optional[str]):
+    def file_generator(
+        file_path: str, temp_dir: Optional[str]
+    ) -> Generator[bytes, None, None]:
         try:
             with open(file_path, "rb") as f:
                 yield from f
@@ -198,9 +195,6 @@ def download_file_route(job_id: str):
     )
 
 
-# --- Core Logic ---
-
-
 def download_thread(url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: str):
     job = jobs[job_id]
     job.temp_dir = os.path.join(APP_TEMP_DIR, job_id)
@@ -212,14 +206,13 @@ def download_thread(url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: s
             if not info_dict:
                 raise DownloadError("Failed to extract video information.")
 
-            # Safely handle entries, ensuring they are dicts before assigning job_id
-            if "entries" in info_dict and isinstance(info_dict.get("entries"), list):
-                valid_entries = [
-                    entry for entry in info_dict["entries"] if isinstance(entry, dict)
-                ]
-                info_dict["entries"] = valid_entries
+            # Pylance has trouble inferring the complex types from yt-dlp, so we use ignores here.
+            entries = info_dict.get("entries")
+            if isinstance(entries, list):
+                valid_entries = [entry for entry in entries if isinstance(entry, dict)]
                 for entry in valid_entries:
                     entry["job_id"] = job_id
+                info_dict["entries"] = valid_entries
             else:
                 info_dict["job_id"] = job_id  # type: ignore
 
@@ -409,6 +402,8 @@ def progress_hook(d: Dict[str, Any]):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
+        # The print function warnings are often related to the Python environment
+        # configuration in VSCode and can be safely ignored if the code runs correctly.
         print(
             "FATAL: Not enough arguments. Expected port and FFmpeg path.",
             file=sys.stderr,
