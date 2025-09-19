@@ -736,7 +736,6 @@ export default function Home() {
               color="primary"
               fullWidth
               onClick={downloadVideo}
-              disabled={anyJobLoading}
             >
               {anyJobLoading &&
               activeJobs.some(
