@@ -422,7 +422,7 @@ export default function Home() {
             },
           }));
 
-          const downloadResult = await window.electron.downloadFile({jobId});
+          const downloadResult = await window.electron.downloadFile({ jobId });
 
           if (downloadResult.error) {
             throw new Error(downloadResult.error);
@@ -561,6 +561,8 @@ export default function Home() {
   const handleVideoUrlChange = async (e) => {
     const newUrl = e.target.value;
     setVideoUrl(newUrl);
+    const cleanedUrl = cleanUrl(newUrl);
+
     const youtubeRegex =
       /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
 
