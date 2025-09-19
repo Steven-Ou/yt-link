@@ -240,7 +240,9 @@ function startPythonBackend(port) {
   sendLog(`[Electron] Using arguments: [${args.join(", ")}]`);
 
   // Spawn the child process.
-  pythonProcess = spawn(command, args);
+  pythonProcess = spawn(exePath, [pyPort, ffmpegPath], {
+    env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+  });
 
   // --- PROCESS EVENT LISTENERS ---
 
