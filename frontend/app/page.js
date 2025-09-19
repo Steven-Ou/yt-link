@@ -594,7 +594,6 @@ export default function Home() {
               color="primary"
               fullWidth
               onClick={downloadMP3}
-              disabled={anyJobLoading}
             >
               {anyJobLoading &&
               activeJobs.some(
