@@ -232,11 +232,16 @@ const JobStatusDisplay = ({ jobInfo }) => {
       break;
   }
 
-  const handleOpenFolder = () => {
-    if (window.electron && jobInfo.savedFilePath) {
-      window.electron.openFolder(jobInfo.savedFilePath);
-    } else {
-      console.error("Could not determine the download folder or file path.");
+  const downloadFile = async () => {
+    if (window.electron && jobInfo.job_id) {
+      const result = await window.electron.downloadFile({
+        jobId: jobInfo.job_id,
+      });
+      if (result.success) {
+        console.log("File download initiated, saved to:", result.path);
+      } else if (result.error) {
+        alert(`Download failed: ${result.error}`);
+      }
     }
   };
 
@@ -273,15 +278,15 @@ const JobStatusDisplay = ({ jobInfo }) => {
           sx={{ mt: 1, mb: 1 }}
         />
       )}
-      {jobInfo.status === "completed" && jobInfo.savedFilePath && (
+      {jobInfo.status === "completed" && (
         <Button
           variant="contained"
           color="success"
-          onClick={handleOpenFolder}
+          onClick={downloadFile}
           sx={{ mt: 1, textTransform: "none" }}
           startIcon={<FolderIcon />}
         >
-          Show File in Folder
+          Save File
         </Button>
       )}
     </Box>
