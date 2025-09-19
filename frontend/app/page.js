@@ -493,6 +493,7 @@ export default function Home() {
             id: result.jobId,
             status: "queued",
             message: "Job started, waiting for worker...",
+            job_id: result.jobId,
           },
         }));
         pollJobStatus(result.jobId, jobType);
