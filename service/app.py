@@ -1,3 +1,5 @@
+# service/app.py
+
 import os
 import shutil
 import sys
@@ -106,10 +108,9 @@ def start_job_endpoint():
 
     job_id = str(uuid.uuid4())
     jobs[job_id] = Job(job_id=job_id, url=data["url"], job_type=data["jobType"])
-    job_type = data["jobType"]
-    ydl_opts: Dict[str, Any]
 
-    if job_type == "singleVideo":
+    ydl_opts: Dict[str, Any]
+    if data["jobType"] == "singleVideo":
         quality = data.get("quality", "best")
         format_string = (
             f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<={quality}]"
@@ -127,8 +128,8 @@ def start_job_endpoint():
             "outtmpl": os.path.join(
                 APP_TEMP_DIR, job_id, "%(playlist_index)05d-%(id)s.%(ext)s"
             ),
-            "ignoreerrors": job_type != "singleMp3",
-            "noplaylist": job_type == "singleMp3",
+            "ignoreerrors": data["jobType"] != "singleMp3",
+            "noplaylist": data["jobType"] == "singleMp3",
         }
 
     ydl_opts.update(
@@ -176,8 +177,6 @@ def download_file_route(job_id: str):
             with open(file_path, "rb") as f:
                 yield from f
         finally:
-            if os.path.exists(file_path):
-                os.remove(file_path)
             if temp_dir and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
             jobs.pop(job_id, None)
@@ -230,9 +229,6 @@ def download_thread(url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: s
             file=sys.stderr,
             flush=True,
         )
-    finally:
-        if job.status != "completed" and job.temp_dir and os.path.exists(job.temp_dir):
-            shutil.rmtree(job.temp_dir, ignore_errors=True)
 
 
 def manual_post_processing(job_id: str, job_type: str):
@@ -246,21 +242,31 @@ def manual_post_processing(job_id: str, job_type: str):
     downloaded_files = [
         os.path.join(job.temp_dir, f)
         for f in os.listdir(job.temp_dir)
-        if os.path.isfile(os.path.join(job.temp_dir, f))
+        if not f.endswith((".mp4", ".mp3", ".zip", ".txt"))
     ]
-
     if not downloaded_files:
         raise FileNotFoundError("No media files found for post-processing.")
 
     if job_type == "singleVideo":
         video_title = sanitize_filename(job.info.get("title", "video"))
         job.file_name = f"{video_title}.mp4"
-        job.file_path = os.path.join(APP_TEMP_DIR, job.file_name)
+        job.file_path = os.path.join(job.temp_dir, job.file_name)
 
         if len(downloaded_files) == 1:
-            shutil.move(downloaded_files[0], job.file_path)
-        else:  # Assumes two files for merging
-            job.message = "Merging streams..."
+            job.message = "Re-encoding for compatibility (this may take a while)..."
+            command = [
+                ffmpeg_exe,
+                "-i",
+                downloaded_files[0],
+                "-c:v",
+                "libx264",
+                "-c:a",
+                "aac",
+                "-y",
+                job.file_path,
+            ]
+        else:
+            job.message = "Merging streams (this may take a while)..."
             video_stream = max(downloaded_files, key=os.path.getsize)
             audio_stream = min(downloaded_files, key=os.path.getsize)
             command = [
@@ -269,21 +275,20 @@ def manual_post_processing(job_id: str, job_type: str):
                 video_stream,
                 "-i",
                 audio_stream,
-                "-c",
-                "copy",
+                "-c:v",
+                "libx264",
+                "-c:a",
+                "aac",
                 "-y",
                 job.file_path,
             ]
-            process = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="ignore",
-            )
-            if process.returncode != 0:
-                job.status, job.error = "failed", f"FFMPEG Error: {process.stderr}"
-                raise Exception(job.error)
+
+        process = subprocess.run(
+            command, capture_output=True, text=True, encoding="utf-8", errors="ignore"
+        )
+        if process.returncode != 0:
+            job.status, job.error = "failed", f"FFMPEG Error: {process.stderr}"
+            raise Exception(job.error)
 
         job.status, job.message = "completed", "Video processing complete!"
         return
@@ -330,13 +335,13 @@ def manual_post_processing(job_id: str, job_type: str):
 
     if job_type == "singleMp3":
         job.file_name = f"{sanitize_filename(job.info.get('title', 'track'))}.mp3"
-        job.file_path = os.path.join(APP_TEMP_DIR, job.file_name)
-        shutil.move(mp3_files[0], job.file_path)
+        job.file_path = os.path.join(job.temp_dir, job.file_name)
+        os.rename(mp3_files[0], job.file_path)
 
     elif job_type == "playlistZip":
         job.message = "Creating ZIP archive..."
         job.file_name = f"{playlist_title}.zip"
-        job.file_path = os.path.join(APP_TEMP_DIR, job.file_name)
+        job.file_path = os.path.join(job.temp_dir, job.file_name)
         with zipfile.ZipFile(job.file_path, "w") as zipf:
             for mp3_file in mp3_files:
                 zipf.write(mp3_file, os.path.basename(mp3_file))
@@ -344,7 +349,7 @@ def manual_post_processing(job_id: str, job_type: str):
     elif job_type == "combineMp3":
         job.message = "Combining all tracks..."
         job.file_name = f"{playlist_title} (Combined).mp3"
-        job.file_path = os.path.join(APP_TEMP_DIR, job.file_name)
+        job.file_path = os.path.join(job.temp_dir, job.file_name)
         concat_list_path = os.path.join(job.temp_dir, "concat_list.txt")
 
         with open(concat_list_path, "w", encoding="utf-8") as f:
@@ -385,11 +390,7 @@ def progress_hook(d: Dict[str, Any]):
         job = jobs[job_id]
         if d["status"] == "downloading":
             job.status = "downloading"
-            if d.get("total_bytes_estimate"):
-                job.progress = (
-                    d.get("downloaded_bytes", 0) / d["total_bytes_estimate"] * 100
-                )
-            elif d.get("total_bytes"):
+            if d.get("total_bytes"):
                 job.progress = d.get("downloaded_bytes", 0) / d["total_bytes"] * 100
 
             job.message = f"Downloading: {d.get('_percent_str', 'N/A')} at {d.get('_speed_str', 'N/A')} (ETA: {d.get('_eta_str', 'N/A')})"
