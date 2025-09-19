@@ -422,7 +422,7 @@ export default function Home() {
             },
           }));
 
-          const downloadResult = await window.electron.downloadFile(jobId);
+          const downloadResult = await window.electron.downloadFile({jobId});
 
           if (downloadResult.error) {
             throw new Error(downloadResult.error);
