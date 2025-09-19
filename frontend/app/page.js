@@ -361,11 +361,16 @@ export default function Home() {
   const [combineVideoUrl, setCombineVideoUrl] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [cookieData, setCookieData] = useState("");
+
   const [activeJobs, setActiveJobs] = useState({});
   const pollingIntervals = useRef({});
   const [isElectron, setIsElectron] = useState(false);
   const [expandedDownloads, setExpandedDownloads] = useState(true);
 
+  const [videoFormats, setVideoFormats] = useState([]);
+  const [selectedQuality, setSelectedQuality] = useState("best");
+  const [isLoadingFormats, setIsLoadingFormats] = useState(false);
+  
   useEffect(() => {
     setIsElectron(!!(window && window.electron));
 
