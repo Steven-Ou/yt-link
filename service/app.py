@@ -144,7 +144,7 @@ def start_job_endpoint():
         return jsonify({"error": "Invalid request body"}), 400
 
     job_id = str(uuid.uuid4())
-    job_type = data["jobType"] # Store job_type from the request
+    job_type = data["jobType"]
     jobs[job_id] = Job(job_id=job_id, url=data["url"], job_type=job_type)
 
     ydl_opts: Dict[str, Any]
@@ -164,14 +164,14 @@ def start_job_endpoint():
     
     elif job_type == "singleMp3":
         ydl_opts = {
-            "format": "bestaudio[ext=m4a]/bestaudio/best",
+            "format": "bestaudio[ext=m4a]/bestaudio",
             "outtmpl": os.path.join(APP_TEMP_DIR, job_id, "%(id)s.%(ext)s"),
             "noplaylist": True,
         }
 
     else:  # Handles playlistZip and combineMp3
         ydl_opts = {
-            "format": "bestaudio[ext=m4a]/bestaudio/best",
+            "format": "bestaudio[ext=m4a]/bestaudio",
             "outtmpl": os.path.join(
                 APP_TEMP_DIR, job_id, "%(playlist_index)05d-%(id)s.%(ext)s"
             ),
@@ -179,13 +179,19 @@ def start_job_endpoint():
             "ignoreerrors": True,
         }
 
-    # Common options for all jobs
+   
     ydl_opts.update({
         "progress_hooks": [progress_hook],
         "nocheckcertificate": True,
         "quiet": True,
         "no_warnings": True,
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+        },
     })
+   
 
     if data.get("cookies"):
         cookie_file = os.path.join(APP_TEMP_DIR, f"cookies_{job_id}.txt")
@@ -196,7 +202,6 @@ def start_job_endpoint():
     thread = threading.Thread(
         target=download_thread, args=(data["url"], ydl_opts, job_id, job_type)
     )
-    
     thread.start()
     return jsonify({"jobId": job_id})
 
