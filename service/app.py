@@ -69,7 +69,7 @@ def get_formats_endpoint():
     url = data["url"]
 
     try:
-        # Added retries and a socket timeout to make the connection more resilient.
+        # Using a proxy to bypass YouTube's IP-based blocking.
         ydl_opts = {
             "quiet": True,
             "no_warnings": True,
@@ -80,9 +80,10 @@ def get_formats_endpoint():
                 "Accept-Language": "en-US,en;q=0.5",
                 "Referer": "https://www.youtube.com/",
             },
-            "rm_cache_dir": True,  # Clear cache to avoid being blocked
-            "retries": 10,  # Retry failed downloads
-            "socket_timeout": 20,  # Timeout for socket operations
+            "rm_cache_dir": True,
+            "retries": 10,
+            "socket_timeout": 20,
+            "proxy": "http://165.22.21.246:8118", # Using a free proxy for demonstration
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -146,7 +147,6 @@ def start_job_endpoint():
     job_type = data["jobType"]
     jobs[job_id] = Job(job_id=job_id, url=data["url"], job_type=job_type)
 
-    # Added retries and a socket timeout here as well.
     ydl_opts: Dict[str, Any] = {
         "progress_hooks": [progress_hook],
         "nocheckcertificate": True,
@@ -161,6 +161,7 @@ def start_job_endpoint():
         "rm_cache_dir": True,
         "retries": 10,
         "socket_timeout": 20,
+        "proxy": "http://165.22.21.246:8118",
     }
 
     if job_type == "singleVideo":
@@ -291,7 +292,7 @@ def manual_post_processing(job_id: str, job_type: str):
         job.status, job.error = "failed", "FFMPEG executable not found"
         raise FileNotFoundError(job.error)
     ignore_extensions = (".mp3", ".zip", ".txt", ".part")
-    downloaded_.p..s = [
+    downloaded_files = [
         os.path.join(job.temp_dir, f)
         for f in os.listdir(job.temp_dir)
         if not f.endswith(ignore_extensions)
