@@ -172,6 +172,7 @@ def get_job_status():
 
 @app.route("/download/<job_id>", methods=["GET"])
 def download_file_route(job_id: str):
+    print(f"Download request received for job_id: {job_id}")
     job = jobs.get(job_id)
     if not (job and job.status == "completed" and job.file_path and job.file_name):
         return jsonify({"error": "File not ready or job not found"}), 404
