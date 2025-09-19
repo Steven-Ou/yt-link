@@ -149,7 +149,10 @@ def start_job_endpoint():
             "format": format_string,
             "outtmpl": os.path.join(APP_TEMP_DIR, job_id, "%(id)s.%(ext)s"),
             "noplaylist": True,
+            # This tells yt-dlp to use a more robust merging process that avoids the Mac error.
+            "merge_output_format": "mp4",
         }
+
     else:  # Handles singleMp3, playlistZip, and combineMp3
         ydl_opts = {
             "format": "bestaudio[ext=m4a]/bestaudio",
@@ -157,9 +160,9 @@ def start_job_endpoint():
                 APP_TEMP_DIR, job_id, "%(playlist_index)s-%(id)s.%(ext)s"
             ),
             "noplaylist": job_type == "singleMp3",
-            "ignoreerrors": True,  # Skip videos that fail in a playlist
-            "extract_flat": "in_playlist",  # Process playlist items individually to prevent stalling
-            "playlistend": 50,  # Limit playlists to 50 items to prevent abuse/long waits
+            "ignoreerrors": True,
+            "extract_flat": "in_playlist",
+            "playlistend": 50,
         }
 
     ydl_opts.update(
@@ -247,7 +250,7 @@ def download_thread(url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: s
                     entry["job_id"] = job_id
                     # Manually update message for playlist progress
                     job.message = (
-                        f"Downloading playlist item {i+1}/{len(valid_entries)}..."
+                        f"Downloading playlist item {i + 1}/{len(valid_entries)}..."
                     )
                     ydl.download([entry["url"]])
                 info_dict["entries"] = valid_entries
