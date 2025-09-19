@@ -149,8 +149,6 @@ def start_job_endpoint():
             "format": format_string,
             "outtmpl": os.path.join(APP_TEMP_DIR, job_id, "%(id)s.%(ext)s"),
             "noplaylist": True,
-            # This tells yt-dlp to use a more robust merging process that avoids the Mac error.
-            "merge_output_format": "mp4",
         }
 
     else:  # Handles singleMp3, playlistZip, and combineMp3
