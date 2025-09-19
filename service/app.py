@@ -58,8 +58,15 @@ os.makedirs(APP_TEMP_DIR, exist_ok=True)
 
 # --- Flask Routes ---
 
+
 @app.route("/get-formats", methods=["POST"])
 def get_formats_endpoint():
+    """
+    Retrieves available video formats for a given YouTube URL.
+    This endpoint is designed to find all unique video resolutions,
+    prioritizing high-quality video-only streams and merging them
+    with available combined (video+audio) streams.
+    """
     data = request.get_json()
     if not data or "url" not in data:
         return jsonify({"error": "Invalid request, URL is required."}), 400
@@ -67,63 +74,55 @@ def get_formats_endpoint():
     url = data["url"]
 
     try:
-        ydl_opts: Dict[str, Any] = {
+        ydl_opts = {
             "quiet": True,
             "no_warnings": True,
             "nocheckcertificate": True,
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-
+            info = ydl.extract_info(url, download=False) or {}
+            
             unique_formats = {}
-            if info and "formats" in info:
-                # Sort formats by height and preference (mp4 is generally preferred)
-                sorted_formats = sorted(
-                    info.get("formats", []),
-                    key=lambda f: (
-                        f.get("height", 0),
-                        1 if f.get("ext") == "mp4" else 0,
-                    ),
-                    reverse=True,
-                )
+            all_formats = info.get("formats", [])
 
-                # Find high-quality video-only streams
-                for f in sorted_formats:
-                    if f.get("vcodec") != "none" and f.get("acodec") == "none":
-                        height = f.get("height")
-                        if height and height not in unique_formats:
-                            filesize_mb = f.get("filesize") or f.get("filesize_approx")
-                            note = f.get("ext")
-                            if filesize_mb:
-                                note = f"{f.get('ext')} (~{filesize_mb // 1024 // 1024} MB)"
+            # Helper to safely get height for sorting, defaulting None to 0
+            def get_height(f):
+                return f.get("height") or 0
 
-                            unique_formats[height] = {
-                                "format_id": f.get("format_id"),
-                                "ext": f.get("ext"),
-                                "resolution": f"{height}p",
-                                "height": height,
-                                "note": note,
-                            }
+            # Sort all formats by height to process best quality first
+            all_formats.sort(key=get_height, reverse=True)
 
-            # Also include any available combined streams (video+audio)
-            for f in info.get("formats", []):
-                if f.get("vcodec") != "none" and f.get("acodec") != "none":
-                    height = f.get("height")
-                    if height and height not in unique_formats:
-                        filesize_mb = f.get("filesize") or f.get("filesize_approx")
-                        note = f"{f.get('ext')} (video+audio)"
-                        if filesize_mb:
-                            note = f"{note} (~{filesize_mb // 1024 // 1024} MB)"
+            for f in all_formats:
+                height = get_height(f)
+                # Skip formats without resolution or if we already have this resolution
+                if not height or height in unique_formats:
+                    continue
 
-                        unique_formats[height] = {
-                            "format_id": f.get("format_id"),
-                            "ext": f.get("ext"),
-                            "resolution": f"{height}p",
-                            "height": height,
-                            "note": note,
-                        }
+                # We only want formats that contain a video stream
+                if f.get("vcodec") != "none":
+                    filesize = f.get("filesize") or f.get("filesize_approx")
+                    note = f.get("ext", "unknown")
 
-            # Sort the final list from highest to lowest resolution
+                    if filesize:
+                        # Convert bytes to a readable MB format
+                        filesize_mb = filesize / (1024 * 1024)
+                        note = f"{note} (~{filesize_mb:.1f} MB)"
+                    
+                    if f.get("acodec") == "none":
+                         note = f"{note} (video only)"
+                    else:
+                         note = f"{note} (video+audio)"
+
+
+                    unique_formats[height] = {
+                        "format_id": f.get("format_id"),
+                        "ext": f.get("ext"),
+                        "resolution": f"{height}p",
+                        "height": height,
+                        "note": note,
+                    }
+
+            # Sort the final list from highest to lowest resolution for the UI
             final_formats = sorted(
                 unique_formats.values(), key=lambda x: x["height"], reverse=True
             )
@@ -133,6 +132,8 @@ def get_formats_endpoint():
         print(f"DownloadError on get-formats: {e}")
         return jsonify({"error": "Video not found or unavailable."}), 404
     except Exception as e:
+        # Log the full traceback for better debugging
+        traceback.print_exc()
         print(f"Generic error on get-formats: {e}")
         return jsonify({"error": str(e)}), 500
 
