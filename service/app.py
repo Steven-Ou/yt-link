@@ -69,7 +69,6 @@ def get_formats_endpoint():
     url = data["url"]
 
     try:
-        # Added browser-like headers to prevent getting blocked by YouTube.
         ydl_opts = {
             "quiet": True,
             "no_warnings": True,
@@ -143,19 +142,24 @@ def start_job_endpoint():
 
     if job_type == "singleVideo":
         quality = data.get("quality", "best")
-        # Changed the format string to prioritize pre-merged files.
-        # This avoids the ffmpeg error on Mac by letting YouTube do the merge.
-        format_string = (
-            f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/best[vcodec^=avc][height<={quality}]/best[ext=mp4]/best"
-            if quality != "best"
-            else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[vcodec^=avc]/best[ext=mp4]/best"
-        )
+
+        # It correctly handles the 'best' quality option vs. a specific resolution.
+        if quality == "best":
+            # Use a simpler format string when 'best' is selected.
+            format_string = "bestvideo+bestaudio/best"
+        else:
+            # Use the detailed format string only when a specific height is chosen.
+            format_string = f"bestvideo[height<={quality}]+bestaudio/best"
+
         ydl_opts = {
             "format": format_string,
             "outtmpl": os.path.join(APP_TEMP_DIR, job_id, "%(id)s.%(ext)s"),
             "noplaylist": True,
+            # This is the key for cross-platform stability, ensuring ffmpeg merges correctly.
+            "merge_output_format": "mp4",
         }
-    else:
+
+    else:  # Handles singleMp3, playlistZip, and combineMp3
         ydl_opts = {
             "format": "bestaudio[ext=m4a]/bestaudio",
             "outtmpl": os.path.join(
@@ -238,13 +242,11 @@ def download_thread(url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: s
     job = jobs[job_id]
     job.temp_dir = os.path.join(APP_TEMP_DIR, job_id)
     os.makedirs(job.temp_dir, exist_ok=True)
-
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=False)
             if not info_dict:
                 raise DownloadError("Failed to extract video information.")
-
             entries = info_dict.get("entries")
             if isinstance(entries, list):
                 valid_entries = [entry for entry in entries if isinstance(entry, dict)]
@@ -259,10 +261,8 @@ def download_thread(url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: s
             else:
                 info_dict["job_id"] = job_id
                 ydl.download([url])
-
             job.info = info_dict
         manual_post_processing(job_id, job_type)
-
     except Exception:
         job.status = "failed"
         job.error = traceback.format_exc()
@@ -276,18 +276,15 @@ def download_thread(url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: s
 def manual_post_processing(job_id: str, job_type: str):
     job = jobs[job_id]
     assert job.temp_dir and job.info, "Job temp_dir or info is not set"
-
     if not ffmpeg_exe or not os.path.exists(ffmpeg_exe):
         job.status, job.error = "failed", "FFMPEG executable not found"
         raise FileNotFoundError(job.error)
-
     ignore_extensions = (".mp3", ".zip", ".txt", ".part")
     downloaded_files = [
         os.path.join(job.temp_dir, f)
         for f in os.listdir(job.temp_dir)
         if not f.endswith(ignore_extensions)
     ]
-
     if not downloaded_files:
         job.status = "failed"
         job.error = "No media files found after download. The video may be protected or in an unsupported format."
@@ -298,12 +295,10 @@ def manual_post_processing(job_id: str, job_type: str):
             flush=True,
         )
         return
-
     if job_type == "singleVideo":
         video_title = sanitize_filename(job.info.get("title", "video"))
         job.file_name = f"{video_title}.mp4"
         job.file_path = os.path.join(job.temp_dir, job.file_name)
-
         if len(downloaded_files) > 1:
             job.message = "Merging video and audio streams..."
             video_stream = max(downloaded_files, key=os.path.getsize)
@@ -339,10 +334,8 @@ def manual_post_processing(job_id: str, job_type: str):
         if process.returncode != 0:
             job.status, job.error = "failed", f"FFMPEG Error: {process.stderr}"
             raise Exception(job.error)
-
         job.status, job.message = "completed", "Video processing complete!"
         return
-
     playlist_title = sanitize_filename(job.info.get("title", "playlist"))
 
     def sort_key(file_path: str) -> int:
@@ -352,7 +345,6 @@ def manual_post_processing(job_id: str, job_type: str):
             return sys.maxsize
 
     downloaded_files.sort(key=sort_key)
-
     mp3_files: List[str] = []
     entries: List[Dict[str, Any]] = job.info.get("entries", [job.info])
     for i, file_path in enumerate(downloaded_files):
@@ -360,7 +352,6 @@ def manual_post_processing(job_id: str, job_type: str):
         entry_info = entries[i] if i < len(entries) else {}
         video_title = sanitize_filename(entry_info.get("title", f"track_{i + 1}"))
         output_filepath = os.path.join(job.temp_dir, f"{i + 1:03d} - {video_title}.mp3")
-
         command = [
             ffmpeg_exe,
             "-i",
@@ -382,13 +373,11 @@ def manual_post_processing(job_id: str, job_type: str):
             errors="ignore",
         )
         mp3_files.append(output_filepath)
-
     if job_type == "singleMp3":
         job.file_name = f"{sanitize_filename(job.info.get('title', 'track'))}.mp3"
         job.file_path = os.path.join(job.temp_dir, job.file_name)
         if mp3_files:
             os.rename(mp3_files[0], job.file_path)
-
     elif job_type == "playlistZip":
         job.message = "Creating ZIP archive..."
         job.file_name = f"{playlist_title}.zip"
@@ -396,18 +385,15 @@ def manual_post_processing(job_id: str, job_type: str):
         with zipfile.ZipFile(job.file_path, "w") as zipf:
             for mp3_file in mp3_files:
                 zipf.write(mp3_file, os.path.basename(mp3_file))
-
     elif job_type == "combineMp3":
         job.message = "Combining all tracks..."
         job.file_name = f"{playlist_title} (Combined).mp3"
         job.file_path = os.path.join(job.temp_dir, job.file_name)
         concat_list_path = os.path.join(job.temp_dir, "concat_list.txt")
-
         with open(concat_list_path, "w", encoding="utf-8") as f:
             for mp3_file in mp3_files:
                 escaped_filename = mp3_file.replace("'", "'\\''")
                 f.write(f"file '{escaped_filename}'\n")
-
         combine_command = [
             ffmpeg_exe,
             "-f",
@@ -429,7 +415,6 @@ def manual_post_processing(job_id: str, job_type: str):
             encoding="utf-8",
             errors="ignore",
         )
-
     job.status, job.message = "completed", "Processing complete!"
 
 
@@ -438,15 +423,12 @@ def progress_hook(d: Dict[str, Any]):
         job_id = d["info_dict"].get("job_id")
         if not job_id or job_id not in jobs:
             return
-
         job = jobs[job_id]
         if d["status"] == "downloading":
             job.status = "downloading"
             if d.get("total_bytes"):
                 job.progress = d.get("downloaded_bytes", 0) / d["total_bytes"] * 100
-
             job.message = f"Downloading: {d.get('_percent_str', 'N/A')} at {d.get('_speed_str', 'N/A')}"
-
         elif d["status"] == "finished":
             job.status = "processing"
             job.message = "Download finished, preparing to process..."
@@ -460,9 +442,7 @@ if __name__ == "__main__":
             flush=True,
         )
         sys.exit(1)
-
     port_arg, ffmpeg_path_arg = sys.argv[1], sys.argv[2]
-
     if not os.path.exists(ffmpeg_path_arg):
         print(
             f"FATAL: Provided FFmpeg path does not exist: '{ffmpeg_path_arg}'",
@@ -470,12 +450,9 @@ if __name__ == "__main__":
             flush=True,
         )
         sys.exit(1)
-
     ffmpeg_exe = ffmpeg_path_arg
     port = int(port_arg)
-
-    print(f"--- Python backsend starting on port {port} ---", flush=True)
+    print(f"--- Python backend starting on port {port} ---", flush=True)
     print(f"--- Using FFmpeg from path: {ffmpeg_exe} ---", flush=True)
     print(f"Flask-Backend-Ready:{port}", flush=True)
-
     app.run(host="127.0.0.1", port=port, debug=False)
