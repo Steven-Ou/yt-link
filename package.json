@@ -6,7 +6,7 @@
   "main": "main.js",
   "scripts": {
     "start": "npm run clean && npm run prepare:bins && concurrently \"npm:dev-frontend\" \"npm:dev-electron\"",
-    "prepare:bins": "chmod +x bin/ffmpeg bin/yt-dlp || echo 'Could not set permissions on binaries'",
+    "prepare:bins": "node scripts/prepare-bins.js",
     "dev": "npm start",
     "dev-frontend": "cd frontend && npm install && npm run dev",
     "dev-electron": "wait-on http://localhost:3000 && electron .",
@@ -14,7 +14,7 @@
     "build:backend": "cd service && pip install -r requirements.txt && python -m PyInstaller app.py --noconfirm --onefile --name yt-link-backend --distpath ./dist",
     "build": "npm run build:frontend && npm run build:backend && npm run dist",
     "dist": "electron-builder --publish never",
-    "clean": "rimraf frontend/.next frontend/out service/dist service/build",
+    "clean": "rimraf frontend/.next frontend/out service/dist service/build"
   },
   "dependencies": {
     "axios": "^1.12.2",
