@@ -90,13 +90,21 @@ def get_formats_endpoint():
                                     "note": f.get("format_note"),
                                 }
                             )
+            # Filter for unique formats by height, keeping the best quality for each resolution
             unique_formats = {
                 f["height"]: f
                 for f in sorted(formats, key=lambda x: x.get("height", 0), reverse=True)
                 if f.get("height")
             }.values()
             return jsonify(list(unique_formats))
+
+    except yt_dlp.utils.DownloadError as e:
+        # This is the key change: we catch the specific error from yt-dlp
+        print(f"DownloadError on get-formats: {e}")
+        return jsonify({"error": "Video not found or unavailable."}), 404
     except Exception as e:
+        # Generic catch for any other unexpected errors
+        print(f"Generic error on get-formats: {e}")
         return jsonify({"error": str(e)}), 500
 
 
