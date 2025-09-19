@@ -469,7 +469,7 @@ if __name__ == "__main__":
     ffmpeg_exe = ffmpeg_path_arg
     port = int(port_arg)
 
-    print(f"--- Python backend starting on port {port} ---", flush=True)
+    print(f"--- Python backsend starting on port {port} ---", flush=True)
     print(f"--- Using FFmpeg from path: {ffmpeg_exe} ---", flush=True)
     print(f"Flask-Backend-Ready:{port}", flush=True)
 
