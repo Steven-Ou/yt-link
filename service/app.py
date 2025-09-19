@@ -306,66 +306,43 @@ def manual_post_processing(job_id: str, job_type: str):
         job.status, job.error = "failed", "FFMPEG executable not found"
         raise FileNotFoundError(job.error)
 
-    processed_mp4s = [f for f in os.listdir(job.temp_dir) if f.endswith(".mp4")]
-    if job_type == "singleVideo" and len(processed_mp4s) == 1:
-        video_title = sanitize_filename(job.info.get("title", "video"))
-        original_file_path = os.path.join(job.temp_dir, processed_mp4s[0])
-
-        new_file_name = f"{video_title}.mp4"
-        new_file_path = os.path.join(job.temp_dir, new_file_name)
-
-        os.rename(original_file_path, new_file_path)
-
-        job.file_name = new_file_name
-        job.file_path = new_file_path  # This is the crucial fix
-
-        job.status, job.message = "completed", "Video processing complete!"
-        return
-
+    # This correctly handles cases where the best audio is in an MP4, WEBM, or M4A container.
+    ignore_extensions = (".mp3", ".zip", ".txt", ".part")
     downloaded_files = [
         os.path.join(job.temp_dir, f)
         for f in os.listdir(job.temp_dir)
-        if not f.endswith((".mp4", ".mp3", ".zip", ".txt"))
+        if not f.endswith(ignore_extensions)
     ]
-    if not downloaded_files:
-        raise FileNotFoundError("No media files found for post-processing.")
 
+    if not downloaded_files:
+        job.status = "failed"
+        job.error = "No media files found after download. The video may be protected or in an unsupported format."
+        # Add logging to see what files ARE in the directory for easier debugging
+        files_in_dir = os.listdir(job.temp_dir)
+        print(f"--- [Job {job_id}] ERROR: No media files found. Contents of temp dir: {files_in_dir}", file=sys.stderr, flush=True)
+        return # Gracefully set status to failed instead of crashing the backend
+
+    # The rest of the function handles processing these files
     if job_type == "singleVideo":
         video_title = sanitize_filename(job.info.get("title", "video"))
         job.file_name = f"{video_title}.mp4"
         job.file_path = os.path.join(job.temp_dir, job.file_name)
 
-        if len(downloaded_files) == 1:
-            job.message = "Re-encoding for compatibility (this may take a while)..."
-            command = [
-                ffmpeg_exe,
-                "-i",
-                downloaded_files[0],
-                "-c:v",
-                "libx264",
-                "-c:a",
-                "aac",
-                "-y",
-                job.file_path,
-            ]
+        if len(downloaded_files) > 1:
+             job.message = "Merging video and audio streams..."
+             video_stream = max(downloaded_files, key=os.path.getsize)
+             audio_stream = min(downloaded_files, key=os.path.getsize)
+             command = [
+                 ffmpeg_exe, "-i", video_stream, "-i", audio_stream,
+                 "-c:v", "copy", "-c:a", "aac", "-y", job.file_path,
+             ]
         else:
-            job.message = "Merging streams (this may take a while)..."
-            video_stream = max(downloaded_files, key=os.path.getsize)
-            audio_stream = min(downloaded_files, key=os.path.getsize)
+            job.message = "Processing video..."
             command = [
-                ffmpeg_exe,
-                "-i",
-                video_stream,
-                "-i",
-                audio_stream,
-                "-c:v",
-                "libx264",
-                "-c:a",
-                "aac",
-                "-y",
-                job.file_path,
+                ffmpeg_exe, "-i", downloaded_files[0],
+                "-c", "copy", "-y", job.file_path,
             ]
-
+        
         process = subprocess.run(
             command, capture_output=True, text=True, encoding="utf-8", errors="ignore"
         )
@@ -375,6 +352,70 @@ def manual_post_processing(job_id: str, job_type: str):
 
         job.status, job.message = "completed", "Video processing complete!"
         return
+
+    # This part handles all audio-based jobs (singleMp3, playlistZip, combineMp3)
+    playlist_title = sanitize_filename(job.info.get("title", "playlist"))
+
+    def sort_key(file_path: str) -> int:
+        try:
+            return int(os.path.basename(file_path).split("-")[0])
+        except (ValueError, IndexError):
+            return sys.maxsize
+
+    downloaded_files.sort(key=sort_key)
+
+    mp3_files: List[str] = []
+    entries: List[Dict[str, Any]] = job.info.get("entries", [job.info])
+    for i, file_path in enumerate(downloaded_files):
+        job.message = f"Converting file {i + 1}/{len(downloaded_files)} to MP3..."
+        entry_info = entries[i] if i < len(entries) else {}
+        video_title = sanitize_filename(entry_info.get("title", f"track_{i + 1}"))
+        output_filepath = os.path.join(job.temp_dir, f"{i + 1:03d} - {video_title}.mp3")
+
+        command = [
+            ffmpeg_exe, "-i", file_path,
+            "-vn", "-ab", "192k", "-ar", "44100", "-y", output_filepath,
+        ]
+        subprocess.run(
+            command, capture_output=True, text=True, check=False,
+            encoding="utf-8", errors="ignore",
+        )
+        mp3_files.append(output_filepath)
+
+    if job_type == "singleMp3":
+        job.file_name = f"{sanitize_filename(job.info.get('title', 'track'))}.mp3"
+        job.file_path = os.path.join(job.temp_dir, job.file_name)
+        if mp3_files: os.rename(mp3_files[0], job.file_path)
+
+    elif job_type == "playlistZip":
+        job.message = "Creating ZIP archive..."
+        job.file_name = f"{playlist_title}.zip"
+        job.file_path = os.path.join(job.temp_dir, job.file_name)
+        with zipfile.ZipFile(job.file_path, "w") as zipf:
+            for mp3_file in mp3_files:
+                zipf.write(mp3_file, os.path.basename(mp3_file))
+
+    elif job_type == "combineMp3":
+        job.message = "Combining all tracks..."
+        job.file_name = f"{playlist_title} (Combined).mp3"
+        job.file_path = os.path.join(job.temp_dir, job.file_name)
+        concat_list_path = os.path.join(job.temp_dir, "concat_list.txt")
+
+        with open(concat_list_path, "w", encoding="utf-8") as f:
+            for mp3_file in mp3_files:
+                escaped_filename = mp3_file.replace("'", "'\\''")
+                f.write(f"file '{escaped_filename}'\n")
+
+        combine_command = [
+            ffmpeg_exe, "-f", "concat", "-safe", "0", "-i", concat_list_path,
+            "-c", "copy", "-y", job.file_path,
+        ]
+        subprocess.run(
+            combine_command, capture_output=True, text=True, check=True,
+            encoding="utf-8", errors="ignore",
+        )
+
+    job.status, job.message = "completed", "Processing complete!"
 
     playlist_title = sanitize_filename(job.info.get("title", "playlist"))
 
