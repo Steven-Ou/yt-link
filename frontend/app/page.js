@@ -545,8 +545,13 @@ export default function Home() {
   const downloadCombinedPlaylistMp3 = () =>
     handleJobRequest(combineVideoUrl, "combineMp3", "Combine Playlist to MP3");
   const downloadVideo = () =>
-    handleJobRequest(videoUrl, "singleVideo", "Single Video Download");
-
+    handleJobRequest(
+      videoUrl,
+      "singleVideo",
+      "Single Video Download",
+      selectedQuality
+    );
+    
   const isLoading = (jobType) => {
     const status = activeJobs[jobType]?.status;
     return (
