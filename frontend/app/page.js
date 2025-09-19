@@ -674,7 +674,6 @@ export default function Home() {
               onClick={downloadCombinedPlaylistMp3}
               fullWidth
               style={{ marginBottom: 16 }}
-              disabled={anyJobLoading}
             >
               {anyJobLoading &&
               activeJobs.some(
