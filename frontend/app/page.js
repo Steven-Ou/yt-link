@@ -586,7 +586,6 @@ export default function Home() {
             <CookieInputField
               value={cookieData}
               onChange={(e) => setCookieData(e.target.value)}
-              disabled={anyJobLoading}
             />
             <Button
               variant="contained"
