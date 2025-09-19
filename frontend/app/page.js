@@ -711,28 +711,41 @@ export default function Home() {
               onChange={(e) => setCookieData(e.target.value)}
             />
             {isLoadingFormats && <CircularProgress size={24} sx={{ mb: 2 }} />}
-            {videoFormats.length > 0 && (
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <InputLabel id="quality-select-label">Video Quality</InputLabel>
-                <Select
-                  labelId="quality-select-label"
-                  id="quality-select"
-                  value={selectedQuality}
-                  label="Video Quality"
-                  onChange={(e) => setSelectedQuality(e.target.value)}
-                >
-                  <MenuItem value="best">Best Available</MenuItem>
-                  {videoFormats.map((format) => (
-                    <MenuItem
-                      key={format.format_id || format.height}
-                      value={format.height}
-                    >
-                      {format.resolution} ({format.note || format.ext})
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            )}
+            <FormControl
+              fullWidth
+              sx={{ mb: 2 }}
+              disabled={videoFormats.length === 0 || anyJobLoading}
+            >
+              <InputLabel id="quality-select-label">Video Quality</InputLabel>
+              <Select
+                labelId="quality-select-label"
+                id="quality-select"
+                value={selectedQuality}
+                label="Video Quality"
+                onChange={(e) => setSelectedQuality(e.target.value)}
+              >
+                {videoFormats.length === 0 ? (
+                  <MenuItem value="best" disabled>
+                    Enter a URL to see quality options
+                  </MenuItem>
+                ) : (
+                  [
+                    <MenuItem key="best" value="best">
+                      Best Available
+                    </MenuItem>,
+                    videoFormats.map((format) => (
+                      <MenuItem
+                        key={format.format_id || format.height}
+                        value={format.height}
+                      >
+                        {format.resolution} ({format.note || format.ext})
+                      </MenuItem>
+                    )),
+                  ]
+                )}
+              </Select>
+            </FormControl>
+            
             <Button
               variant="contained"
               color="primary"
