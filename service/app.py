@@ -81,7 +81,7 @@ def get_formats_endpoint():
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False) or {}
-            
+
             unique_formats = {}
             all_formats = info.get("formats", [])
 
@@ -107,12 +107,11 @@ def get_formats_endpoint():
                         # Convert bytes to a readable MB format
                         filesize_mb = filesize / (1024 * 1024)
                         note = f"{note} (~{filesize_mb:.1f} MB)"
-                    
-                    if f.get("acodec") == "none":
-                         note = f"{note} (video/shorts)"
-                    else:
-                         note = f"{note} (video+audio)"
 
+                    if f.get("acodec") == "none":
+                        note = f"{note} (video/shorts)"
+                    else:
+                        note = f"{note} (video+audio)"
 
                     unique_formats[height] = {
                         "format_id": f.get("format_id"),
@@ -423,7 +422,8 @@ def manual_post_processing(job_id: str, job_type: str):
 
         with open(concat_list_path, "w", encoding="utf-8") as f:
             for mp3_file in mp3_files:
-                f.write(f"file '{mp3_file.replace("'", "'\\''")}'\n")
+                escaped_filename = mp3_file.replace("'", "'\\''")
+                f.write(f"file '{escaped_filename}'\n")
 
         combine_command = [
             ffmpeg_exe,
