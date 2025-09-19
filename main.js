@@ -312,24 +312,15 @@ app.on("quit", () => {
 // --- IPC HANDLERS ---
 
 ipcMain.handle("get-video-formats", async (event, url) => {
-  if (!isBackendReady) {
-    return { error: "Backend is not ready." };
-  }
+  if (!isBackendReady) return { error: "Backend is not ready." };
   try {
     const response = await fetch(`http://127.0.0.1:${pyPort}/get-formats`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url }),
     });
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `Backend responded with status: ${response.status} ${errorText}`
-      );
-    }
     return await response.json();
   } catch (error) {
-    sendLog(`[Electron] ERROR: Failed to get video formats: ${error.message}`);
     return { error: `Failed to get video formats: ${error.message}` };
   }
 });
