@@ -370,7 +370,7 @@ export default function Home() {
   const [videoFormats, setVideoFormats] = useState([]);
   const [selectedQuality, setSelectedQuality] = useState("best");
   const [isLoadingFormats, setIsLoadingFormats] = useState(false);
-  
+
   useEffect(() => {
     setIsElectron(!!(window && window.electron));
 
@@ -546,6 +546,33 @@ export default function Home() {
     return (
       status === "queued" || status === "downloading" || status === "processing"
     );
+  };
+  const handleVideoUrlChange = async (e) => {
+    const newUrl = e.target.value;
+    setVideoUrl(newUrl);
+    const youtubeRegex =
+      /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
+
+    if (youtubeRegex.test(newUrl) && window.electron) {
+      setIsLoadingFormats(true);
+      setVideoFormats([]);
+      try {
+        const formats = await window.electron.getVideoFormats(newUrl);
+        if (formats && !formats.error) {
+          setVideoFormats(formats);
+          if (formats.length > 0) {
+            setSelectedQuality(formats[0].height);
+          } else {
+            setSelectedQuality("best");
+          }
+        }
+      } finally {
+        setIsLoadingFormats(false);
+      }
+    } else {
+      setVideoFormats([]);
+      setSelectedQuality("best");
+    }
   };
 
   const renderContent = () => {
