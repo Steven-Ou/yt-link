@@ -18,7 +18,6 @@ from typing import Dict, Any, List, Optional
 FFMPEG_EXE: Optional[str] = None
 
 
-# --- Job Class Definition (No Changes Needed) ---
 class Job:
     def __init__(self, job_id: str, url: str, job_type: str):
         self.job_id: str = job_id
@@ -34,7 +33,6 @@ class Job:
         self.file_name: Optional[str] = None
 
 
-# --- UTF-8 Fix and Helper Functions (No Changes Needed) ---
 if sys.stdout.encoding != "utf-8":
     sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")
 if sys.stderr.encoding != "utf-8":
@@ -103,7 +101,6 @@ APP_TEMP_DIR = os.path.join(tempfile.gettempdir(), "yt-link")
 os.makedirs(APP_TEMP_DIR, exist_ok=True)
 
 
-# --- Download Thread (No Changes Needed) ---
 def download_thread(url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: str):
     job = jobs[job_id]
     job_temp_dir = os.path.join(APP_TEMP_DIR, job_id)
@@ -141,7 +138,6 @@ def download_thread(url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: s
         job.error = str(e)
 
 
-# --- START: CORRECTED manual_post_processing FUNCTION ---
 def manual_post_processing(job_id: str, job_type: str):
     """Handles file conversion, zipping, and combining after download."""
     job = jobs[job_id]
@@ -319,10 +315,6 @@ def manual_post_processing(job_id: str, job_type: str):
     )
 
 
-# --- END: CORRECTED manual_post_processing FUNCTION ---
-
-
-# --- Progress Hook (No Changes Needed) ---
 def progress_hook(d: Dict[str, Any]):
     job_id = d.get("info_dict", {}).get("job_id")
     if not job_id or job_id not in jobs:
@@ -346,8 +338,6 @@ def progress_hook(d: Dict[str, Any]):
         job.message = "Download finished, preparing to process file..."
 
 
-
-# --- start_job_endpoint (Minor Change) ---
 @app.route("/start-job", methods=["POST"])
 def start_job_endpoint():
     data = request.get_json()
@@ -394,7 +384,6 @@ def start_job_endpoint():
     return jsonify({"jobId": job_id})
 
 
-# --- Remaining Flask Routes (No Changes Needed) ---
 @app.route("/job-status", methods=["GET"])
 def get_job_status():
     job_id = request.args.get("jobId")
