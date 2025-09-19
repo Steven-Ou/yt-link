@@ -109,7 +109,7 @@ def get_formats_endpoint():
                         note = f"{note} (~{filesize_mb:.1f} MB)"
                     
                     if f.get("acodec") == "none":
-                         note = f"{note} (video only)"
+                         note = f"{note} (video/shorts)"
                     else:
                          note = f"{note} (video+audio)"
 
