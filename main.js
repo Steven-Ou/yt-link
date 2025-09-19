@@ -402,7 +402,7 @@ ipcMain.handle("download-file", async (event, { jobId }) => {
 
   try {
     const jobStatusResponse = await axios.get(
-      `http://127.0.0.1:${pythonPort}/job-status?jobId=${jobId}`
+      `http://127.0.0.1:${pyPort}/job-status?jobId=${jobId}`
     );
     const job = jobStatusResponse.data;
 
@@ -418,7 +418,7 @@ ipcMain.handle("download-file", async (event, { jobId }) => {
       return { success: false, message: "Save canceled." };
     }
 
-    const downloadUrl = `http://127.0.0.1:${pythonPort}/download/${jobId}`;
+    const downloadUrl = `http://127.0.0.1:${pyPort}/download/${jobId}`;
     const response = await axios({
       method: "GET",
       url: downloadUrl,
