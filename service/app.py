@@ -144,12 +144,10 @@ def start_job_endpoint():
         return jsonify({"error": "Invalid request body"}), 400
 
     job_id = str(uuid.uuid4())
-    jobs[job_id] = Job(job_id=job_id, url=data["url"], job_type=data["jobType"])
+    job_type = data["jobType"] # Store job_type from the request
+    jobs[job_id] = Job(job_id=job_id, url=data["url"], job_type=job_type)
 
-    job_type = data["jobType"]
     ydl_opts: Dict[str, Any]
-
-    # --- REFACTORED OPTIONS FOR EACH JOB TYPE ---
 
     if job_type == "singleVideo":
         quality = data.get("quality", "best")
@@ -183,7 +181,7 @@ def start_job_endpoint():
 
     # Common options for all jobs
     ydl_opts.update({
-        "progress_hooks": [lambda d: progress_hook(d, job_id)],
+        "progress_hooks": [progress_hook],
         "nocheckcertificate": True,
         "quiet": True,
         "no_warnings": True,
@@ -196,8 +194,9 @@ def start_job_endpoint():
         ydl_opts["cookiefile"] = cookie_file
 
     thread = threading.Thread(
-        target=download_thread, args=(data["url"], ydl_opts, job_id)
+        target=download_thread, args=(data["url"], ydl_opts, job_id, job_type)
     )
+    
     thread.start()
     return jsonify({"jobId": job_id})
 
