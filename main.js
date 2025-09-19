@@ -29,7 +29,7 @@ let pythonProcess = null;
 let mainWindow = null;
 // Stores the port number that the Python backend will run on.
 let pyPort = null;
-let exePath = null; 
+let exePath = null;
 // A flag to track if the Python backend has successfully started and is ready to accept requests.
 let isBackendReady = false;
 const axios = require("axios");
@@ -218,30 +218,32 @@ function startPythonBackend(port) {
     process.platform === "win32" ? "yt-link-backend.exe" : "yt-link-backend";
   const ffmpegName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
 
-  // Determine the command to execute and the arguments to pass.
-  // In development, we run the Python script directly.
-  // In production, we run the packaged executable.
+  // Determine the command to execute. In dev, it's 'python' or 'python3'.
+  // In production, it's the path to the packaged executable.
   const command = isDev
     ? process.platform === "win32"
       ? "python"
       : "python3"
     : path.join(process.resourcesPath, "backend", backendName);
 
+  // Build the list of arguments to pass to the command.
   const args = [port.toString()];
   if (isDev) {
     // In development, we run the raw Python script and must pass its path as an argument.
     args.unshift("-u", path.join(__dirname, "service", "app.py"));
   }
-  // For both dev and prod, we now explicitly pass the path to the ffmpeg binary.
+
+  // For both dev and prod, we pass the path to the bundled ffmpeg binary.
   const ffmpegPath = isDev
     ? path.join(__dirname, "bin", ffmpegName)
     : path.join(process.resourcesPath, "bin", ffmpegName);
   args.push(ffmpegPath);
+
   sendLog(`[Electron] Starting backend with command: "${command}"`);
   sendLog(`[Electron] Using arguments: [${args.join(", ")}]`);
 
-  // Spawn the child process.
-  pythonProcess = spawn(exePath, [pyPort, ffmpegPath], {
+  // Spawn the child process using the 'command' and 'args' variables we just built.
+  pythonProcess = spawn(command, args, {
     env: { ...process.env, PYTHONIOENCODING: "utf-8" },
   });
 
