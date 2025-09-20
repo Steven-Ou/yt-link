@@ -230,6 +230,9 @@ def start_job_endpoint() -> Response:
         "fragment_retries": 10,
     }
 
+    if '--packaged-win' in sys.argv:
+        ydl_opts['noprogress'] = True
+        
     if job_type == "singleVideo":
         quality = data.get("quality", "best")
         format_string = (
