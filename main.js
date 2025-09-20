@@ -15,7 +15,7 @@ const path = require("path");
 // Node.js module to create and manage child processes. Used here to run the Python backend.
 const { spawn } = require("child_process");
 // Define your Python process arguments
-const pythonArgs = ['./service/app.py', port, ffmpegPath];
+const pythonArgs = ["./service/app.py", port, ffmpegPath];
 
 // Utility to find an open network port. Essential for starting the backend without conflicts.
 const portfinder = require("portfinder");
@@ -246,11 +246,11 @@ function startPythonBackend(port) {
 
   // Spawn the child process using the 'command' and 'args' variables we just built.
   pythonProcess = spawn(command, args, {
-        env: {
-            ...process.env, // Inherit parent environment variables
-            PYTHONIOENCODING: 'utf-8', // Force UTF-8 for console I/O
-        },
-    });
+    env: {
+      ...process.env, // Inherit parent environment variables
+      PYTHONIOENCODING: "utf-8", // Force UTF-8 for console I/O
+    },
+  });
   // --- PROCESS EVENT LISTENERS ---
 
   // Handle errors during the spawning of the process itself.
