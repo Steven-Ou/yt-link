@@ -242,16 +242,13 @@ def start_job_endpoint() -> Response:
                 "format": format_string,
                 "outtmpl": output_template,
                 "noplaylist": True,
-                # yt-dlp expects a list for postprocessor_args
-                "postprocessor_args": [
-                    "-c:v",
-                    "libx264",
-                    "-c:a",
-                    "aac",
-                    "-preset",
-                    "fast",
+                "merge_output_format": "mp4",  # force mp4 container
+                "postprocessors": [
+                    {
+                        "key": "FFmpegVideoConvertor",
+                        "preferedformat": "mp4",  # cross-platform safe
+                    }
                 ],
-                "merge_output_format": "mp4",
             }
         )
     else:  # All audio jobs
