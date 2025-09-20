@@ -245,13 +245,12 @@ function startPythonBackend(port) {
   sendLog(`[Electron] Using arguments: [${args.join(", ")}]`);
 
   // Spawn the child process using the 'command' and 'args' variables we just built.
-  const pythonProcess = spawn('python', pythonArgs, {
-    env: {
-      ...process.env, // Inherit parent environment variables
-      PYTHONIOENCODING: 'utf-8', // Force UTF-8 for console I/O
-    },
-  });
-
+  pythonProcess = spawn(command, args, {
+        env: {
+            ...process.env, // Inherit parent environment variables
+            PYTHONIOENCODING: 'utf-8', // Force UTF-8 for console I/O
+        },
+    });
   // --- PROCESS EVENT LISTENERS ---
 
   // Handle errors during the spawning of the process itself.
