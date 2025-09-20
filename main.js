@@ -14,8 +14,6 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const path = require("path");
 // Node.js module to create and manage child processes. Used here to run the Python backend.
 const { spawn } = require("child_process");
-// Define your Python process arguments
-const pythonArgs = ["./service/app.py", port, ffmpegPath];
 
 // Utility to find an open network port. Essential for starting the backend without conflicts.
 const portfinder = require("portfinder");
