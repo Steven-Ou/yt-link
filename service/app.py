@@ -1,29 +1,30 @@
 # service/app.py
-
+import codecs
 import os
 import shutil
 import sys
-import traceback
+import tempfile
 import threading
+import time
+import traceback
 import uuid
 import zipfile
-import tempfile
 import subprocess
-import codecs
-import time
-from flask import Flask, request, jsonify, Response
+from typing import Any, Dict, Generator, List, Optional, cast
+
+from flask import Flask, Response, request, jsonify
 from flask_cors import CORS
-import yt_dlp
-from yt_dlp.utils import DownloadError
+
+import yt_dlp  # type: ignore[import]
+from yt_dlp.utils import DownloadError  # type: ignore[import]
 from urllib.parse import quote
-from typing import Dict, Any, List, Optional, Generator
 
 # This will be set at runtime from the command line arguments
 ffmpeg_exe: Optional[str] = None
 
 
 class Job:
-    def __init__(self, job_id: str, url: str, job_type: str):
+    def __init__(self, job_id: str, url: str, job_type: str) -> None:
         self.job_id: str = job_id
         self.url: str = url
         self.job_type: str = job_type
@@ -31,17 +32,19 @@ class Job:
         self.message: str = "Job is queued..."
         self.progress: Optional[float] = None
         self.error: Optional[str] = None
+        # temp_dir is set per-job at runtime
         self.temp_dir: Optional[str] = None
-        self.info: Optional[Dict[str, Any]] = None
+        # yt_dlp returns a complex info object; annotate as Any to avoid type conflict
+        self.info: Optional[Any] = None
         self.file_path: Optional[str] = None
         self.file_name: Optional[str] = None
 
 
-# --- UTF-8 Fix and Helper Functions ---
+# --- UTF-8 Fix for environments where stdout/stderr are non-UTF8 ---
 if sys.stdout.encoding != "utf-8":
-    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")
+    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")  # type: ignore[arg-type]
 if sys.stderr.encoding != "utf-8":
-    sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")
+    sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")  # type: ignore[arg-type]
 
 
 def sanitize_filename(filename: str) -> str:
@@ -49,6 +52,43 @@ def sanitize_filename(filename: str) -> str:
     for char in invalid_chars:
         filename = filename.replace(char, "_")
     return filename.strip().rstrip(".")
+
+
+def resolve_ffmpeg_path(candidate: str) -> str:
+    """
+    Normalize the provided ffmpeg path:
+      - If it's a directory, look for 'ffmpeg' / 'ffmpeg.exe' inside it.
+      - If it's an executable file, return it.
+      - If it's just 'ffmpeg', attempt to resolve via PATH.
+    Exits the process with a helpful message if not valid.
+    """
+    if os.path.isdir(candidate):
+        for name in ("ffmpeg", "ffmpeg.exe"):
+            cand = os.path.join(candidate, name)
+            if os.path.exists(cand):
+                candidate = cand
+                break
+
+    if candidate in ("ffmpeg", "ffmpeg.exe"):
+        found = shutil.which(candidate)
+        if found:
+            candidate = found
+
+    if not os.path.exists(candidate):
+        print(
+            f"FATAL: FFmpeg path does not exist: '{candidate}'",
+            file=sys.stderr,
+            flush=True,
+        )
+        sys.exit(1)
+    if not os.access(candidate, os.X_OK):
+        print(
+            f"FATAL: FFmpeg at '{candidate}' is not executable. Try 'chmod +x {candidate}'.",
+            file=sys.stderr,
+            flush=True,
+        )
+        sys.exit(1)
+    return candidate
 
 
 app = Flask(__name__)
@@ -59,7 +99,7 @@ os.makedirs(APP_TEMP_DIR, exist_ok=True)
 
 
 # --- Startup Cleanup ---
-def cleanup_old_job_dirs():
+def cleanup_old_job_dirs() -> None:
     now = time.time()
     for dirname in os.listdir(APP_TEMP_DIR):
         dirpath = os.path.join(APP_TEMP_DIR, dirname)
@@ -77,24 +117,58 @@ def cleanup_old_job_dirs():
 cleanup_old_job_dirs()
 
 
+# --- Progress Hook (defined early so static analyzers see it) ---
+def progress_hook(d: Dict[str, Any]) -> None:
+    """
+    yt-dlp progress hook. Expects 'info_dict' to contain 'job_id' which we
+    attach before download. Updates the Job object in `jobs`.
+    """
+    info_dict = d.get("info_dict", {})
+    job_id = info_dict.get("job_id")
+    if not job_id or job_id not in jobs:
+        return
+    job = jobs[job_id]
+
+    status = d.get("status")
+    if status == "downloading":
+        job.status = "downloading"
+        total = d.get("total_bytes") or d.get("total_bytes_estimate")
+        if total:
+            downloaded = d.get("downloaded_bytes", 0)
+            try:
+                job.progress = float(downloaded) / float(total) * 100.0
+            except Exception:
+                job.progress = None
+        job.message = f"Downloading: {d.get('_percent_str', 'N/A')} at {d.get('_speed_str', 'N/A')}"
+    elif status == "finished":
+        job.status = "processing"
+        job.message = "Download finished, converting..."
+
+
 # --- Flask Routes ---
 
 
 @app.route("/get-formats", methods=["POST"])
-def get_formats_endpoint():
+def get_formats_endpoint() -> Response:
     data = request.get_json()
     if not data or "url" not in data:
         return jsonify({"error": "Invalid request, URL is required."}), 400
     url = data["url"]
     try:
-        ydl_opts = {"quiet": True, "no_warnings": True, "nocheckcertificate": True}
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl_opts: Dict[str, Any] = {
+            "quiet": True,
+            "no_warnings": True,
+            "nocheckcertificate": True,
+        }
+        # cast to Any so stubs for yt_dlp don't cause arg-type errors
+        with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
             info = ydl.extract_info(url, download=False) or {}
-            unique_formats = {}
-            all_formats = info.get("formats", [])
+            unique_formats: Dict[int, Dict[str, Any]] = {}
+            # formats can be None or list; cast to list for static analysis purposes
+            all_formats = cast(List[Dict[str, Any]], info.get("formats", []) or [])
 
-            def get_height(f):
-                return f.get("height") or 0
+            def get_height(f: Dict[str, Any]) -> int:
+                return int(f.get("height") or 0)
 
             all_formats.sort(key=get_height, reverse=True)
             for f in all_formats:
@@ -123,7 +197,7 @@ def get_formats_endpoint():
                 unique_formats.values(), key=lambda x: x["height"], reverse=True
             )
             return jsonify(final_formats)
-    except yt_dlp.utils.DownloadError as e:
+    except DownloadError:
         return jsonify({"error": "Video not found or unavailable."}), 404
     except Exception as e:
         traceback.print_exc()
@@ -131,7 +205,7 @@ def get_formats_endpoint():
 
 
 @app.route("/start-job", methods=["POST"])
-def start_job_endpoint():
+def start_job_endpoint() -> Response:
     data = request.get_json()
     if not data or "url" not in data or "jobType" not in data:
         return jsonify({"error": "Invalid request body"}), 400
@@ -168,9 +242,15 @@ def start_job_endpoint():
                 "format": format_string,
                 "outtmpl": output_template,
                 "noplaylist": True,
-                "postprocessor_args": {
-                    "merge": ["-c:v", "libx264", "-c:a", "aac", "-preset", "fast"]
-                },
+                # yt-dlp expects a list for postprocessor_args
+                "postprocessor_args": [
+                    "-c:v",
+                    "libx264",
+                    "-c:a",
+                    "aac",
+                    "-preset",
+                    "fast",
+                ],
                 "merge_output_format": "mp4",
             }
         )
@@ -205,7 +285,7 @@ def start_job_endpoint():
 
 
 @app.route("/job-status", methods=["GET"])
-def get_job_status():
+def get_job_status() -> Response:
     job_id = request.args.get("jobId")
     if not job_id or job_id not in jobs:
         return jsonify({"status": "not_found"}), 404
@@ -213,7 +293,7 @@ def get_job_status():
 
 
 @app.route("/download/<job_id>", methods=["GET"])
-def download_file_route(job_id: str):
+def download_file_route(job_id: str) -> Response:
     job = jobs.get(job_id)
     if (
         not job
@@ -223,20 +303,30 @@ def download_file_route(job_id: str):
     ):
         return jsonify({"error": "Job not found, not ready, or file is missing."}), 404
 
-    def file_generator(file_path: str, temp_dir: Optional[str]):
+    def file_generator(
+        file_path: str, temp_dir: Optional[str]
+    ) -> Generator[bytes, None, None]:
         try:
             with open(file_path, "rb") as f:
-                yield from f
+                # stream in chunks to avoid loading full file into memory
+                while True:
+                    chunk = f.read(8192)
+                    if not chunk:
+                        break
+                    yield chunk
         finally:
             if temp_dir and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
             jobs.pop(job_id, None)
             print(f"Cleaned up job and temp files for job_id: {job_id}")
 
-    encoded_file_name = quote(job.file_name)
+    # Ensure we pass a str into quote and handle None filenames
+    encoded_file_name = quote(str(job.file_name or ""))
     fallback_file_name = (
-        job.file_name.encode("ascii", "ignore").decode("ascii").replace('"', "")
-        or "download.dat"
+        (job.file_name or "download.dat")
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .replace('"', "")
     )
     headers = {
         "Content-Disposition": f'attachment; filename="{fallback_file_name}"; filename*="UTF-8\'\'{encoded_file_name}"'
@@ -248,17 +338,20 @@ def download_file_route(job_id: str):
     )
 
 
-def download_thread(url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: str):
+def download_thread(
+    url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: str
+) -> None:
     job = jobs[job_id]
     job.temp_dir = os.path.join(APP_TEMP_DIR, job_id)
     os.makedirs(job.temp_dir, exist_ok=True)
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        # cast to Any to avoid strict type checks against yt_dlp's internal typings
+        with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
             info_dict = ydl.extract_info(url, download=False)
             if not info_dict:
                 raise DownloadError("Failed to extract video information.")
 
-            # Attach job_id for the progress hook
+            # Attach job_id to each entry so the progress hook can access it
             entries = info_dict.get("entries", [info_dict])
             for entry in entries:
                 if isinstance(entry, dict):
@@ -273,24 +366,34 @@ def download_thread(url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: s
         print(f"--- [Job {job_id}] ERROR: {job.error}", file=sys.stderr, flush=True)
 
 
-def finalize_job(job_id: str, job_type: str):
+def finalize_job(job_id: str, job_type: str) -> None:
     job = jobs[job_id]
-    assert job.temp_dir and job.info, "Job temp_dir or info is not set"
+    assert job.temp_dir and job.info is not None, "Job temp_dir or info is not set"
 
     if job_type == "singleVideo":
-        found_files = [f for f in os.listdir(job.temp_dir) if f.endswith(".mp4")]
+        # Accept a few common container extensions
+        video_extensions = [".mp4", ".mkv", ".webm", ".mov", ".avi"]
+        found_files = [
+            f
+            for f in os.listdir(job.temp_dir)
+            if os.path.splitext(f)[1].lower() in video_extensions
+        ]
         if not found_files:
             job.status = "failed"
-            job.error = "No final MP4 file found after download."
+            job.error = "No final video file found after download."
             return
+        # prefer mp4 if available
+        found_files = sorted(
+            found_files, key=lambda x: (0 if x.lower().endswith(".mp4") else 1, x)
+        )
         job.file_name = found_files[0]
         job.file_path = os.path.join(job.temp_dir, job.file_name)
-    else:  # Audio jobs
+    else:
         mp3_files = sorted(
             [
                 os.path.join(job.temp_dir, f)
                 for f in os.listdir(job.temp_dir)
-                if f.endswith(".mp3")
+                if f.lower().endswith(".mp3")
             ]
         )
         if not mp3_files:
@@ -298,7 +401,11 @@ def finalize_job(job_id: str, job_type: str):
             job.error = "No MP3 files found after conversion."
             return
 
-        playlist_title = sanitize_filename(job.info.get("title", "playlist"))
+        playlist_title = sanitize_filename(
+            str(job.info.get("title", "playlist"))
+            if isinstance(job.info, dict)
+            else "playlist"
+        )
 
         if job_type == "singleMp3":
             job.file_name = os.path.basename(mp3_files[0])
@@ -317,7 +424,9 @@ def finalize_job(job_id: str, job_type: str):
             concat_list_path = os.path.join(job.temp_dir, "concat_list.txt")
             with open(concat_list_path, "w", encoding="utf-8") as f:
                 for mp3_file in mp3_files:
-                    f.write(f"file '{mp3_file.replace("'", "'\\''")}'\n")
+                    # Escape single quotes for ffmpeg concat usage
+                    escaped = mp3_file.replace("'", "'\\''")
+                    f.write(f"file '{escaped}'\n")
 
             command = [
                 ffmpeg_exe,
@@ -332,34 +441,11 @@ def finalize_job(job_id: str, job_type: str):
                 "-y",
                 job.file_path,
             ]
-            process = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="ignore",
-            )
+            process = subprocess.run(command, capture_output=True, text=True)
             if process.returncode != 0:
                 raise Exception(f"FFMPEG Concat Error: {process.stderr}")
 
     job.status, job.message = "completed", "Processing complete!"
-
-
-def progress_hook(d: Dict[str, Any]):
-    job_id = d.get("info_dict", {}).get("job_id")
-    if not job_id or job_id not in jobs:
-        return
-    job = jobs[job_id]
-
-    if d["status"] == "downloading":
-        job.status = "downloading"
-        total = d.get("total_bytes") or d.get("total_bytes_estimate")
-        if total:
-            job.progress = d.get("downloaded_bytes", 0) / total * 100
-        job.message = f"Downloading: {d.get('_percent_str', 'N/A')} at {d.get('_speed_str', 'N/A')}"
-    elif d["status"] == "finished":
-        job.status = "processing"
-        job.message = "Download finished, converting..."
 
 
 if __name__ == "__main__":
@@ -369,15 +455,7 @@ if __name__ == "__main__":
 
     port_arg, ffmpeg_path_arg = sys.argv[1], sys.argv[2]
 
-    if not os.path.exists(ffmpeg_path_arg):
-        print(
-            f"FATAL: FFmpeg path does not exist: '{ffmpeg_path_arg}'",
-            file=sys.stderr,
-            flush=True,
-        )
-        sys.exit(1)
-
-    ffmpeg_exe = ffmpeg_path_arg
+    ffmpeg_exe = resolve_ffmpeg_path(ffmpeg_path_arg)
     port = int(port_arg)
 
     print(f"--- Backend starting on port {port} ---", flush=True)
