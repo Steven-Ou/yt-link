@@ -230,16 +230,16 @@ def start_job_endpoint() -> Response:
         "fragment_retries": 10,
     }
 
-    if '--packaged-win' in sys.argv:
-        ydl_opts['noprogress'] = True
-        
+    if "--packaged-win" in sys.argv:
+        ydl_opts["noprogress"] = True
+
     if job_type == "singleVideo":
         quality = data.get("quality", "best")
         format_string = (
-        f"bestvideo[ext=mp4][height<={quality}]+bestaudio[ext=m4a]/best[ext=mp4][height<={quality}]"
-        if quality != "best"
-        else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
-    )
+            f"bestvideo[ext=mp4][height<={quality}]+bestaudio[ext=m4a]/best[ext=mp4][height<={quality}]"
+            if quality != "best"
+            else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
+        )
         ydl_opts.update(
             {
                 "format": format_string,
