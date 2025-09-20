@@ -151,7 +151,7 @@ def start_job_endpoint():
         "nocheckcertificate": True,
         "quiet": True,
         "no_warnings": True,
-        "ffmpeg_location": ffmpeg_exe,  # *** THE CRITICAL FIX ***
+        "ffmpeg_location": ffmpeg_exe,
         "retries": 10,
         "fragment_retries": 10,
     }
@@ -168,6 +168,9 @@ def start_job_endpoint():
                 "format": format_string,
                 "outtmpl": output_template,
                 "noplaylist": True,
+                "postprocessor_args": {
+                    "merge": ["-c:v", "libx264", "-c:a", "aac", "-preset", "fast"]
+                },
                 "merge_output_format": "mp4",
             }
         )
