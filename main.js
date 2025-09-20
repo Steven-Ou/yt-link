@@ -238,8 +238,8 @@ function startPythonBackend(port) {
     ? path.join(__dirname, "bin", ffmpegName)
     : path.join(process.resourcesPath, "bin", ffmpegName);
   args.push(ffmpegPath);
-if (!isDev && process.platform === 'win32') {
-    args.push('--packaged-win');
+  if (!isDev && process.platform === "win32") {
+    args.push("--packaged-win");
   }
   sendLog(`[Electron] Starting backend with command: "${command}"`);
   sendLog(`[Electron] Using arguments: [${args.join(", ")}]`);
