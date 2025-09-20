@@ -233,10 +233,10 @@ def start_job_endpoint() -> Response:
     if job_type == "singleVideo":
         quality = data.get("quality", "best")
         format_string = (
-            f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]"
-            if quality != "best"
-            else "bestvideo+bestaudio/best"
-        )
+        f"bestvideo[ext=mp4][height<={quality}]+bestaudio[ext=m4a]/best[ext=mp4][height<={quality}]"
+        if quality != "best"
+        else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
+    )
         ydl_opts.update(
             {
                 "format": format_string,
