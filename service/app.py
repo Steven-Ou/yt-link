@@ -163,7 +163,6 @@ def start_job_endpoint():
 
     if job_type == "singleVideo":
         quality = data.get("quality", "best")
-        # *** FIX: More flexible format selection ***
         format_string = (
             f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]"
             if quality != "best"
@@ -173,25 +172,36 @@ def start_job_endpoint():
             "format": format_string,
             "outtmpl": output_template,
             "noplaylist": True,
-            # Ensure the final merged file is an MP4
             "merge_output_format": "mp4",
         }
 
     elif job_type == "singleMp3":
         ydl_opts = {
-            # *** FIX: Allow any audio container, not just m4a ***
             "format": "bestaudio/best",
             "outtmpl": output_template,
             "noplaylist": True,
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192",
+                }
+            ],
         }
 
     else:  # Handles playlistZip and combineMp3
         ydl_opts = {
-            # *** FIX: Allow any audio container ***
             "format": "bestaudio/best",
             "outtmpl": output_template,
             "noplaylist": False,
             "ignoreerrors": True,
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192",
+                }
+            ],
         }
 
     ydl_opts.update(
@@ -200,13 +210,14 @@ def start_job_endpoint():
             "nocheckcertificate": True,
             "quiet": True,
             "no_warnings": True,
-            # *** FIX: Add retries for network errors and fragments ***
-            "retries": 10,
-            "fragment_retries": 10,
+            "retries": 15,
+            "fragment_retries": 15,
+            "retry_sleep": 5,
             "http_headers": {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.5",
+                "Referer": "https://www.google.com/",
             },
         }
     )
@@ -305,130 +316,49 @@ def manual_post_processing(job_id: str, job_type: str):
     job = jobs[job_id]
     assert job.temp_dir and job.info, "Job temp_dir or info is not set"
 
-    if not ffmpeg_exe or not os.path.exists(ffmpeg_exe):
-        job.status, job.error = "failed", "FFMPEG executable not found"
-        raise FileNotFoundError(job.error)
-
-    # Find all downloaded media files, ignoring intermediate files
-    ignore_extensions = (".mp3", ".zip", ".txt", ".part", ".ytdl")
-    downloaded_files = [
-        os.path.join(job.temp_dir, f)
-        for f in os.listdir(job.temp_dir)
-        if not any(f.endswith(ext) for ext in ignore_extensions)
-        and not f.endswith(".mp4")
-    ]
-
-    if not downloaded_files:
-        # Check if the final file was already created by yt-dlp
-        final_mp4 = [f for f in os.listdir(job.temp_dir) if f.endswith(".mp4")]
-        if not final_mp4 and job_type == "singleVideo":
-            job.status = "failed"
-            job.error = "No media files found after download. The video may be private or protected."
-            files_in_dir = os.listdir(job.temp_dir)
-            print(
-                f"--- [Job {job_id}] ERROR: No media files found. Contents of temp dir: {files_in_dir}",
-                file=sys.stderr,
-                flush=True,
-            )
-            return
-
     if job_type == "singleVideo":
         video_title = sanitize_filename(job.info.get("title", "video"))
         job.file_name = f"{video_title}.mp4"
-        job.file_path = os.path.join(job.temp_dir, job.file_name)
+        # Find the final mp4 file, as yt-dlp should have already created it
+        for f in os.listdir(job.temp_dir):
+            if f.endswith(".mp4"):
+                job.file_path = os.path.join(job.temp_dir, f)
+                break
+        if not job.file_path:
+            job.status = "failed"
+            job.error = "No final MP4 file found after download."
+            return
 
-        if not os.path.exists(job.file_path):  # If yt-dlp didn't already merge it
-            if len(downloaded_files) > 1:
-                job.message = "Merging video and audio streams..."
-                video_stream = max(downloaded_files, key=os.path.getsize)
-                audio_stream = min(downloaded_files, key=os.path.getsize)
-                command = [
-                    ffmpeg_exe,
-                    "-i",
-                    video_stream,
-                    "-i",
-                    audio_stream,
-                    "-c:v",
-                    "copy",
-                    "-c:a",
-                    "aac",
-                    "-y",
-                    job.file_path,
-                ]
-            elif downloaded_files:  # Single combined file from yt-dlp
-                job.message = "Processing video..."
-                os.rename(downloaded_files[0], job.file_path)
-                command = None  # No command needed
-
-            if command:
-                process = subprocess.run(
-                    command,
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    errors="ignore",
-                )
-                if process.returncode != 0:
-                    job.status, job.error = "failed", f"FFMPEG Error: {process.stderr}"
-                    raise Exception(job.error)
-
-    else:  # Handles all audio jobs
-        process_audio_job(job, job_type, downloaded_files)
+    else:  # All audio jobs
+        process_audio_job(job, job_type)
 
     job.status, job.message = "completed", "Processing complete!"
 
 
-def process_audio_job(job: Job, job_type: str, downloaded_files: List[str]):
+def process_audio_job(job: Job, job_type: str):
     assert job.temp_dir and job.info, "Job temp_dir or info is not set"
-    playlist_title = sanitize_filename(job.info.get("title", "playlist"))
-    entries_list = job.info.get("entries", [job.info])
-    entries_map = {entry.get("id"): entry for entry in entries_list if entry}
-    mp3_files = []
-    total_files = len(downloaded_files)
 
-    for i, file_path in enumerate(downloaded_files):
-        job.message = f"Converting file {i + 1}/{total_files} to MP3..."
-        base_name = os.path.basename(file_path)
-        video_id = os.path.splitext(base_name.split("-", 1)[-1])[0]
-        entry_info = entries_map.get(video_id, {})
-        video_title = sanitize_filename(entry_info.get("title", f"track_{i + 1}"))
-        playlist_index_str = base_name.split("-", 1)[0]
-        prefix = (
-            f"{int(playlist_index_str):03d}"
-            if playlist_index_str.isdigit()
-            else f"{i+1:03d}"
-        )
-        output_filename = f"{prefix} - {video_title}.mp3"
-        output_filepath = os.path.join(job.temp_dir, output_filename)
-        command = [
-            ffmpeg_exe,
-            "-i",
-            file_path,
-            "-vn",
-            "-ab",
-            "192k",
-            "-ar",
-            "44100",
-            "-y",
-            output_filepath,
-        ]
-        subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=False,
-            encoding="utf-8",
-            errors="ignore",
-        )
-        mp3_files.append(output_filepath)
+    # Find all the converted MP3 files
+    mp3_files = [
+        os.path.join(job.temp_dir, f)
+        for f in os.listdir(job.temp_dir)
+        if f.endswith(".mp3")
+    ]
 
     if not mp3_files:
-        raise Exception("MP3 conversion failed for all files.")
+        job.status = "failed"
+        job.error = "No MP3 files found after download and conversion."
+        return
+
+    playlist_title = sanitize_filename(job.info.get("title", "playlist"))
 
     if job_type == "singleMp3":
-        job.file_name = f"{sanitize_filename(job.info.get('title', 'track'))}.mp3"
+        video_title = sanitize_filename(job.info.get("title", "track"))
+        job.file_name = f"{video_title}.mp3"
         job.file_path = os.path.join(job.temp_dir, job.file_name)
+        # Rename the first (and only) mp3 file
         os.rename(mp3_files[0], job.file_path)
+
     elif job_type == "playlistZip":
         job.message = "Creating ZIP archive..."
         job.file_name = f"{playlist_title}.zip"
@@ -436,6 +366,7 @@ def process_audio_job(job: Job, job_type: str, downloaded_files: List[str]):
         with zipfile.ZipFile(job.file_path, "w") as zipf:
             for mp3_file in mp3_files:
                 zipf.write(mp3_file, os.path.basename(mp3_file))
+
     elif job_type == "combineMp3":
         job.message = "Combining all tracks..."
         job.file_name = f"{playlist_title} (Combined).mp3"
@@ -487,8 +418,12 @@ def progress_hook(d: Dict[str, Any]):
                 )
             job.message = f"Downloading: {d.get('_percent_str', 'N/A')} at {d.get('_speed_str', 'N/A')} (ETA: {d.get('_eta_str', 'N/A')})"
         elif d["status"] == "finished":
-            job.status = "processing"
-            job.message = "Download finished, preparing to process..."
+            # This is the key change: we now indicate that post-processing is happening
+            if d.get("postprocessor"):
+                job.message = f"Converting to {d['postprocessor']}..."
+            else:
+                job.status = "processing"
+                job.message = "Download finished, preparing file..."
 
 
 if __name__ == "__main__":
