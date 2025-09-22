@@ -1,6 +1,6 @@
 {
   "name": "yt-link",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Desktop app to download youtube videos and playlist as mp3 files",
   "author": "Steven Ou",
   "main": "main.js",
