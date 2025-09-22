@@ -10,8 +10,6 @@ jobs:
     strategy:
       matrix:
         include:
-          # We build a single universal app for macOS on an x64 runner.
-          # electron-builder will handle creating the universal binary.
           - os: macos-13
             arch: universal
           - os: windows-latest
@@ -38,8 +36,10 @@ jobs:
           python-version: '3.10'
           cache: 'pip'
 
-      - name: Install Python dependencies
-        run: pip install -r service/requirements.txt
+      - name: Install and Upgrade Python dependencies
+        run: |
+          pip install -r service/requirements.txt
+          pip install --upgrade yt-dlp
       
       - name: Download and Setup FFmpeg for macOS
         if: runner.os == 'macOS'
@@ -84,10 +84,8 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.os }}" == "macOS" ]; then
-            # Build a single universal DMG that works on both Intel and Apple Silicon
             npm run dist -- --universal
           else
-            # Build for Windows
             npm run dist -- --x64
           fi
 
@@ -97,7 +95,6 @@ jobs:
         run: |
           if [ "${{ runner.os }}" == "macOS" ]; then
             ARTIFACT_PATH=$(ls dist/*.dmg)
-            # Name the artifact to indicate it's universal
             ARTIFACT_NAME="YT-Link-macOS-universal.dmg"
           elif [ "${{ runner.os }}" == "Windows" ]; then
             ARTIFACT_PATH=$(ls dist/*.zip)
