@@ -41,8 +41,8 @@ class Job:
 
 
 # --- UTF-8 Fix for environments where stdout/stderr are non-UTF8 ---
-#if sys.stdout.encoding != "utf-8":
-  #  sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")  # type: ignore[arg-type]
+# if sys.stdout.encoding != "utf-8":
+#  sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")  # type: ignore[arg-type]
 
 
 def sanitize_filename(filename: str) -> str:
@@ -226,6 +226,7 @@ def start_job_endpoint() -> Response:
         "ffmpeg_location": ffmpeg_exe,
         "retries": 10,
         "fragment_retries": 10,
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
     }
 
     if "--packaged-win" in sys.argv:
