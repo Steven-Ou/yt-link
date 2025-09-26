@@ -359,6 +359,14 @@ def download_thread(
 
             ydl.download([url])
         finalize_job(job_id, job_type)
+    except DownloadError as e:
+        job.status = "failed"
+        # Provide a more user-friendly error message
+        if "HTTP Error 403" in str(e):
+            job.error = "Download failed: YouTube blocked the request (403 Forbidden). This can be due to an expired link or bot detection. Please try again, and ensure you are using fresh cookies if the video is private."
+        else:
+            job.error = f"A download error occurred: {e}"
+        print(f"--- [Job {job_id}] ERROR: {job.error}", file=sys.stderr, flush=True)
     except Exception:
         job.status = "failed"
         job.error = traceback.format_exc()
