@@ -41,10 +41,8 @@ class Job:
 
 
 # --- UTF-8 Fix for environments where stdout/stderr are non-UTF8 ---
-if sys.stdout.encoding != "utf-8":
-    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")  # type: ignore[arg-type]
-if sys.stderr.encoding != "utf-8":
-    sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")  # type: ignore[arg-type]
+#if sys.stdout.encoding != "utf-8":
+  #  sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")  # type: ignore[arg-type]
 
 
 def sanitize_filename(filename: str) -> str:
