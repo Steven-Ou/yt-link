@@ -10,6 +10,7 @@ import traceback
 import uuid
 import zipfile
 import subprocess
+import queue  # --- NEW ---
 from typing import Any, Dict, Generator, List, Optional, cast
 
 from flask import Flask, Response, request, jsonify
@@ -22,29 +23,316 @@ from urllib.parse import quote
 # This will be set at runtime from the command line arguments
 ffmpeg_exe: Optional[str] = None
 
+# --- NEW: Job Queue, Lock, and Retry Settings ---
+jobs: Dict[str, Job] = {}  # This will store the *state* of the job
+jobs_lock = threading.Lock()
+job_queue = queue.Queue()
+MAX_RETRIES = 5
+RETRY_DELAY = 300  # 5 minutes
+
 
 class Job:
-    def __init__(self, job_id: str, url: str, job_type: str) -> None:
+    # --- MODIFIED: __init__ now takes all job data ---
+    def __init__(self, job_id: str, job_type: str, data: Dict[str, Any]) -> None:
         self.job_id: str = job_id
-        self.url: str = url
+        self.url: str = data.get("url", "")
         self.job_type: str = job_type
+        self.data: Dict[str, Any] = data  # Store all request data
         self.status: str = "queued"
         self.message: str = "Job is queued..."
         self.progress: Optional[float] = None
         self.error: Optional[str] = None
-        # temp_dir is set per-job at runtime
-        self.temp_dir: Optional[str] = None
-        # yt_dlp returns a complex info object; annotate as Any to avoid type conflict
+        self.temp_dir: str = os.path.join(APP_TEMP_DIR, self.job_id)  # --- MODIFIED ---
         self.info: Optional[Any] = None
         self.file_path: Optional[str] = None
         self.file_name: Optional[str] = None
 
+    # --- NEW: Helper to safely update status ---
+    def set_status(
+        self,
+        status: str,
+        message: str,
+        progress: Optional[float] = None,
+        error: Optional[str] = None,
+    ) -> None:
+        with jobs_lock:
+            self.status = status
+            self.message = message
+            if progress is not None:
+                self.progress = progress
+            if error:
+                self.error = error
+                print(
+                    f"--- [Job {self.job_id}] ERROR: {self.error}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            # Update the global dict that /job-status reads
+            jobs[self.job_id] = self
 
-# --- UTF-8 Fix for environments where stdout/stderr are non-UTF8 ---
-# if sys.stdout.encoding != "utf-8":
-#  sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")  # type: ignore[arg-type]
+    # --- NEW: Helper to update progress from the hook ---
+    def update_progress(self, d: Dict[str, Any]) -> None:
+        status = d.get("status")
+        if status == "downloading":
+            total = d.get("total_bytes") or d.get("total_bytes_estimate")
+            progress_val = None
+            if total:
+                downloaded = d.get("downloaded_bytes", 0)
+                try:
+                    progress_val = float(downloaded) / float(total) * 100.0
+                except Exception:
+                    progress_val = None
+            self.set_status(
+                "downloading",
+                f"Downloading: {d.get('_percent_str', 'N/A')} at {d.get('_speed_str', 'N/A')}",
+                progress_val,
+            )
+        elif status == "finished":
+            self.set_status(
+                "processing", "Download finished, converting...", self.progress
+            )
+
+    # --- NEW: Logic moved from /start-job route ---
+    def _build_ydl_opts(self) -> Dict[str, Any]:
+        output_template = os.path.join(self.temp_dir, "%(title)s.%(ext)s")
+        if self.job_type in ["playlistZip", "combineMp3"]:
+            output_template = os.path.join(
+                self.temp_dir, "%(playlist_index)03d-%(title)s.%(ext)s"
+            )
+
+        ydl_opts: Dict[str, Any] = {
+            "progress_hooks": [self._progress_hook],  # --- MODIFIED: Point to self ---
+            "nocheckcertificate": True,
+            "quiet": True,
+            "no_warnings": True,
+            "ffmpeg_location": ffmpeg_exe,
+            "retries": 10,  # yt-dlp internal retries (e.g., for fragments)
+            "fragment_retries": 10,
+        }
+
+        if self.job_type == "singleVideo":
+            quality = self.data.get("quality", "best")
+            format_string = (
+                f"bestvideo[ext=mp4][height<={quality}]+bestaudio[ext=m4a]/best[ext=mp4][height<={quality}]"
+                if quality != "best"
+                else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
+            )
+            ydl_opts.update(
+                {
+                    "format": format_string,
+                    "outtmpl": output_template,
+                    "noplaylist": True,
+                    "merge_output_format": "mp4",
+                    "postprocessors": [
+                        {
+                            "key": "FFmpegVideoConvertor",
+                            "preferedformat": "mp4",
+                        }
+                    ],
+                }
+            )
+        else:  # All audio jobs
+            ydl_opts.update(
+                {
+                    "format": "bestaudio/best",
+                    "outtmpl": output_template,
+                    "noplaylist": self.job_type == "singleMp3",
+                    "ignoreerrors": self.job_type != "singleMp3",
+                    "postprocessors": [
+                        {
+                            "key": "FFmpegExtractAudio",
+                            "preferredcodec": "mp3",
+                            "preferredquality": "192",
+                        }
+                    ],
+                }
+            )
+
+        if self.data.get("cookies"):
+            cookie_file = os.path.join(APP_TEMP_DIR, f"cookies_{self.job_id}.txt")
+            with open(cookie_file, "w", encoding="utf-8") as f:
+                f.write(self.data["cookies"])
+            ydl_opts["cookiefile"] = cookie_file
+
+        return ydl_opts
+
+    # --- NEW: Progress hook is now a method ---
+    def _progress_hook(self, d: Dict[str, Any]) -> None:
+        # The hook is called with this job's options, so we can just update self
+        self.update_progress(d)
+
+    # --- NEW: Main execution logic, moved from download_thread ---
+    def run(self) -> None:
+        self.set_status("processing", "Preparing download...", 0)
+        os.makedirs(self.temp_dir, exist_ok=True)
+        ydl_opts = self._build_ydl_opts()
+
+        # --- NEW: Retry Loop ---
+        retries = 0
+        success = False
+        last_error_str = ""
+
+        while retries < MAX_RETRIES and not success:
+            try:
+                if retries > 0:
+                    self.set_status(
+                        "processing",
+                        f"Retrying download... (Attempt {retries + 1}/{MAX_RETRIES})",
+                        0,
+                    )
+
+                # cast to Any to avoid strict type checks
+                with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
+                    info_dict = ydl.extract_info(self.url, download=False)
+                    if not info_dict:
+                        raise DownloadError("Failed to extract video information.")
+
+                    # --- MODIFIED: Store info on self, no need to reinject job_id ---
+                    # The hook will work because it's part of this Job's ydl_opts
+                    self.info = info_dict
+                    ydl.download([self.url])
+
+                # If download succeeds, finalize and break loop
+                self._finalize()
+                success = True
+
+            except DownloadError as e:
+                # --- NEW: Specific 403 Forbidden Check ---
+                last_error_str = str(e)
+                if "HTTP Error 403: Forbidden" in last_error_str:
+                    retries += 1
+                    if retries < MAX_RETRIES:
+                        self.set_status(
+                            "error",
+                            f"Blocked (403). Retrying in {RETRY_DELAY // 60} min... ({retries}/{MAX_RETRIES})",
+                            self.progress,
+                        )
+                        time.sleep(RETRY_DELAY)
+                    else:
+                        self.set_status(
+                            "failed",
+                            f"Failed after {MAX_RETRIES} attempts due to 403 Forbidden error.",
+                            error=last_error_str,
+                        )
+                else:
+                    # Different DownloadError, fail immediately
+                    self.set_status("failed", "Download failed.", error=last_error_str)
+                    break
+            except Exception as e:
+                # Any other exception (zipping, ffmpeg, etc.), fail immediately
+                self.set_status(
+                    "failed",
+                    "A processing error occurred.",
+                    error=traceback.format_exc(),
+                )
+                break
+
+        # --- Cleanup cookie file if it exists ---
+        cookie_file = ydl_opts.get("cookiefile")
+        if cookie_file and os.path.exists(cookie_file):
+            os.remove(cookie_file)
+
+    # --- NEW: Logic moved from finalize_job ---
+    def _finalize(self) -> None:
+        self.set_status("processing", "Finalizing files...", self.progress or 100)
+        assert self.temp_dir and self.info is not None, (
+            "Job temp_dir or info is not set"
+        )
+
+        if self.job_type == "singleVideo":
+            video_extensions = [".mp4", ".mkv", ".webm", ".mov", ".avi"]
+            found_files = [
+                f
+                for f in os.listdir(self.temp_dir)
+                if os.path.splitext(f)[1].lower() in video_extensions
+            ]
+            if not found_files:
+                raise Exception("No final video file found after download.")
+            found_files = sorted(
+                found_files, key=lambda x: (0 if x.lower().endswith(".mp4") else 1, x)
+            )
+            self.file_name = found_files[0]
+            self.file_path = os.path.join(self.temp_dir, self.file_name)
+        else:
+            mp3_files = sorted(
+                [
+                    os.path.join(self.temp_dir, f)
+                    for f in os.listdir(self.temp_dir)
+                    if f.lower().endswith(".mp3")
+                ]
+            )
+            if not mp3_files:
+                raise Exception("No MP3 files found after conversion.")
+
+            playlist_title = sanitize_filename(
+                str(self.info.get("title", "playlist"))
+                if isinstance(self.info, dict)
+                else "playlist"
+            )
+
+            if self.job_type == "singleMp3":
+                self.file_name = os.path.basename(mp3_files[0])
+                self.file_path = mp3_files[0]
+            elif self.job_type == "playlistZip":
+                self.set_status("processing", "Creating ZIP archive...", self.progress)
+                self.file_name = f"{playlist_title}.zip"
+                self.file_path = os.path.join(self.temp_dir, self.file_name)
+                with zipfile.ZipFile(self.file_path, "w") as zipf:
+                    for mp3_file in mp3_files:
+                        zipf.write(mp3_file, os.path.basename(mp3_file))
+            elif self.job_type == "combineMp3":
+                self.set_status("processing", "Combining all tracks...", self.progress)
+                self.file_name = f"{playlist_title} (Combined).mp3"
+                self.file_path = os.path.join(self.temp_dir, self.file_name)
+                concat_list_path = os.path.join(self.temp_dir, "concat_list.txt")
+                with open(concat_list_path, "w", encoding="utf-8") as f:
+                    for mp3_file in mp3_files:
+                        escaped = mp3_file.replace("'", "'\\''")
+                        f.write(f"file '{escaped}'\n")
+
+                command = [
+                    str(ffmpeg_exe),  # Ensure ffmpeg_exe is not None
+                    "-f",
+                    "concat",
+                    "-safe",
+                    "0",
+                    "-i",
+                    concat_list_path,
+                    "-c",
+                    "copy",
+                    "-y",
+                    self.file_path,
+                ]
+                process = subprocess.run(
+                    command, capture_output=True, text=True, encoding="utf-8"
+                )
+                if process.returncode != 0:
+                    raise Exception(f"FFMPEG Concat Error: {process.stderr}")
+
+        self.set_status("completed", "Processing complete!", 100)
+
+    # --- NEW: Helper for /job-status endpoint ---
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "job_id": self.job_id,
+            "url": self.url,
+            "job_type": self.job_type,
+            "status": self.status,
+            "message": self.message,
+            "progress": self.progress,
+            "error": self.error,
+            "file_name": self.file_name,
+        }
 
 
+# --- (UTF-8 Fix - unchanged) ---
+if sys.stdout.encoding != "utf-8":
+    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")  # type: ignore[arg-type]
+if sys.stderr.encoding != "utf-8":
+    sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")  # type: ignore[arg-type]
+
+
+# --- (sanitize_filename - unchanged) ---
 def sanitize_filename(filename: str) -> str:
     invalid_chars = '<>:"/\\|?*'
     for char in invalid_chars:
@@ -52,26 +340,18 @@ def sanitize_filename(filename: str) -> str:
     return filename.strip().rstrip(".")
 
 
+# --- (resolve_ffmpeg_path - unchanged) ---
 def resolve_ffmpeg_path(candidate: str) -> str:
-    """
-    Normalize the provided ffmpeg path:
-      - If it's a directory, look for 'ffmpeg' / 'ffmpeg.exe' inside it.
-      - If it's an executable file, return it.
-      - If it's just 'ffmpeg', attempt to resolve via PATH.
-    Exits the process with a helpful message if not valid.
-    """
     if os.path.isdir(candidate):
         for name in ("ffmpeg", "ffmpeg.exe"):
             cand = os.path.join(candidate, name)
             if os.path.exists(cand):
                 candidate = cand
                 break
-
     if candidate in ("ffmpeg", "ffmpeg.exe"):
         found = shutil.which(candidate)
         if found:
             candidate = found
-
     if not os.path.exists(candidate):
         print(
             f"FATAL: FFmpeg path does not exist: '{candidate}'",
@@ -89,14 +369,14 @@ def resolve_ffmpeg_path(candidate: str) -> str:
     return candidate
 
 
+# --- (App setup - unchanged) ---
 app = Flask(__name__)
 CORS(app)
-jobs: Dict[str, Job] = {}
 APP_TEMP_DIR = os.path.join(tempfile.gettempdir(), "yt-link")
 os.makedirs(APP_TEMP_DIR, exist_ok=True)
 
 
-# --- Startup Cleanup ---
+# --- (cleanup_old_job_dirs - unchanged) ---
 def cleanup_old_job_dirs() -> None:
     now = time.time()
     for dirname in os.listdir(APP_TEMP_DIR):
@@ -115,37 +395,13 @@ def cleanup_old_job_dirs() -> None:
 cleanup_old_job_dirs()
 
 
-# --- Progress Hook (defined early so static analyzers see it) ---
-def progress_hook(d: Dict[str, Any]) -> None:
-    """
-    yt-dlp progress hook. Expects 'info_dict' to contain 'job_id' which we
-    attach before download. Updates the Job object in `jobs`.
-    """
-    info_dict = d.get("info_dict", {})
-    job_id = info_dict.get("job_id")
-    if not job_id or job_id not in jobs:
-        return
-    job = jobs[job_id]
-
-    status = d.get("status")
-    if status == "downloading":
-        job.status = "downloading"
-        total = d.get("total_bytes") or d.get("total_bytes_estimate")
-        if total:
-            downloaded = d.get("downloaded_bytes", 0)
-            try:
-                job.progress = float(downloaded) / float(total) * 100.0
-            except Exception:
-                job.progress = None
-        job.message = f"Downloading: {d.get('_percent_str', 'N/A')} at {d.get('_speed_str', 'N/A')}"
-    elif status == "finished":
-        job.status = "processing"
-        job.message = "Download finished, converting..."
+# --- REMOVED: Global progress_hook, it's now Job._progress_hook ---
 
 
 # --- Flask Routes ---
 
 
+# --- (/get-formats - unchanged) ---
 @app.route("/get-formats", methods=["POST"])
 def get_formats_endpoint() -> Response:
     data = request.get_json()
@@ -158,11 +414,9 @@ def get_formats_endpoint() -> Response:
             "no_warnings": True,
             "nocheckcertificate": True,
         }
-        # cast to Any so stubs for yt_dlp don't cause arg-type errors
         with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
             info = ydl.extract_info(url, download=False) or {}
             unique_formats: Dict[int, Dict[str, Any]] = {}
-            # formats can be None or list; cast to list for static analysis purposes
             all_formats = cast(List[Dict[str, Any]], info.get("formats", []) or [])
 
             def get_height(f: Dict[str, Any]) -> int:
@@ -202,6 +456,7 @@ def get_formats_endpoint() -> Response:
         return jsonify({"error": str(e)}), 500
 
 
+# --- MODIFIED: /start-job now just creates and queues the job ---
 @app.route("/start-job", methods=["POST"])
 def start_job_endpoint() -> Response:
     data = request.get_json()
@@ -210,92 +465,41 @@ def start_job_endpoint() -> Response:
 
     job_id = str(uuid.uuid4())
     job_type = data["jobType"]
-    jobs[job_id] = Job(job_id=job_id, url=data["url"], job_type=job_type)
 
-    output_template = os.path.join(APP_TEMP_DIR, job_id, "%(title)s.%(ext)s")
-    if job_type in ["playlistZip", "combineMp3"]:
-        output_template = os.path.join(
-            APP_TEMP_DIR, job_id, "%(playlist_index)03d-%(title)s.%(ext)s"
-        )
+    # Create the job object
+    job = Job(job_id=job_id, job_type=job_type, data=data)
 
-    ydl_opts: Dict[str, Any] = {
-        "progress_hooks": [progress_hook],
-        "nocheckcertificate": True,
-        "quiet": True,
-        "no_warnings": True,
-        "ffmpeg_location": ffmpeg_exe,
-        "retries": 10,
-        "fragment_retries": 10,
-        "sleep_interval":5,
-        "max_sleep_interval":10,
-        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
-    }
+    # Store its initial state and put it on the queue
+    with jobs_lock:
+        jobs[job_id] = job
+    job_queue.put(job)
 
-    if "--packaged-win" in sys.argv:
-        ydl_opts["noprogress"] = True
-
-    if job_type == "singleVideo":
-        quality = data.get("quality", "best")
-        format_string = (
-            f"bestvideo[ext=mp4][height<={quality}]+bestaudio[ext=m4a]/best[ext=mp4][height<={quality}]/best"
-            if quality != "best"
-            else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
-        )
-        ydl_opts.update(
-            {
-                "format": format_string,
-                "outtmpl": output_template,
-                "noplaylist": True,
-                "merge_output_format": "mp4",  # force mp4 container
-                "postprocessors": [
-                    {
-                        "key": "FFmpegVideoConvertor",
-                        "preferedformat": "mp4",  # cross-platform safe
-                    }
-                ],
-            }
-        )
-    else:  # All audio jobs
-        ydl_opts.update(
-            {
-                "format": "bestaudio/best",
-                "outtmpl": output_template,
-                "noplaylist": job_type == "singleMp3",
-                "ignoreerrors": job_type != "singleMp3",
-                "postprocessors": [
-                    {
-                        "key": "FFmpegExtractAudio",
-                        "preferredcodec": "mp3",
-                        "preferredquality": "192",
-                    }
-                ],
-            }
-        )
-
-    if data.get("cookies"):
-        cookie_file = os.path.join(APP_TEMP_DIR, f"cookies_{job_id}.txt")
-        with open(cookie_file, "w", encoding="utf-8") as f:
-            f.write(data["cookies"])
-        ydl_opts["cookiefile"] = cookie_file
-
-    thread = threading.Thread(
-        target=download_thread, args=(data["url"], ydl_opts, job_id, job_type)
-    )
-    thread.start()
+    print(f"Job enqueued: {job_id} ({job_type})")
     return jsonify({"jobId": job_id})
 
 
+# --- MODIFIED: /job-status now uses the lock ---
 @app.route("/job-status", methods=["GET"])
 def get_job_status() -> Response:
     job_id = request.args.get("jobId")
-    if not job_id or job_id not in jobs:
+    if not job_id:
+        return jsonify({"status": "not_found", "error": "Missing jobId"}), 400
+
+    with jobs_lock:
+        job = jobs.get(job_id)
+
+    if not job:
         return jsonify({"status": "not_found"}), 404
-    return jsonify(jobs[job_id].__dict__)
+
+    return jsonify(job.to_dict())  # --- MODIFIED: Use to_dict() ---
 
 
+# --- MODIFIED: /download route now uses lock ---
 @app.route("/download/<job_id>", methods=["GET"])
 def download_file_route(job_id: str) -> Response:
-    job = jobs.get(job_id)
+    with jobs_lock:
+        job = jobs.get(job_id)
+
     if (
         not job
         or job.status != "completed"
@@ -309,19 +513,19 @@ def download_file_route(job_id: str) -> Response:
     ) -> Generator[bytes, None, None]:
         try:
             with open(file_path, "rb") as f:
-                # stream in chunks to avoid loading full file into memory
                 while True:
                     chunk = f.read(8192)
                     if not chunk:
                         break
                     yield chunk
         finally:
+            # Cleanup
             if temp_dir and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
-            jobs.pop(job_id, None)
+            with jobs_lock:
+                jobs.pop(job_id, None)
             print(f"Cleaned up job and temp files for job_id: {job_id}")
 
-    # Ensure we pass a str into quote and handle None filenames
     encoded_file_name = quote(str(job.file_name or ""))
     fallback_file_name = (
         (job.file_name or "download.dat")
@@ -339,122 +543,40 @@ def download_file_route(job_id: str) -> Response:
     )
 
 
-def download_thread(
-    url: str, ydl_opts: Dict[str, Any], job_id: str, job_type: str
-) -> None:
-    job = jobs[job_id]
-    job.temp_dir = os.path.join(APP_TEMP_DIR, job_id)
-    os.makedirs(job.temp_dir, exist_ok=True)
-    try:
-        # cast to Any to avoid strict type checks against yt_dlp's internal typings
-        with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
-            if not info_dict:
-                raise DownloadError("Failed to extract video information.")
-
-            # Attach job_id to each entry so the progress hook can access it
-            entries = info_dict.get("entries", [info_dict])
-            for entry in entries:
-                if isinstance(entry, dict):
-                    entry["job_id"] = job_id
-            job.info = info_dict
-
-            ydl.download([url])
-        finalize_job(job_id, job_type)
-    except DownloadError as e:
-        job.status = "failed"
-        # Provide a more user-friendly error message
-        if "HTTP Error 403" in str(e):
-            job.error = "Download failed: YouTube blocked the request (403 Forbidden). This can be due to an expired link or bot detection. Please try again, and ensure you are using fresh cookies if the video is private."
-        else:
-            job.error = f"A download error occurred: {e}"
-        print(f"--- [Job {job_id}] ERROR: {job.error}", file=sys.stderr, flush=True)
-    except Exception:
-        job.status = "failed"
-        job.error = traceback.format_exc()
-        print(f"--- [Job {job_id}] ERROR: {job.error}", file=sys.stderr, flush=True)
+# --- REMOVED: download_thread (logic moved to Job.run) ---
+# --- REMOVED: finalize_job (logic moved to Job._finalize) ---
 
 
-def finalize_job(job_id: str, job_type: str) -> None:
-    job = jobs[job_id]
-    assert job.temp_dir and job.info is not None, "Job temp_dir or info is not set"
+# --- NEW: Queue Worker Thread ---
+def queue_worker() -> None:
+    """
+    This function runs in a separate thread.
+    It waits for a Job object to be added to the job_queue,
+    then executes its .run() method.
+    """
+    while True:
+        job = None
+        try:
+            job = job_queue.get()  # This blocks until a job is available
+            if job is None:
+                continue
 
-    if job_type == "singleVideo":
-        # Accept a few common container extensions
-        video_extensions = [".mp4", ".mkv", ".webm", ".mov", ".avi"]
-        found_files = [
-            f
-            for f in os.listdir(job.temp_dir)
-            if os.path.splitext(f)[1].lower() in video_extensions
-        ]
-        if not found_files:
-            job.status = "failed"
-            job.error = "No final video file found after download."
-            return
-        # prefer mp4 if available
-        found_files = sorted(
-            found_files, key=lambda x: (0 if x.lower().endswith(".mp4") else 1, x)
-        )
-        job.file_name = found_files[0]
-        job.file_path = os.path.join(job.temp_dir, job.file_name)
-    else:
-        mp3_files = sorted(
-            [
-                os.path.join(job.temp_dir, f)
-                for f in os.listdir(job.temp_dir)
-                if f.lower().endswith(".mp3")
-            ]
-        )
-        if not mp3_files:
-            job.status = "failed"
-            job.error = "No MP3 files found after conversion."
-            return
+            print(f"Worker thread picked up job: {job.job_id} ({job.job_type})")
+            job.run()  # This is the blocking download/process call
+            print(f"Worker thread finished job: {job.job_id}")
 
-        playlist_title = sanitize_filename(
-            str(job.info.get("title", "playlist"))
-            if isinstance(job.info, dict)
-            else "playlist"
-        )
+            job_queue.task_done()
 
-        if job_type == "singleMp3":
-            job.file_name = os.path.basename(mp3_files[0])
-            job.file_path = mp3_files[0]
-        elif job_type == "playlistZip":
-            job.message = "Creating ZIP archive..."
-            job.file_name = f"{playlist_title}.zip"
-            job.file_path = os.path.join(job.temp_dir, job.file_name)
-            with zipfile.ZipFile(job.file_path, "w") as zipf:
-                for mp3_file in mp3_files:
-                    zipf.write(mp3_file, os.path.basename(mp3_file))
-        elif job_type == "combineMp3":
-            job.message = "Combining all tracks..."
-            job.file_name = f"{playlist_title} (Combined).mp3"
-            job.file_path = os.path.join(job.temp_dir, job.file_name)
-            concat_list_path = os.path.join(job.temp_dir, "concat_list.txt")
-            with open(concat_list_path, "w", encoding="utf-8") as f:
-                for mp3_file in mp3_files:
-                    # Escape single quotes for ffmpeg concat usage
-                    escaped = mp3_file.replace("'", "'\\''")
-                    f.write(f"file '{escaped}'\n")
-
-            command = [
-                ffmpeg_exe,
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                concat_list_path,
-                "-c",
-                "copy",
-                "-y",
-                job.file_path,
-            ]
-            process = subprocess.run(command, capture_output=True, text=True)
-            if process.returncode != 0:
-                raise Exception(f"FFMPEG Concat Error: {process.stderr}")
-
-    job.status, job.message = "completed", "Processing complete!"
+        except Exception as e:
+            print(f"CRITICAL ERROR in queue_worker: {str(e)}")
+            if job:
+                # If something crashes the worker, fail the job
+                job.set_status(
+                    "failed",
+                    f"Critical worker error: {str(e)}",
+                    error=traceback.format_exc(),
+                )
+            job_queue.task_done()  # IMPORTANT: ensure queue moves on
 
 
 if __name__ == "__main__":
@@ -467,7 +589,12 @@ if __name__ == "__main__":
     ffmpeg_exe = resolve_ffmpeg_path(ffmpeg_path_arg)
     port = int(port_arg)
 
+    # --- NEW: Start the queue worker thread ---
+    worker_thread = threading.Thread(target=queue_worker, daemon=True)
+    worker_thread.start()
+
     print(f"--- Backend starting on port {port} ---", flush=True)
     print(f"--- Using FFmpeg from: {ffmpeg_exe} ---", flush=True)
+    print(f"--- Worker thread started ---", flush=True)  # --- NEW ---
     print(f"Flask-Backend-Ready:{port}", flush=True)
     app.run(host="127.0.0.1", port=port, debug=False)
