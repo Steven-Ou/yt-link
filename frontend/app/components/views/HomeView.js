@@ -1,84 +1,107 @@
 "use client";
 
 import {
+  Box,
+  Button,
   Container,
-  Typography,
   Paper,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
+  Stack,
+  Typography,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  CircularProgress,
+  Alert,
 } from "@mui/material";
-import {
-  CheckCircleOutline as CheckCircleOutlineIcon,
-  Apple as AppleIcon,
-  Window as WindowsIcon,
-} from "@mui/icons-material";
 
-// This component is based on your renderHome() function
-export default function HomeView() {
+// This is the "Home" page component.
+export default function HomeView({
+  url,
+  setUrl,
+  error,
+  isApiLoading,
+  handleGetFormats,
+  formats,
+  setCurrentView, // Added for navigation
+}) {
   return (
+    // --- MODIFIED: Wrapped in Container and Paper to restore original centered look ---
     <Container maxWidth="md">
-      <Paper elevation={3} sx={{ p: 4, mt: 4 }}>
-        <Typography variant="h4" gutterBottom>
-          Welcome to yt-link!
+      <Paper
+        elevation={3}
+        sx={{
+          p: { xs: 3, sm: 4 }, // Add padding
+          textAlign: "center", // Center all content
+          borderRadius: "12px",
+        }}
+      >
+        <Typography
+          variant="h3"
+          component="h1"
+          gutterBottom
+          sx={{ fontWeight: 700 }}
+        >
+          YT-Link
         </Typography>
-        <Typography variant="body1" paragraph>
-          This is a simple tool to help you download YouTube videos and
-          playlists as MP3 or MP4 files.
+        <Typography variant="h6" color="text.secondary" sx={{ mb: 4 }}>
+          Download YouTube Videos and Playlists
         </Typography>
-        <Typography variant="h6" gutterBottom>
-          Features
-        </Typography>
-        <List>
-          <ListItem>
-            <ListItemIcon>
-              <CheckCircleOutlineIcon color="primary" />
-            </ListItemIcon>
-            <ListItemText primary="Download single videos as MP3s" />
-          </ListItem>
-          <ListItem>
-            <ListItemIcon>
-              <CheckCircleOutlineIcon color="primary" />
-            </ListItemIcon>
-            <ListItemText primary="Download entire playlists as a ZIP file of MP3s" />
-          </ListItem>
-          <ListItem>
-            <ListItemIcon>
-              <CheckCircleOutlineIcon color="primary" />
-            </ListItemIcon>
-            <ListItemText primary="Combine an entire playlist into a single MP3 file" />
-          </ListItem>
-          <ListItem>
-            <ListItemIcon>
-              <CheckCircleOutlineIcon color="primary" />
-            </ListItemIcon>
-            <ListItemText primary="Download videos as MP4s at various resolutions" />
-          </ListItem>
-          <ListItem>
-            <ListItemIcon>
-              <CheckCircleOutlineIcon color="primary" />
-            </ListItemIcon>
-            <ListItemText primary="Supports private/members-only videos using cookies" />
-          </ListItem>
-        </List>
-        <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
-          Platform Support
-        </Typography>
-        <List>
-          <ListItem>
-            <ListItemIcon>
-              <AppleIcon />
-            </ListItemIcon>
-            <ListItemText primary="macOS (Apple Silicon & Intel)" />
-          </ListItem>
-          <ListItem>
-            <ListItemIcon>
-              <WindowsIcon />
-            </ListItemIcon>
-            <ListItemText primary="Windows (x64)" />
-          </ListItem>
-        </List>
+
+        <Stack spacing={2} sx={{ maxWidth: 600, margin: "0 auto" }}>
+          <TextField
+            fullWidth
+            label="YouTube URL"
+            variant="outlined"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://www.youtube.com/watch?v=..."
+          />
+
+          {error && <Alert severity="error">{error}</Alert>}
+
+          {formats.length > 0 && (
+            <FormControl fullWidth>
+              <InputLabel id="quality-select-label">Video Quality</InputLabel>
+              <Select
+                labelId="quality-select-label"
+                label="Video Quality"
+                value={formats[0].height} // Simplified, assumes formats[0] is 'best'
+                disabled
+              >
+                <MenuItem value={formats[0].height}>
+                  {`${formats[0].resolution} (${formats[0].note})`}
+                </MenuItem>
+              </Select>
+            </FormControl>
+          )}
+
+          <Button
+            variant="contained"
+            color="primary"
+            size="large"
+            onClick={handleGetFormats}
+            disabled={isApiLoading || !url}
+            startIcon={
+              isApiLoading ? (
+                <CircularProgress size={20} color="inherit" />
+              ) : null
+            }
+          >
+            {isApiLoading ? "Loading..." : "Get Started"}
+          </Button>
+
+          {/* --- NEW: Added back the "How to use" button --- */}
+          <Button
+            variant="outlined"
+            color="secondary"
+            size="large"
+            onClick={() => setCurrentView("cookies")}
+          >
+            How to use (Get Cookies)
+          </Button>
+        </Stack>
       </Paper>
     </Container>
   );
