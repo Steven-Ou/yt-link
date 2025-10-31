@@ -30,6 +30,8 @@ import {
 const drawerWidth = 240;
 
 export default function Sidebar({ currentView, setCurrentView }) {
+  const iconColor = "#FFFFFF"; // Define white color for icons and text
+
   return (
     <Drawer
       variant="permanent"
@@ -39,8 +41,9 @@ export default function Sidebar({ currentView, setCurrentView }) {
         [`& .MuiDrawer-paper`]: {
           width: drawerWidth,
           boxSizing: "border-box",
-          backgroundColor: "#FFFFFF",
-          borderRight: "1px solid #E0E0E0",
+          backgroundColor: "#1C1C1C", // Changed to dark grey/black
+          borderRight: "1px solid #333", // Darker border
+          color: iconColor, // Set default text and icon color to white
         },
       }}
     >
@@ -52,7 +55,7 @@ export default function Sidebar({ currentView, setCurrentView }) {
               selected={currentView === "home"}
               onClick={() => setCurrentView("home")}
             >
-              <ListItemIcon>
+              <ListItemIcon sx={{ color: "inherit" }}>
                 <HomeIcon />
               </ListItemIcon>
               <ListItemText primary="Home" />
@@ -63,29 +66,33 @@ export default function Sidebar({ currentView, setCurrentView }) {
               selected={currentView === "cookies"}
               onClick={() => setCurrentView("cookies")}
             >
-              <ListItemIcon>
+              <ListItemIcon sx={{ color: "inherit" }}>
                 <CookieIcon />
               </ListItemIcon>
               <ListItemText primary="Cookie Manager" />
             </ListItemButton>
           </ListItem>
-
           <Accordion
             defaultExpanded
             sx={{
+              backgroundColor: "transparent", // Ensure accordion matches drawer bg
+              color: "inherit", // Inherit white text color
               boxShadow: "none",
               "&:before": { display: "none" },
               "&.Mui-expanded": { margin: 0 },
+              "& .MuiAccordionSummary-root": {
+                color: "inherit", // Ensure summary text is white
+              },
             }}
           >
             <AccordionSummary
-              expandIcon={<ExpandMoreIcon />}
+              expandIcon={<ExpandMoreIcon sx={{ color: iconColor }} />} // Make expand icon white
               sx={{ paddingLeft: "16px" }}
             >
-              <ListItemIcon sx={{ minWidth: "56px" }}>
+              <ListItemIcon sx={{ minWidth: "56px", color: "inherit" }}>
                 <DownloadIcon />
               </ListItemIcon>
-              <Typography>Download Tools</Typography>
+              <Typography sx={{ color: "inherit" }}>Download Tools</Typography>
             </AccordionSummary>
             <AccordionDetails sx={{ padding: 0 }}>
               <List component="div" disablePadding>
@@ -94,7 +101,7 @@ export default function Sidebar({ currentView, setCurrentView }) {
                     selected={currentView === "singleVideo"}
                     onClick={() => setCurrentView("singleVideo")}
                   >
-                    <ListItemIcon>
+                    <ListItemIcon sx={{ color: "inherit" }}>
                       <OndemandVideoIcon />
                     </ListItemIcon>
                     <ListItemText primary="Single Video" />
@@ -105,7 +112,7 @@ export default function Sidebar({ currentView, setCurrentView }) {
                     selected={currentView === "singleMp3"}
                     onClick={() => setCurrentView("singleMp3")}
                   >
-                    <ListItemIcon>
+                    <ListItemIcon sx={{ color: "inherit" }}>
                       <QueueMusicIcon />
                     </ListItemIcon>
                     <ListItemText primary="Single MP3" />
@@ -116,7 +123,7 @@ export default function Sidebar({ currentView, setCurrentView }) {
                     selected={currentView === "playlistZip"}
                     onClick={() => setCurrentView("playlistZip")}
                   >
-                    <ListItemIcon>
+                    <ListItemIcon sx={{ color: "inherit" }}>
                       <FolderIcon />
                     </ListItemIcon>
                     <ListItemText primary="Playlist Zip" />
@@ -127,7 +134,7 @@ export default function Sidebar({ currentView, setCurrentView }) {
                     selected={currentView === "combine"}
                     onClick={() => setCurrentView("combine")}
                   >
-                    <ListItemIcon>
+                    <ListItemIcon sx={{ color: "inherit" }}>
                       <VideoLibraryIcon />
                     </ListItemIcon>
                     <ListItemText primary="Combine Playlist MP3" />
@@ -136,7 +143,8 @@ export default function Sidebar({ currentView, setCurrentView }) {
               </List>
             </AccordionDetails>
           </Accordion>
-          <Divider sx={{ my: 1 }} />
+          <Divider sx={{ my: 1, backgroundColor: "#333" }} />{" "}
+          {/* Darker divider */}
           <ListItem disablePadding sx={{ mt: 2 }}>
             <ListItemButton
               component="a"
@@ -144,7 +152,7 @@ export default function Sidebar({ currentView, setCurrentView }) {
               target="_blank"
               rel="noopener noreferrer"
             >
-              <ListItemIcon>
+              <ListItemIcon sx={{ color: "inherit" }}>
                 <CoffeeIcon />
               </ListItemIcon>
               <ListItemText primary="Buy Me A Coffee" />
