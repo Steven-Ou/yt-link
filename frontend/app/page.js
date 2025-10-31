@@ -1,38 +1,28 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
   Box,
   Drawer,
   Toolbar,
-  CssBaseline, // --- NEW: Added back ---
-  createTheme, // --- NEW: Added back ---
-  ThemeProvider, // --- NEW: Added back ---
+  CssBaseline, // Restored for background color
+  createTheme, // Restored for custom theme
+  ThemeProvider, // Restored for custom theme
 } from "@mui/material";
-import {
-  Home as HomeIcon,
-  Download as DownloadIcon,
-  QueueMusic as QueueMusicIcon,
-  VideoLibrary as VideoLibraryIcon,
-  Coffee as CoffeeIcon,
-  Cookie as CookieIcon,
-  ExpandMore as ExpandMoreIcon,
-  OndemandVideo as OndemandVideoIcon,
-} from "@mui/icons-material";
+import { useApi } from "../hooks/useApi"; // Corrected path
 
-// --- NEW: Importing all the new components ---
-import Sidebar from "./components/Sidebar";
-import HomeView from "./components/views/HomeView";
-import CookieView from "./components/views/CookieView";
-import SingleMp3View from "./components/views/SingleMp3View";
-import PlaylistZipView from "./components/views/PlaylistZipView";
-import CombineMp3View from "./components/views/CombineMp3View";
-import SingleVideoView from "./components/views/SingleVideoView";
-import { useApi } from "./hooks/useApi"; // Assuming you'll create this hook
+// --- Import all the view components ---
+import Sidebar from "../components/Sidebar";
+import HomeView from "../components/views/HomeView";
+import CookieView from "../components/views/CookieView";
+import SingleMp3View from "../components/views/SingleMp3View";
+import PlaylistZipView from "../components/views/PlaylistZipView";
+import CombineMp3View from "../components/views/CombineMp3View";
+import SingleVideoView from "../components/views/SingleVideoView";
 
 const drawerWidth = 240;
 
-// --- NEW: Added your original theme back ---
+// --- Your original custom theme to fix the colors ---
 const customTheme = createTheme({
   palette: {
     mode: "light",
@@ -40,7 +30,7 @@ const customTheme = createTheme({
     secondary: { main: "#1A1A1A", contrastText: "#FFFFFF" },
     warning: { main: "#FFB300" },
     background: {
-      default: "#fafafa", // This is the light grey background
+      default: "#fafafa", // Light grey background
       paper: "#ffffff",
     },
     text: {
@@ -113,7 +103,7 @@ const customTheme = createTheme({
     },
   },
 });
-// --- END THEME ---
+// --- End Theme ---
 
 export default function Home() {
   const [currentView, setCurrentView] = useState("home");
@@ -122,8 +112,13 @@ export default function Home() {
   const [formats, setFormats] = useState([]);
   const [selectedQuality, setSelectedQuality] = useState("best");
   const [cookies, setCookies] = useState("");
-  const [cookieError, setCookieError] = useState(null);
-  const [cookieSuccess, setCookieSuccess] = useState(false);
+
+  // --- MODIFIED: Changed to a single state object to fix the bug ---
+  const [cookieStatus, setCookieStatus] = useState({
+    message: null,
+    type: null,
+  });
+
   const { post, isApiLoading } = useApi();
 
   // Load cookies from localStorage on mount
@@ -135,11 +130,18 @@ export default function Home() {
   const handleSaveCookies = () => {
     try {
       localStorage.setItem("youtubeCookies", cookies);
-      setCookieSuccess(true);
-      setCookieError(null);
-      setTimeout(() => setCookieSuccess(false), 3000);
+      // --- MODIFIED: Set the new state object ---
+      setCookieStatus({
+        message: "Cookies saved successfully!",
+        type: "success",
+      });
+      setTimeout(() => setCookieStatus({ message: null, type: null }), 3000);
     } catch (e) {
-      setCookieError("Failed to save cookies. Storage might be full.");
+      // --- MODIFIED: Set the new state object ---
+      setCookieStatus({
+        message: "Failed to save cookies. Storage might be full.",
+        type: "error",
+      });
       console.error(e);
     }
   };
@@ -174,6 +176,7 @@ export default function Home() {
       formats,
       selectedQuality,
       setSelectedQuality,
+      setCurrentView, // Pass this for navigation
     };
 
     switch (currentView) {
@@ -192,8 +195,8 @@ export default function Home() {
           <CookieView
             cookies={cookies}
             setCookies={setCookies}
-            cookieError={cookieError}
-            cookieSuccess={cookieSuccess}
+            // --- MODIFIED: Pass the new state object ---
+            cookieStatus={cookieStatus}
             handleSaveCookies={handleSaveCookies}
           />
         );
@@ -203,7 +206,7 @@ export default function Home() {
   };
 
   return (
-    // --- WRAPPED IN THEME PROVIDER ---
+    // --- Wrapped in ThemeProvider to restore your colors ---
     <ThemeProvider theme={customTheme}>
       <CssBaseline />
       <Box sx={{ display: "flex" }}>
