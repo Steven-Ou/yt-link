@@ -1,246 +1,234 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import {
-  Container,
-  Typography,
   Box,
-  CircularProgress,
-  Alert,
-  Button,
+  Drawer,
+  Toolbar,
+  CssBaseline, // Restored for background color
+  createTheme, // Restored for custom theme
+  ThemeProvider, // Restored for custom theme
 } from "@mui/material";
-import { ArrowBack as ArrowBackIcon } from "@mui/icons-material";
-import JobCard from "../components/JobCard"; // --- MODIFIED: Import the new component ---
+import { useApi } from "../hooks/useApi"; // Corrected path
 
-// This is the main polling logic component
-function DownloadPageContent() {
-  const [jobs, setJobs] = useState([]);
+// --- Import all the view components ---
+import Sidebar from "../components/Sidebar";
+import HomeView from "../components/views/HomeView";
+import CookieView from "../components/views/CookieView";
+import SingleMp3View from "../components/views/SingleMp3View";
+import PlaylistZipView from "../components/views/PlaylistZipView";
+import CombineMp3View from "../components/views/CombineMp3View";
+import SingleVideoView from "../components/views/SingleVideoView";
+
+const drawerWidth = 240;
+
+// --- Your original custom theme to fix the colors ---
+const customTheme = createTheme({
+  palette: {
+    mode: "light",
+    primary: { main: "#E53935", contrastText: "#FFFFFF" },
+    secondary: { main: "#1A1A1A", contrastText: "#FFFFFF" },
+    warning: { main: "#FFB300" },
+    background: {
+      default: "#fafafa", // Light grey background
+      paper: "#ffffff",
+    },
+    text: {
+      primary: "rgba(0, 0, 0, 0.87)",
+      secondary: "rgba(0, 0, 0, 0.6)",
+      disabled: "rgba(0, 0, 0, 0.38)",
+    },
+  },
+  typography: {
+    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+  },
+  components: {
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 8,
+          textTransform: "none",
+        },
+      },
+    },
+    MuiTextField: {
+      styleOverrides: {
+        root: {
+          "& .MuiOutlinedInput-root": {
+            borderRadius: 8,
+          },
+        },
+      },
+    },
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          borderRadius: 8,
+        },
+      },
+    },
+    MuiAccordion: {
+      styleOverrides: {
+        root: {
+          boxShadow: "none",
+          "&:before": {
+            display: "none",
+          },
+          "&.Mui-expanded": {
+            margin: 0,
+          },
+        },
+      },
+    },
+    MuiAccordionSummary: {
+      styleOverrides: {
+        root: {
+          "&.Mui-expanded": {
+            minHeight: 48,
+          },
+        },
+        content: {
+          "&.Mui-expanded": {
+            margin: "12px 0",
+          },
+        },
+      },
+    },
+    MuiDrawer: {
+      styleOverrides: {
+        paper: {
+          backgroundColor: "#ffffff",
+        },
+      },
+    },
+  },
+});
+// --- End Theme ---
+
+export default function Home() {
+  const [currentView, setCurrentView] = useState("home");
+  const [url, setUrl] = useState("");
   const [error, setError] = useState(null);
-  const [isOnline, setIsOnline] = useState(true);
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const [formats, setFormats] = useState([]);
+  const [selectedQuality, setSelectedQuality] = useState("best");
+  const [cookies, setCookies] = useState("");
 
-  // Utility to start a job
-  const startJob = useCallback(async (jobType, url, quality) => {
-    try {
-      const response = await fetch("/api/start-job", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jobType,
-          url,
-          quality,
-          cookies: localStorage.getItem("youtubeCookies") || "",
-        }),
-      });
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || "Failed to start job");
-      }
-      const data = await response.json();
-      return {
-        jobId: data.jobId,
-        url: url,
-        jobType: jobType,
-        status: "queued",
-        message: "Job is queued...",
-        progress: 0,
-      };
-    } catch (err) {
-      setError(`Failed to start download for ${url}. Error: ${err.message}`);
-      return null;
-    }
+  // --- MODIFIED: Changed to a single state object to fix the bug ---
+  const [cookieStatus, setCookieStatus] = useState({
+    message: null,
+    type: null,
+  });
+
+  const { post, isApiLoading } = useApi();
+
+  // Load cookies from localStorage on mount
+  useEffect(() => {
+    const savedCookies = localStorage.getItem("youtubeCookies") || "";
+    setCookies(savedCookies);
   }, []);
 
-  // Effect to start the initial job from URL parameters
-  useEffect(() => {
-    const jobType = searchParams.get("jobType");
-    const url = searchParams.get("url");
-    const quality = searchParams.get("quality");
-
-    if (jobType && url) {
-      const newJobId = `temp-${Date.now()}`; // Temporary ID
-      const newJob = {
-        jobId: newJobId,
-        url,
-        jobType,
-        status: "starting",
-        message: "Starting job...",
-        progress: 0,
-      };
-      setJobs([newJob]);
-
-      startJob(jobType, url, quality).then((startedJob) => {
-        if (startedJob) {
-          // Replace temporary job with real one
-          setJobs((prevJobs) =>
-            prevJobs.map((j) => (j.jobId === newJobId ? startedJob : j))
-          );
-        } else {
-          // Remove temporary job if starting failed
-          setJobs((prevJobs) => prevJobs.filter((j) => j.jobId !== newJobId));
-        }
+  const handleSaveCookies = () => {
+    try {
+      localStorage.setItem("youtubeCookies", cookies);
+      // --- MODIFIED: Set the new state object ---
+      setCookieStatus({
+        message: "Cookies saved successfully!",
+        type: "success",
       });
-      // Clear URL params after starting
-      router.replace("/download");
-    }
-  }, [searchParams, startJob, router]);
-
-  // Effect for polling job statuses
-  useEffect(() => {
-    if (jobs.length === 0) return;
-
-    const activeJobs = jobs.filter(
-      (j) => !["completed", "failed"].includes(j.status)
-    );
-
-    if (activeJobs.length === 0) return;
-
-    const intervalId = setInterval(async () => {
-      const updates = await Promise.all(
-        activeJobs.map(async (job) => {
-          try {
-            const response = await fetch(`/api/job-status?jobId=${job.jobId}`);
-            if (!response.ok)
-              return { ...job, message: "Error fetching status..." };
-            const data = await response.json();
-            return data;
-          } catch (e) {
-            return { ...job, message: "Polling failed..." };
-          }
-        })
-      );
-
-      // Update the jobs list with new statuses
-      setJobs((prevJobs) =>
-        prevJobs.map((oldJob) => {
-          const updatedJob = updates.find((u) => u.jobId === oldJob.jobId);
-          return updatedJob || oldJob;
-        })
-      );
-    }, 2000); // Poll every 2 seconds
-
-    return () => clearInterval(intervalId);
-  }, [jobs]);
-
-  // --- Handlers for Pause/Resume/Close ---
-
-  const handlePauseAll = async () => {
-    try {
-      await fetch("/api/pause-all-jobs", { method: "POST" });
-      // The poller will automatically pick up the 'paused' status
+      setTimeout(() => setCookieStatus({ message: null, type: null }), 3000);
     } catch (e) {
-      console.error("Failed to pause jobs:", e);
+      // --- MODIFIED: Set the new state object ---
+      setCookieStatus({
+        message: "Failed to save cookies. Storage might be full.",
+        type: "error",
+      });
+      console.error(e);
     }
   };
 
-  const handleResume = async (jobId) => {
-    try {
-      await fetch(`/api/resume-job/${jobId}`, { method: "POST" });
-      // Set status to queued immediately for better UI feedback
-      setJobs((prevJobs) =>
-        prevJobs.map((job) =>
-          job.jobId === jobId
-            ? { ...job, status: "queued", message: "Resuming..." }
-            : job
-        )
-      );
-    } catch (e) {
-      console.error("Failed to resume job:", e);
+  const handleGetFormats = async () => {
+    setError(null);
+    setFormats([]);
+    if (!url) {
+      setError("Please enter a YouTube URL.");
+      return;
     }
-  };
 
-  // --- NEW: Handler to close/dismiss a job card ---
-  const handleCloseJob = (jobId) => {
-    setJobs((prevJobs) => prevJobs.filter((job) => job.jobId !== jobId));
-  };
-  // --- END NEW HANDLER ---
-
-  // Effect for network online/offline status
-  useEffect(() => {
-    const goOnline = () => setIsOnline(true);
-    const goOffline = () => {
-      setIsOnline(false);
-      handlePauseAll();
-    };
-
-    window.addEventListener("online", goOnline);
-    window.addEventListener("offline", goOffline);
-
-    return () => {
-      window.removeEventListener("online", goOnline);
-      window.removeEventListener("offline", goOffline);
-    };
-  }, []); // Empty dependency array, so it runs once
-
-  if (jobs.length === 0 && !error) {
-    return (
-      <Container maxWidth="md" sx={{ textAlign: "center", mt: 10 }}>
-        <CircularProgress />
-        <Typography variant="h6" sx={{ mt: 2 }}>
-          Loading download...
-        </Typography>
-      </Container>
-    );
-  }
-
-  return (
-    <Container maxWidth="md" sx={{ pt: 4, pb: 4 }}>
-      <Button
-        startIcon={<ArrowBackIcon />}
-        onClick={() => router.push("/")}
-        sx={{ mb: 2 }}
-      >
-        Back to Home
-      </Button>
-      {/* --- MODIFIED: Centered the title --- */}
-      <Typography
-        variant="h4"
-        gutterBottom
-        sx={{ fontWeight: 700, textAlign: "center" }}
-      >
-        Downloads
-      </Typography>
-
-      {!isOnline && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          You are offline. All downloads have been paused.
-        </Alert>
-      )}
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      <Box>
-        {jobs.length === 0 && <Typography>No active downloads.</Typography>}
-        {/* --- MODIFIED: Render a JobCard for each job --- */}
-        {jobs.map((job) => (
-          <JobCard
-            key={job.jobId}
-            job={job}
-            onResume={handleResume}
-            onClose={handleCloseJob} // Pass the close handler
-          />
-        ))}
-      </Box>
-    </Container>
-  );
-}
-
-// Suspense wrapper for Next.js
-export default function DownloadPage() {
-  return (
-    <Suspense
-      fallback={
-        <Container maxWidth="md" sx={{ textAlign: "center", mt: 10 }}>
-          <CircularProgress />
-        </Container>
+    const { data, error } = await post("/api/get-formats", { url });
+    if (error) {
+      setError(error);
+    } else {
+      setFormats(data || []);
+      if (data && data.length > 0) {
+        setSelectedQuality(data[0].height.toString()); // Set default to best
       }
-    >
-      <DownloadPageContent />
-    </Suspense>
+    }
+  };
+
+  const renderContent = () => {
+    const props = {
+      url,
+      setUrl,
+      error,
+      setError,
+      isApiLoading,
+      handleGetFormats,
+      formats,
+      selectedQuality,
+      setSelectedQuality,
+      setCurrentView, // Pass this for navigation
+    };
+
+    switch (currentView) {
+      case "home":
+        return <HomeView {...props} />;
+      case "singleMp3":
+        return <SingleMp3View {...props} />;
+      case "playlistZip":
+        return <PlaylistZipView {...props} />;
+      case "combine":
+        return <CombineMp3View {...props} />;
+      case "singleVideo":
+        return <SingleVideoView {...props} />;
+      case "cookies":
+        return (
+          <CookieView
+            cookies={cookies}
+            setCookies={setCookies}
+            // --- MODIFIED: Pass the new state object ---
+            cookieStatus={cookieStatus}
+            handleSaveCookies={handleSaveCookies}
+          />
+        );
+      default:
+        return <HomeView {...props} />;
+    }
+  };
+
+  return (
+    // --- Wrapped in ThemeProvider to restore your colors ---
+    <ThemeProvider theme={customTheme}>
+      <CssBaseline />
+      <Box sx={{ display: "flex" }}>
+        <Sidebar
+          drawerWidth={drawerWidth}
+          currentView={currentView}
+          setCurrentView={setCurrentView}
+        />
+        <Box
+          component="main"
+          sx={{
+            flexGrow: 1,
+            p: 3,
+            width: { sm: `calc(100% - ${drawerWidth}px)` },
+            backgroundColor: "background.default", // This will apply the light grey
+            minHeight: "100vh",
+          }}
+        >
+          <Toolbar />
+          {renderContent()}
+        </Box>
+      </Box>
+    </ThemeProvider>
   );
 }
