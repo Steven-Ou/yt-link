@@ -1,94 +1,240 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
-import UpdateStatus from "../components/UpdateStatus";
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import {
+  Container,
+  Typography,
+  Box,
+  CircularProgress,
+  Alert,
+  Button,
+} from "@mui/material";
+import { ArrowBack as ArrowBackIcon } from "@mui/icons-material";
+import JobCard from "../components/JobCard"; // --- MODIFIED: Import the new component ---
 
-// A wrapper component is needed to use useSearchParams with Suspense
+// This is the main polling logic component
 function DownloadPageContent() {
-  const [url, setUrl] = useState("");
-  const [jobId, setJobId] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [jobs, setJobs] = useState([]);
   const [error, setError] = useState(null);
-
-  // This hook reads the parameters from the URL (e.g., ?url=...)
+  const [isOnline, setIsOnline] = useState(true);
+  const router = useRouter();
   const searchParams = useSearchParams();
 
-  useEffect(() => {
-    const urlFromParams = searchParams.get("url");
-    if (urlFromParams) {
-      setUrl(decodeURIComponent(urlFromParams));
-    }
-  }, [searchParams]);
-
-  const startJob = async (jobType) => {
-    setIsLoading(true);
-    setJobId(null);
-    setError(null);
+  // Utility to start a job
+  const startJob = useCallback(async (jobType, url, quality) => {
     try {
-      const response = await fetch("http://localhost:5001/start-job", {
+      const response = await fetch("/api/start-job", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, jobType }),
+        body: JSON.stringify({
+          jobType,
+          url,
+          quality,
+          cookies: localStorage.getItem("youtubeCookies") || "",
+        }),
       });
       if (!response.ok) {
-        throw new Error("Failed to start job on the backend.");
+        const err = await response.json();
+        throw new Error(err.error || "Failed to start job");
       }
       const data = await response.json();
-      setJobId(data.jobId);
+      return {
+        jobId: data.jobId,
+        url: url,
+        jobType: jobType,
+        status: "queued",
+        message: "Job is queued...",
+        progress: 0,
+      };
     } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
+      setError(`Failed to start download for ${url}. Error: ${err.message}`);
+      return null;
+    }
+  }, []);
+
+  // Effect to start the initial job from URL parameters
+  useEffect(() => {
+    const jobType = searchParams.get("jobType");
+    const url = searchParams.get("url");
+    const quality = searchParams.get("quality");
+
+    if (jobType && url) {
+      const newJobId = `temp-${Date.now()}`; // Temporary ID
+      const newJob = {
+        jobId: newJobId,
+        url,
+        jobType,
+        status: "starting",
+        message: "Starting job...",
+        progress: 0,
+      };
+      setJobs([newJob]);
+
+      startJob(jobType, url, quality).then((startedJob) => {
+        if (startedJob) {
+          // Replace temporary job with real one
+          setJobs((prevJobs) =>
+            prevJobs.map((j) => (j.jobId === newJobId ? startedJob : j))
+          );
+        } else {
+          // Remove temporary job if starting failed
+          setJobs((prevJobs) => prevJobs.filter((j) => j.jobId !== newJobId));
+        }
+      });
+      // Clear URL params after starting
+      router.replace("/download");
+    }
+  }, [searchParams, startJob, router]);
+
+  // Effect for polling job statuses
+  useEffect(() => {
+    if (jobs.length === 0) return;
+
+    const activeJobs = jobs.filter(
+      (j) => !["completed", "failed"].includes(j.status)
+    );
+
+    if (activeJobs.length === 0) return;
+
+    const intervalId = setInterval(async () => {
+      const updates = await Promise.all(
+        activeJobs.map(async (job) => {
+          try {
+            const response = await fetch(`/api/job-status?jobId=${job.jobId}`);
+            if (!response.ok)
+              return { ...job, message: "Error fetching status..." };
+            const data = await response.json();
+            return data;
+          } catch (e) {
+            return { ...job, message: "Polling failed..." };
+          }
+        })
+      );
+
+      // Update the jobs list with new statuses
+      setJobs((prevJobs) =>
+        prevJobs.map((oldJob) => {
+          const updatedJob = updates.find((u) => u.jobId === oldJob.jobId);
+          return updatedJob || oldJob;
+        })
+      );
+    }, 2000); // Poll every 2 seconds
+
+    return () => clearInterval(intervalId);
+  }, [jobs]);
+
+  // --- Handlers for Pause/Resume/Close ---
+
+  const handlePauseAll = async () => {
+    try {
+      await fetch("/api/pause-all-jobs", { method: "POST" });
+      // The poller will automatically pick up the 'paused' status
+    } catch (e) {
+      console.error("Failed to pause jobs:", e);
     }
   };
 
+  const handleResume = async (jobId) => {
+    try {
+      await fetch(`/api/resume-job/${jobId}`, { method: "POST" });
+      // Set status to queued immediately for better UI feedback
+      setJobs((prevJobs) =>
+        prevJobs.map((job) =>
+          job.jobId === jobId
+            ? { ...job, status: "queued", message: "Resuming..." }
+            : job
+        )
+      );
+    } catch (e) {
+      console.error("Failed to resume job:", e);
+    }
+  };
+
+  // --- NEW: Handler to close/dismiss a job card ---
+  const handleCloseJob = (jobId) => {
+    setJobs((prevJobs) => prevJobs.filter((job) => job.jobId !== jobId));
+  };
+  // --- END NEW HANDLER ---
+
+  // Effect for network online/offline status
+  useEffect(() => {
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => {
+      setIsOnline(false);
+      handlePauseAll();
+    };
+
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []); // Empty dependency array, so it runs once
+
+  if (jobs.length === 0 && !error) {
+    return (
+      <Container maxWidth="md" sx={{ textAlign: "center", mt: 10 }}>
+        <CircularProgress />
+        <Typography variant="h6" sx={{ mt: 2 }}>
+          Loading download...
+        </Typography>
+      </Container>
+    );
+  }
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-12 bg-gray-900 text-white">
-      <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm lg:flex flex-col">
-        <h1 className="text-4xl font-bold mb-8">Download Video</h1>
-        <p className="text-gray-400 mb-6">
-          The video will be downloaded in the best available MP4 format, perfect
-          for editing.
-        </p>
+    <Container maxWidth="md" sx={{ pt: 4, pb: 4 }}>
+      <Button
+        startIcon={<ArrowBackIcon />}
+        onClick={() => router.push("/")}
+        sx={{ mb: 2 }}
+      >
+        Back to Home
+      </Button>
+      <Typography variant="h4" gutterBottom sx={{ fontWeight: 700 }}>
+        Downloads
+      </Typography>
 
-        <div className="w-full max-w-xl">
-          <input
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="YouTube URL is passed from the previous page"
-            className="w-full px-4 py-3 mb-4 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            readOnly
+      {!isOnline && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          You are offline. All downloads have been paused.
+        </Alert>
+      )}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      <Box>
+        {jobs.length === 0 && <Typography>No active downloads.</Typography>}
+        {/* --- MODIFIED: Render a JobCard for each job --- */}
+        {jobs.map((job) => (
+          <JobCard
+            key={job.jobId}
+            job={job}
+            onResume={handleResume}
+            onClose={handleCloseJob} // Pass the close handler
           />
-
-          <div className="flex justify-center space-x-4">
-            <button
-              onClick={() => startJob("downloadVideo")}
-              disabled={isLoading || !url}
-              className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out disabled:bg-gray-400 text-lg"
-            >
-              {isLoading ? "Processing..." : "Download Video as MP4"}
-            </button>
-          </div>
-        </div>
-
-        {error && <p className="mt-6 text-red-500">Error: {error}</p>}
-
-        {jobId && (
-          <div className="mt-8 w-full max-w-xl">
-            <UpdateStatus jobId={jobId} />
-          </div>
-        )}
-      </div>
-    </main>
+        ))}
+      </Box>
+    </Container>
   );
 }
 
-// Next.js requires using a Suspense boundary for components that use useSearchParams
+// Suspense wrapper for Next.js
 export default function DownloadPage() {
   return (
-    <Suspense fallback={<div>Loading...</div>}>
+    <Suspense
+      fallback={
+        <Container maxWidth="md" sx={{ textAlign: "center", mt: 10 }}>
+          <CircularProgress />
+        </Container>
+      }
+    >
       <DownloadPageContent />
     </Suspense>
   );
