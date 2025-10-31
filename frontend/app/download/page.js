@@ -194,7 +194,12 @@ function DownloadPageContent() {
       >
         Back to Home
       </Button>
-      <Typography variant="h4" gutterBottom sx={{ fontWeight: 700 }}>
+      {/* --- MODIFIED: Centered the title --- */}
+      <Typography
+        variant="h4"
+        gutterBottom
+        sx={{ fontWeight: 700, textAlign: "center" }}
+      >
         Downloads
       </Typography>
 
