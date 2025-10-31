@@ -182,7 +182,7 @@ export default function Home() {
 
     switch (currentView) {
       case "home":
-        return <HomeView {...props} />;
+        return <HomeView />;
       case "singleMp3":
         return <SingleMp3View {...props} />;
       case "playlistZip":
