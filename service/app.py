@@ -5,6 +5,7 @@ import shutil
 import sys
 import tempfile
 import threading
+import queue
 import time
 import traceback
 import uuid
@@ -17,7 +18,7 @@ from flask_cors import CORS
 
 import yt_dlp  # type: ignore[import]
 from yt_dlp.utils import DownloadError  # type: ignore[import]
-from urllib.parse import quote
+from urllib.parse import quote, urlparse, parse_qs
 
 # This will be set at runtime from the command line arguments
 ffmpeg_exe: Optional[str] = None
