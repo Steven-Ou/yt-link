@@ -10,8 +10,16 @@ import traceback
 import uuid
 import zipfile
 import subprocess
-import queue  # --- NEW ---
-from typing import Any, Dict, Generator, List, Optional, cast
+import queue
+from typing import (
+    Any,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    cast,
+    Union,
+)  # --- MODIFIED: Added Union ---
 
 from flask import Flask, Response, request, jsonify
 from flask_cors import CORS
@@ -24,9 +32,10 @@ from urllib.parse import quote
 ffmpeg_exe: Optional[str] = None
 
 # --- NEW: Job Queue, Lock, and Retry Settings ---
-jobs: Dict[str, Job] = {}  # This will store the *state* of the job
+# --- MODIFIED: Use forward reference "Job" for type hints ---
+jobs: Dict[str, "Job"] = {}  # This will store the *state* of the job
 jobs_lock = threading.Lock()
-job_queue = queue.Queue()
+job_queue: queue.Queue["Job"] = queue.Queue()  # Specify the queue holds "Job" objects
 MAX_RETRIES = 5
 RETRY_DELAY = 300  # 5 minutes
 
@@ -42,8 +51,9 @@ class Job:
         self.message: str = "Job is queued..."
         self.progress: Optional[float] = None
         self.error: Optional[str] = None
-        self.temp_dir: str = os.path.join(APP_TEMP_DIR, self.job_id)  # --- MODIFIED ---
-        self.info: Optional[Any] = None
+        self.temp_dir: str = os.path.join(APP_TEMP_DIR, self.job_id)
+        # --- MODIFIED: Be more specific with info type ---
+        self.info: Optional[Dict[str, Any]] = None
         self.file_path: Optional[str] = None
         self.file_name: Optional[str] = None
 
@@ -101,12 +111,12 @@ class Job:
             )
 
         ydl_opts: Dict[str, Any] = {
-            "progress_hooks": [self._progress_hook],  # --- MODIFIED: Point to self ---
+            "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
             "quiet": True,
             "no_warnings": True,
             "ffmpeg_location": ffmpeg_exe,
-            "retries": 10,  # yt-dlp internal retries (e.g., for fragments)
+            "retries": 10,
             "fragment_retries": 10,
         }
 
@@ -158,7 +168,6 @@ class Job:
 
     # --- NEW: Progress hook is now a method ---
     def _progress_hook(self, d: Dict[str, Any]) -> None:
-        # The hook is called with this job's options, so we can just update self
         self.update_progress(d)
 
     # --- NEW: Main execution logic, moved from download_thread ---
@@ -167,7 +176,6 @@ class Job:
         os.makedirs(self.temp_dir, exist_ok=True)
         ydl_opts = self._build_ydl_opts()
 
-        # --- NEW: Retry Loop ---
         retries = 0
         success = False
         last_error_str = ""
@@ -181,23 +189,18 @@ class Job:
                         0,
                     )
 
-                # cast to Any to avoid strict type checks
                 with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
                     info_dict = ydl.extract_info(self.url, download=False)
                     if not info_dict:
                         raise DownloadError("Failed to extract video information.")
 
-                    # --- MODIFIED: Store info on self, no need to reinject job_id ---
-                    # The hook will work because it's part of this Job's ydl_opts
                     self.info = info_dict
                     ydl.download([self.url])
 
-                # If download succeeds, finalize and break loop
                 self._finalize()
                 success = True
 
             except DownloadError as e:
-                # --- NEW: Specific 403 Forbidden Check ---
                 last_error_str = str(e)
                 if "HTTP Error 403: Forbidden" in last_error_str:
                     retries += 1
@@ -215,11 +218,9 @@ class Job:
                             error=last_error_str,
                         )
                 else:
-                    # Different DownloadError, fail immediately
                     self.set_status("failed", "Download failed.", error=last_error_str)
                     break
-            except Exception as e:
-                # Any other exception (zipping, ffmpeg, etc.), fail immediately
+            except Exception:  # --- MODIFIED: Removed 'as e' to fix F841 ---
                 self.set_status(
                     "failed",
                     "A processing error occurred.",
@@ -227,7 +228,6 @@ class Job:
                 )
                 break
 
-        # --- Cleanup cookie file if it exists ---
         cookie_file = ydl_opts.get("cookiefile")
         if cookie_file and os.path.exists(cookie_file):
             os.remove(cookie_file)
@@ -265,6 +265,7 @@ class Job:
                 raise Exception("No MP3 files found after conversion.")
 
             playlist_title = sanitize_filename(
+                # --- MODIFIED: Added check for self.info being a dict ---
                 str(self.info.get("title", "playlist"))
                 if isinstance(self.info, dict)
                 else "playlist"
@@ -291,7 +292,7 @@ class Job:
                         f.write(f"file '{escaped}'\n")
 
                 command = [
-                    str(ffmpeg_exe),  # Ensure ffmpeg_exe is not None
+                    str(ffmpeg_exe),
                     "-f",
                     "concat",
                     "-safe",
@@ -395,15 +396,12 @@ def cleanup_old_job_dirs() -> None:
 cleanup_old_job_dirs()
 
 
-# --- REMOVED: Global progress_hook, it's now Job._progress_hook ---
-
-
 # --- Flask Routes ---
 
 
-# --- (/get-formats - unchanged) ---
+# --- MODIFIED: Added more specific return type hint ---
 @app.route("/get-formats", methods=["POST"])
-def get_formats_endpoint() -> Response:
+def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
     data = request.get_json()
     if not data or "url" not in data:
         return jsonify({"error": "Invalid request, URL is required."}), 400
@@ -417,7 +415,8 @@ def get_formats_endpoint() -> Response:
         with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
             info = ydl.extract_info(url, download=False) or {}
             unique_formats: Dict[int, Dict[str, Any]] = {}
-            all_formats = cast(List[Dict[str, Any]], info.get("formats", []) or [])
+            # --- MODIFIED: Removed unnecessary cast ---
+            all_formats: List[Dict[str, Any]] = info.get("formats", []) or []
 
             def get_height(f: Dict[str, Any]) -> int:
                 return int(f.get("height") or 0)
@@ -456,9 +455,9 @@ def get_formats_endpoint() -> Response:
         return jsonify({"error": str(e)}), 500
 
 
-# --- MODIFIED: /start-job now just creates and queues the job ---
+# --- MODIFIED: Added more specific return type hint ---
 @app.route("/start-job", methods=["POST"])
-def start_job_endpoint() -> Response:
+def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
     data = request.get_json()
     if not data or "url" not in data or "jobType" not in data:
         return jsonify({"error": "Invalid request body"}), 400
@@ -466,10 +465,8 @@ def start_job_endpoint() -> Response:
     job_id = str(uuid.uuid4())
     job_type = data["jobType"]
 
-    # Create the job object
     job = Job(job_id=job_id, job_type=job_type, data=data)
 
-    # Store its initial state and put it on the queue
     with jobs_lock:
         jobs[job_id] = job
     job_queue.put(job)
@@ -478,9 +475,9 @@ def start_job_endpoint() -> Response:
     return jsonify({"jobId": job_id})
 
 
-# --- MODIFIED: /job-status now uses the lock ---
+# --- MODIFIED: Added more specific return type hint ---
 @app.route("/job-status", methods=["GET"])
-def get_job_status() -> Response:
+def get_job_status() -> Union[Response, tuple[Response, int]]:
     job_id = request.args.get("jobId")
     if not job_id:
         return jsonify({"status": "not_found", "error": "Missing jobId"}), 400
@@ -491,12 +488,12 @@ def get_job_status() -> Response:
     if not job:
         return jsonify({"status": "not_found"}), 404
 
-    return jsonify(job.to_dict())  # --- MODIFIED: Use to_dict() ---
+    return jsonify(job.to_dict())
 
 
-# --- MODIFIED: /download route now uses lock ---
+# --- MODIFIED: Added more specific return type hint ---
 @app.route("/download/<job_id>", methods=["GET"])
-def download_file_route(job_id: str) -> Response:
+def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
     with jobs_lock:
         job = jobs.get(job_id)
 
@@ -519,7 +516,6 @@ def download_file_route(job_id: str) -> Response:
                         break
                     yield chunk
         finally:
-            # Cleanup
             if temp_dir and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
             with jobs_lock:
@@ -543,26 +539,17 @@ def download_file_route(job_id: str) -> Response:
     )
 
 
-# --- REMOVED: download_thread (logic moved to Job.run) ---
-# --- REMOVED: finalize_job (logic moved to Job._finalize) ---
-
-
 # --- NEW: Queue Worker Thread ---
 def queue_worker() -> None:
-    """
-    This function runs in a separate thread.
-    It waits for a Job object to be added to the job_queue,
-    then executes its .run() method.
-    """
     while True:
         job = None
         try:
-            job = job_queue.get()  # This blocks until a job is available
+            job = job_queue.get()
             if job is None:
                 continue
 
             print(f"Worker thread picked up job: {job.job_id} ({job.job_type})")
-            job.run()  # This is the blocking download/process call
+            job.run()
             print(f"Worker thread finished job: {job.job_id}")
 
             job_queue.task_done()
@@ -570,13 +557,12 @@ def queue_worker() -> None:
         except Exception as e:
             print(f"CRITICAL ERROR in queue_worker: {str(e)}")
             if job:
-                # If something crashes the worker, fail the job
                 job.set_status(
                     "failed",
                     f"Critical worker error: {str(e)}",
                     error=traceback.format_exc(),
                 )
-            job_queue.task_done()  # IMPORTANT: ensure queue moves on
+            job_queue.task_done()
 
 
 if __name__ == "__main__":
@@ -589,12 +575,12 @@ if __name__ == "__main__":
     ffmpeg_exe = resolve_ffmpeg_path(ffmpeg_path_arg)
     port = int(port_arg)
 
-    # --- NEW: Start the queue worker thread ---
     worker_thread = threading.Thread(target=queue_worker, daemon=True)
     worker_thread.start()
 
     print(f"--- Backend starting on port {port} ---", flush=True)
     print(f"--- Using FFmpeg from: {ffmpeg_exe} ---", flush=True)
-    print(f"--- Worker thread started ---", flush=True)  # --- NEW ---
-    print(f"Flask-Backend-Ready:{port}", flush=True)
+    print("--- Worker thread started ---", flush=True)
+    # --- MODIFIED: Fixed f-string and ignored Pylance bug ---
+    print(f"Flask-Backend-Ready:{port}", flush=True)  # type: ignore[reportArgumentType]
     app.run(host="127.0.0.1", port=port, debug=False)
