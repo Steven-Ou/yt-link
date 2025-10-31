@@ -23,33 +23,29 @@ from urllib.parse import quote
 # This will be set at runtime from the command line arguments
 ffmpeg_exe: Optional[str] = None
 
-# --- NEW: Job Queue, Lock, and Retry Settings ---
-# --- MODIFIED: Use forward reference "Job" for type hints ---
-jobs: Dict[str, "Job"] = {}  # This will store the *state* of the job
+# --- Job Queue, Lock, and Retry Settings ---
+jobs: Dict[str, "Job"] = {}
 jobs_lock = threading.Lock()
-job_queue: queue.Queue["Job"] = queue.Queue()  # Specify the queue holds "Job" objects
+job_queue: queue.Queue["Job"] = queue.Queue()
 MAX_RETRIES = 5
 RETRY_DELAY = 300  # 5 minutes
 
 
 class Job:
-    # --- MODIFIED: __init__ now takes all job data ---
     def __init__(self, job_id: str, job_type: str, data: Dict[str, Any]) -> None:
         self.job_id: str = job_id
         self.url: str = data.get("url", "")
         self.job_type: str = job_type
-        self.data: Dict[str, Any] = data  # Store all request data
+        self.data: Dict[str, Any] = data
         self.status: str = "queued"
         self.message: str = "Job is queued..."
         self.progress: Optional[float] = None
         self.error: Optional[str] = None
         self.temp_dir: str = os.path.join(APP_TEMP_DIR, self.job_id)
-        # --- MODIFIED: Be more specific with info type ---
         self.info: Optional[Dict[str, Any]] = None
         self.file_path: Optional[str] = None
         self.file_name: Optional[str] = None
 
-    # --- NEW: Helper to safely update status ---
     def set_status(
         self,
         status: str,
@@ -58,9 +54,8 @@ class Job:
         error: Optional[str] = None,
     ) -> None:
         with jobs_lock:
-            # --- MODIFIED: Don't allow external update if job is in a final state ---
             if self.status in ["completed", "failed"] and status != self.status:
-                return  # Don't change a final state
+                return
 
             self.status = status
             self.message = message
@@ -73,38 +68,65 @@ class Job:
                     file=sys.stderr,
                     flush=True,
                 )
-            # Update the global dict that /job-status reads
             jobs[self.job_id] = self
 
-    # --- NEW: Helper to update progress from the hook ---
+    # --- MODIFIED: This method now has the new logging logic ---
     def update_progress(self, d: Dict[str, Any]) -> None:
-        # --- NEW: Check if job has been paused externally ---
         if self.status == "paused":
-            # yt-dlp doesn't have a built-in pause, so we raise an
-            # exception to stop the download process.
             raise DownloadError("Download paused by user.")
 
         status = d.get("status")
         if status == "downloading":
-            total = d.get("total_bytes") or d.get("total_bytes_estimate")
             progress_val = None
+            total = d.get("total_bytes") or d.get("total_bytes_estimate")
             if total:
                 downloaded = d.get("downloaded_bytes", 0)
                 try:
                     progress_val = float(downloaded) / float(total) * 100.0
                 except Exception:
-                    progress_val = None
+                    pass  # progress_val remains None
+
+            # --- START NEW LOGGING LOGIC ---
+            message = ""
+            info = d.get("info_dict")
+
+            if info:
+                title = info.get("title", "Unknown title")
+                index = info.get("playlist_index")
+                count = info.get("playlist_count")
+
+                if index and count:
+                    # Playlist: "[1/10] Downloading: Song Title"
+                    message = f"[{index}/{count}] Downloading: {title}"
+                else:
+                    # Single file: "Downloading: Video Title"
+                    message = f"Downloading: {title}"
+
+            # Fallback if info_dict wasn't in the hook
+            if not message:
+                message = f"Downloading: {d.get('_percent_str', 'N/A')} at {d.get('_speed_str', 'N/A')}"
+            # --- END NEW LOGGING LOGIC ---
+
             self.set_status(
                 "downloading",
-                f"Downloading: {d.get('_percent_str', 'N/A')} at {d.get('_speed_str', 'N/A')}",
+                message,  # Use the new, better message
                 progress_val,
             )
+
         elif status == "finished":
+            # --- MODIFIED: More descriptive 'finished' message ---
+            info = d.get("info_dict")
+            title = info.get("title", "file") if info else "file"
+            # Set progress to 100 for this file, but overall job progress might be different
+            # We'll use self.progress to keep the *overall* job progress
             self.set_status(
-                "processing", "Download finished, converting...", self.progress
+                "processing",
+                f"Processing: {title}...",  # e.g., "Processing: Song Title..."
+                self.progress,
             )
 
-    # --- NEW: Logic moved from /start-job route ---
+    # --- END OF MODIFIED METHOD ---
+
     def _build_ydl_opts(self) -> Dict[str, Any]:
         output_template = os.path.join(self.temp_dir, "%(title)s.%(ext)s")
         if self.job_type in ["playlistZip", "combineMp3"]:
@@ -120,9 +142,7 @@ class Job:
             "ffmpeg_location": ffmpeg_exe,
             "retries": 10,
             "fragment_retries": 10,
-            "download_archive": os.path.join(
-                self.temp_dir, "downloaded.txt"
-            ),  # --- NEW: Track progress ---
+            "download_archive": os.path.join(self.temp_dir, "downloaded.txt"),
         }
 
         if self.job_type == "singleVideo":
@@ -171,17 +191,13 @@ class Job:
 
         return ydl_opts
 
-    # --- NEW: Progress hook is now a method ---
     def _progress_hook(self, d: Dict[str, Any]) -> None:
         self.update_progress(d)
 
-    # --- NEW: Main execution logic, moved from download_thread ---
     def run(self) -> None:
-        # --- NEW: Check for pause status before starting ---
-        # This will block the worker if the job was paused *while in queue*
         while self.status == "paused":
             self.set_status("paused", "Job is paused. Waiting for resume...")
-            time.sleep(1)  # Check every second
+            time.sleep(1)
 
         self.set_status("processing", "Preparing download...", 0)
         os.makedirs(self.temp_dir, exist_ok=True)
@@ -192,17 +208,16 @@ class Job:
         last_error_str = ""
 
         while retries < MAX_RETRIES and not success:
-            # --- NEW: Check for pause status *before each retry attempt* ---
             while self.status == "paused":
                 self.set_status("paused", "Download paused. Waiting for resume...")
-                time.sleep(1)  # This blocks the worker thread, as intended by the plan
+                time.sleep(1)
 
             try:
                 if retries > 0:
                     self.set_status(
                         "processing",
                         f"Retrying download... (Attempt {retries + 1}/{MAX_RETRIES})",
-                        self.progress or 0,  # --- MODIFIED ---
+                        self.progress or 0,
                     )
 
                 with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
@@ -218,11 +233,9 @@ class Job:
 
             except DownloadError as e:
                 last_error_str = str(e)
-                # --- NEW: Check for our custom pause exception ---
                 if "Download paused by user" in last_error_str:
                     self.set_status("paused", "Download paused.")
-                    # Don't increment retries, just wait
-                    continue  # Go back to the top of the while loop to hit the pause check
+                    continue
 
                 if "HTTP Error 403: Forbidden" in last_error_str:
                     retries += 1
@@ -257,7 +270,6 @@ class Job:
             except OSError as e:
                 print(f"Warning: could not delete cookie file {cookie_file}: {e}")
 
-    # --- NEW: Logic moved from finalize_job ---
     def _finalize(self) -> None:
         self.set_status("processing", "Finalizing files...", self.progress or 100)
         assert self.temp_dir and self.info is not None, (
@@ -337,7 +349,6 @@ class Job:
 
         self.set_status("completed", "Processing complete!", 100)
 
-    # --- NEW: Helper for /job-status endpoint ---
     def to_dict(self) -> Dict[str, Any]:
         return {
             "job_id": self.job_id,
@@ -563,7 +574,7 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
     )
 
 
-# --- NEW: Pause and Resume Endpoints ---
+# --- (Pause and Resume Endpoints - unchanged) ---
 
 
 @app.route("/pause-all-jobs", methods=["POST"])
@@ -577,7 +588,6 @@ def pause_all_jobs_endpoint() -> Response:
     with jobs_lock:
         for job_id, job in jobs.items():
             if job.status in ["queued", "processing", "downloading", "error"]:
-                # 'error' status is included to pause 403 retries
                 job.set_status("paused", "All downloads paused by user/network.")
                 paused_count += 1
 
@@ -598,13 +608,8 @@ def resume_job_endpoint(job_id: str) -> Union[Response, tuple[Response, int]]:
         return jsonify({"error": "Job not found"}), 404
 
     if job.status != "paused":
-        return jsonify(
-            {"message": "Job is not currently paused."}
-        ), 400  # 400 Bad Request
+        return jsonify({"message": "Job is not currently paused."}), 400
 
-    # Set status to 'queued'. The worker will pick it up.
-    # The Job.run() method's pause-check loop will exit, and it will continue.
-    # yt-dlp will automatically resume from .part files.
     job.set_status("queued", "Job resumed. Waiting for queue...")
 
     return jsonify({"message": f"Job {job_id} has been re-queued."})
