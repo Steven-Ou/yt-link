@@ -11,15 +11,7 @@ import uuid
 import zipfile
 import subprocess
 import queue
-from typing import (
-    Any,
-    Dict,
-    Generator,
-    List,
-    Optional,
-    cast,
-    Union,
-)  # --- MODIFIED: Added Union ---
+from typing import Any, Dict, Generator, List, Optional, cast, Union
 
 from flask import Flask, Response, request, jsonify
 from flask_cors import CORS
@@ -66,6 +58,10 @@ class Job:
         error: Optional[str] = None,
     ) -> None:
         with jobs_lock:
+            # --- MODIFIED: Don't allow external update if job is in a final state ---
+            if self.status in ["completed", "failed"] and status != self.status:
+                return  # Don't change a final state
+
             self.status = status
             self.message = message
             if progress is not None:
@@ -82,6 +78,12 @@ class Job:
 
     # --- NEW: Helper to update progress from the hook ---
     def update_progress(self, d: Dict[str, Any]) -> None:
+        # --- NEW: Check if job has been paused externally ---
+        if self.status == "paused":
+            # yt-dlp doesn't have a built-in pause, so we raise an
+            # exception to stop the download process.
+            raise DownloadError("Download paused by user.")
+
         status = d.get("status")
         if status == "downloading":
             total = d.get("total_bytes") or d.get("total_bytes_estimate")
@@ -118,6 +120,9 @@ class Job:
             "ffmpeg_location": ffmpeg_exe,
             "retries": 10,
             "fragment_retries": 10,
+            "download_archive": os.path.join(
+                self.temp_dir, "downloaded.txt"
+            ),  # --- NEW: Track progress ---
         }
 
         if self.job_type == "singleVideo":
@@ -172,6 +177,12 @@ class Job:
 
     # --- NEW: Main execution logic, moved from download_thread ---
     def run(self) -> None:
+        # --- NEW: Check for pause status before starting ---
+        # This will block the worker if the job was paused *while in queue*
+        while self.status == "paused":
+            self.set_status("paused", "Job is paused. Waiting for resume...")
+            time.sleep(1)  # Check every second
+
         self.set_status("processing", "Preparing download...", 0)
         os.makedirs(self.temp_dir, exist_ok=True)
         ydl_opts = self._build_ydl_opts()
@@ -181,12 +192,17 @@ class Job:
         last_error_str = ""
 
         while retries < MAX_RETRIES and not success:
+            # --- NEW: Check for pause status *before each retry attempt* ---
+            while self.status == "paused":
+                self.set_status("paused", "Download paused. Waiting for resume...")
+                time.sleep(1)  # This blocks the worker thread, as intended by the plan
+
             try:
                 if retries > 0:
                     self.set_status(
                         "processing",
                         f"Retrying download... (Attempt {retries + 1}/{MAX_RETRIES})",
-                        0,
+                        self.progress or 0,  # --- MODIFIED ---
                     )
 
                 with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
@@ -202,6 +218,12 @@ class Job:
 
             except DownloadError as e:
                 last_error_str = str(e)
+                # --- NEW: Check for our custom pause exception ---
+                if "Download paused by user" in last_error_str:
+                    self.set_status("paused", "Download paused.")
+                    # Don't increment retries, just wait
+                    continue  # Go back to the top of the while loop to hit the pause check
+
                 if "HTTP Error 403: Forbidden" in last_error_str:
                     retries += 1
                     if retries < MAX_RETRIES:
@@ -220,7 +242,7 @@ class Job:
                 else:
                     self.set_status("failed", "Download failed.", error=last_error_str)
                     break
-            except Exception:  # --- MODIFIED: Removed 'as e' to fix F841 ---
+            except Exception:
                 self.set_status(
                     "failed",
                     "A processing error occurred.",
@@ -230,7 +252,10 @@ class Job:
 
         cookie_file = ydl_opts.get("cookiefile")
         if cookie_file and os.path.exists(cookie_file):
-            os.remove(cookie_file)
+            try:
+                os.remove(cookie_file)
+            except OSError as e:
+                print(f"Warning: could not delete cookie file {cookie_file}: {e}")
 
     # --- NEW: Logic moved from finalize_job ---
     def _finalize(self) -> None:
@@ -245,6 +270,7 @@ class Job:
                 f
                 for f in os.listdir(self.temp_dir)
                 if os.path.splitext(f)[1].lower() in video_extensions
+                and not f.endswith(".part")
             ]
             if not found_files:
                 raise Exception("No final video file found after download.")
@@ -265,7 +291,6 @@ class Job:
                 raise Exception("No MP3 files found after conversion.")
 
             playlist_title = sanitize_filename(
-                # --- MODIFIED: Added check for self.info being a dict ---
                 str(self.info.get("title", "playlist"))
                 if isinstance(self.info, dict)
                 else "playlist"
@@ -399,7 +424,7 @@ cleanup_old_job_dirs()
 # --- Flask Routes ---
 
 
-# --- MODIFIED: Added more specific return type hint ---
+# --- (get_formats_endpoint - unchanged) ---
 @app.route("/get-formats", methods=["POST"])
 def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
     data = request.get_json()
@@ -415,7 +440,6 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
         with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
             info = ydl.extract_info(url, download=False) or {}
             unique_formats: Dict[int, Dict[str, Any]] = {}
-            # --- MODIFIED: Removed unnecessary cast ---
             all_formats: List[Dict[str, Any]] = info.get("formats", []) or []
 
             def get_height(f: Dict[str, Any]) -> int:
@@ -455,7 +479,7 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
         return jsonify({"error": str(e)}), 500
 
 
-# --- MODIFIED: Added more specific return type hint ---
+# --- (start_job_endpoint - unchanged) ---
 @app.route("/start-job", methods=["POST"])
 def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
     data = request.get_json()
@@ -475,7 +499,7 @@ def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
     return jsonify({"jobId": job_id})
 
 
-# --- MODIFIED: Added more specific return type hint ---
+# --- (get_job_status - unchanged) ---
 @app.route("/job-status", methods=["GET"])
 def get_job_status() -> Union[Response, tuple[Response, int]]:
     job_id = request.args.get("jobId")
@@ -491,7 +515,7 @@ def get_job_status() -> Union[Response, tuple[Response, int]]:
     return jsonify(job.to_dict())
 
 
-# --- MODIFIED: Added more specific return type hint ---
+# --- (download_file_route - unchanged) ---
 @app.route("/download/<job_id>", methods=["GET"])
 def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
     with jobs_lock:
@@ -539,7 +563,54 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
     )
 
 
-# --- NEW: Queue Worker Thread ---
+# --- NEW: Pause and Resume Endpoints ---
+
+
+@app.route("/pause-all-jobs", methods=["POST"])
+def pause_all_jobs_endpoint() -> Response:
+    """
+    Sets all 'queued' or 'processing' jobs to a 'paused' state.
+    The worker thread will check for this status and wait.
+    """
+    print("--- API CALL: Pause all jobs ---")
+    paused_count = 0
+    with jobs_lock:
+        for job_id, job in jobs.items():
+            if job.status in ["queued", "processing", "downloading", "error"]:
+                # 'error' status is included to pause 403 retries
+                job.set_status("paused", "All downloads paused by user/network.")
+                paused_count += 1
+
+    return jsonify({"message": f"Paused {paused_count} active/queued jobs."})
+
+
+@app.route("/resume-job/<job_id>", methods=["POST"])
+def resume_job_endpoint(job_id: str) -> Union[Response, tuple[Response, int]]:
+    """
+    Resumes a specific job by setting its status back to 'queued'.
+    The worker will pick it up and the Job.run() method will continue.
+    """
+    print(f"--- API CALL: Resume job {job_id} ---")
+    with jobs_lock:
+        job = jobs.get(job_id)
+
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+
+    if job.status != "paused":
+        return jsonify(
+            {"message": "Job is not currently paused."}
+        ), 400  # 400 Bad Request
+
+    # Set status to 'queued'. The worker will pick it up.
+    # The Job.run() method's pause-check loop will exit, and it will continue.
+    # yt-dlp will automatically resume from .part files.
+    job.set_status("queued", "Job resumed. Waiting for queue...")
+
+    return jsonify({"message": f"Job {job_id} has been re-queued."})
+
+
+# --- (queue_worker - unchanged) ---
 def queue_worker() -> None:
     while True:
         job = None
@@ -581,6 +652,5 @@ if __name__ == "__main__":
     print(f"--- Backend starting on port {port} ---", flush=True)
     print(f"--- Using FFmpeg from: {ffmpeg_exe} ---", flush=True)
     print("--- Worker thread started ---", flush=True)
-    # --- MODIFIED: Fixed f-string and ignored Pylance bug ---
     print(f"Flask-Backend-Ready:{port}", flush=True)  # type: ignore[reportArgumentType]
     app.run(host="127.0.0.1", port=port, debug=False)
