@@ -77,8 +77,8 @@ export default function SingleVideoView({
               onChange={(e) => setSelectedFormat(e.target.value)}
             >
               {formats.map((format) => (
-                <MenuItem key={format.format_id} value={format.resolution}>
-                  {format.resolution} ({format.note})
+                <MenuItem key={format.format_id} value={format.format_id}>
+                  {format.resolution} - ({format.note})
                 </MenuItem>
               ))}
             </Select>
