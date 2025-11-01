@@ -125,7 +125,7 @@ export default function Home() {
     const savedCookies = localStorage.getItem("youtubeCookies") || "";
     setCookies(savedCookies);
   }, []);
-  
+
   useEffect(() => {
     if (!pollingJobId) return;
 
@@ -156,19 +156,27 @@ export default function Home() {
 
         // 1. Job is done!
         if (job.status === "completed") {
-          console.log("Job completed, starting download:", job.file_name);
+          console.log("Job completed. Full payload:", job); // Added full logging
+
           // Stop polling
           clearInterval(intervalId);
           setPollingJobId(null);
 
+          // Sanitize the filename on the frontend as a fallback
+          const fileName =
+            job.file_name ||
+            job.file_path || // Try file_path as a backup
+            `${pollingJobId}-download`; // Use Job ID as last resort
+
+          console.log("Triggering download. Filename:", fileName);
+
           // Trigger the download!
-          // We need the *full* backend URL here
           const downloadUrl = `${baseUrl}/download/${job.job_id}`;
 
           // Create an invisible link to trigger the browser's download prompt
           const link = document.createElement("a");
           link.href = downloadUrl;
-          link.setAttribute("download", job.file_name || "download");
+          link.setAttribute("download", fileName);
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
