@@ -9,7 +9,8 @@ import {
   createTheme, // Restored for custom theme
   ThemeProvider, // Restored for custom theme
 } from "@mui/material";
-import { useApi } from "../hooks/useApi"; // Corrected path
+// --- MODIFIED: Fixed the import path ---
+import { useApi } from "./hooks/useApi"; // Was "../hooks/useApi"
 
 // --- Import all the view components ---
 import Sidebar from "../components/Sidebar";
