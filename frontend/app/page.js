@@ -239,7 +239,7 @@ export default function Home() {
       const videoFormats = data.filter((f) => f.resolution);
       setFormats(videoFormats || []);
       if (videoFormats && videoFormats.length > 0) {
-        setSelectedQuality(videoFormats[0].resolution);
+        setSelectedQuality(videoFormats[0].format_id);
       }
     }
   };
