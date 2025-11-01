@@ -1,17 +1,16 @@
-// In preload.js
-
 const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld("electron", {
-  startJob: (payload) => ipcRenderer.invoke("start-job", payload),
-  getJobStatus: (jobId) => ipcRenderer.invoke("get-job-status", jobId),
-  getVideoFormats: (url) => ipcRenderer.invoke("get-video-formats", url),
-  
-  downloadFile: (payload) => ipcRenderer.invoke("download-file", payload), //
+contextBridge.exposeInMainWorld("electronAPI", {
+  /**
+   * @param {string} jobId
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  openDownloadFolder: (jobId) =>
+    ipcRenderer.invoke("open-download-folder", jobId),
 
-  onBackendLog: (callback) => {
-    const listener = (event, message) => callback(message);
-    ipcRenderer.on("backend-log", listener);
-    return () => ipcRenderer.removeListener("backend-log", listener);
-  },
+  /**
+   * @returns {string} - The URL of the Python backend
+   */
+  // --- THIS IS THE NEW FUNCTION ---
+  getBackendUrl: () => "http://127.0.0.1:5003",
 });

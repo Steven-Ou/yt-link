@@ -46,7 +46,9 @@ function startPythonBackend(port) {
   const ffmpegPath = getFFmpegPath();
 
   console.log(`[Electron] Starting backend with command: "python"`);
-  console.log(`[Electron] Using arguments: [-u, ${script}, ${port}, ${ffmpegPath}]`);
+  console.log(
+    `[Electron] Using arguments: [-u, ${script}, ${port}, ${ffmpegPath}]`
+  );
 
   pythonProcess = spawn("python", ["-u", script, port, ffmpegPath]);
 
@@ -84,7 +86,12 @@ function createWindow() {
 
   if (app.isPackaged) {
     // Production: Load the static Next.js build
-    const staticBuildPath = path.join(__dirname, "frontend", "out", "index.html");
+    const staticBuildPath = path.join(
+      __dirname,
+      "frontend",
+      "out",
+      "index.html"
+    );
     console.log(`[Electron] Loading production build from: ${staticBuildPath}`);
     mainWindow.loadFile(staticBuildPath);
   } else {
@@ -135,7 +142,9 @@ ipcMain.handle("open-download-folder", (event, jobId) => {
       shell.openPath(downloadDir);
       return { success: true };
     } else {
-      console.warn(`[Electron] Download folder not found: ${jobDir} or ${downloadDir}`);
+      console.warn(
+        `[Electron] Download folder not found: ${jobDir} or ${downloadDir}`
+      );
       return { success: false, error: "Download folder not found." };
     }
   } catch (e) {
