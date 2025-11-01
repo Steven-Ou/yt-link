@@ -9,17 +9,16 @@ import {
   createTheme, // Restored for custom theme
   ThemeProvider, // Restored for custom theme
 } from "@mui/material";
-// --- MODIFIED: Fixed the import path ---
-import { useApi } from "./hooks/useApi"; // Was "../hooks/useApi"
+import { useApi } from "./hooks/useApi"; // This path is now correct
 
-// --- Import all the view components ---
-import Sidebar from "../components/Sidebar";
-import HomeView from "../components/views/HomeView";
-import CookieView from "../components/views/CookieView";
-import SingleMp3View from "../components/views/SingleMp3View";
-import PlaylistZipView from "../components/views/PlaylistZipView";
-import CombineMp3View from "../components/views/CombineMp3View";
-import SingleVideoView from "../components/views/SingleVideoView";
+// --- MODIFIED: Fixed all component import paths ---
+import Sidebar from "./components/Sidebar";
+import HomeView from "./components/views/HomeView";
+import CookieView from "./components/views/CookieView";
+import SingleMp3View from "./components/views/SingleMp3View";
+import PlaylistZipView from "./components/views/PlaylistZipView";
+import CombineMp3View from "./components/views/CombineMp3View";
+import SingleVideoView from "./components/views/SingleVideoView";
 
 const drawerWidth = 240;
 
@@ -111,7 +110,6 @@ export default function Home() {
   const [url, setUrl] = useState("");
   const [error, setError] = useState(null);
   const [formats, setFormats] = useState([]);
-  // --- MODIFIED: Changed default to empty string for the Select component ---
   const [selectedQuality, setSelectedQuality] = useState("");
   const [cookies, setCookies] = useState("");
 
@@ -120,13 +118,9 @@ export default function Home() {
     type: null,
   });
 
-  // --- NEW: Create two separate useApi instances ---
-  // One for fetching formats (for SingleVideoView)
   const { post: postGetFormats, isApiLoading: isLoadingFormats } = useApi();
-  // One for handling all downloads
   const { post: postDownload, isApiLoading: isDownloading } = useApi();
 
-  // Load cookies from localStorage on mount
   useEffect(() => {
     const savedCookies = localStorage.getItem("youtubeCookies") || "";
     setCookies(savedCookies);
@@ -157,21 +151,18 @@ export default function Home() {
       return;
     }
 
-    // --- MODIFIED: Use the correct 'post' function ---
     const { data, error } = await postGetFormats("/api/get-formats", { url });
     if (error) {
       setError(error);
     } else {
-      // --- MODIFIED: Filter for actual video formats and set default quality ---
       const videoFormats = data.filter((f) => f.resolution);
       setFormats(videoFormats || []);
       if (videoFormats && videoFormats.length > 0) {
-        setSelectedQuality(videoFormats[0].resolution); // Set default to best
+        setSelectedQuality(videoFormats[0].resolution);
       }
     }
   };
 
-  // --- NEW: Add the missing handleDownload function ---
   const handleDownload = async (type) => {
     setError(null);
     if (!url) {
@@ -180,7 +171,6 @@ export default function Home() {
     }
 
     let apiEndpoint = "";
-    // Get cookies from localStorage, as the backend APIs need them
     const cookies = localStorage.getItem("youtubeCookies") || "";
     let body = { url, cookies };
 
@@ -199,9 +189,6 @@ export default function Home() {
           setError("Please fetch and select a video quality first.");
           return;
         }
-        // NOTE: This API route doesn't seem to exist in your file list.
-        // You will need to create 'frontend/app/api/start-single-video-job/route.js'
-        // for this download to work.
         apiEndpoint = "/api/start-single-video-job";
         body = { ...body, format: selectedQuality };
         break;
@@ -210,30 +197,25 @@ export default function Home() {
         return;
     }
 
-    // --- NEW: Call the download post function ---
     const { data, error } = await postDownload(apiEndpoint, body);
     if (error) {
       setError(error);
     } else {
-      // Job started successfully, UpdateStatus component will take over
-      // You could clear the URL here if you want:
-      // setUrl("");
+      // Job started successfully
     }
   };
 
-  // --- MODIFIED: This function is completely rewritten to pass the correct props ---
   const renderContent = () => {
     const baseProps = {
       url,
       setUrl,
       error,
       setError,
-      setCurrentView, // Pass this for navigation
+      setCurrentView,
     };
 
     switch (currentView) {
       case "home":
-        // HomeView was changed last time to take no props
         return <HomeView />;
       case "singleMp3":
         return (
@@ -264,8 +246,8 @@ export default function Home() {
           <SingleVideoView
             {...baseProps}
             formats={formats}
-            selectedFormat={selectedQuality} // Pass state as prop
-            setSelectedFormat={setSelectedQuality} // Pass setter as prop
+            selectedFormat={selectedQuality}
+            setSelectedFormat={setSelectedQuality}
             isLoadingFormats={isLoadingFormats}
             handleGetFormats={handleGetFormats}
             isDownloading={isDownloading}
@@ -287,7 +269,6 @@ export default function Home() {
   };
 
   return (
-    // --- Wrapped in ThemeProvider to restore your colors ---
     <ThemeProvider theme={customTheme}>
       <CssBaseline />
       <Box sx={{ display: "flex" }}>
@@ -302,7 +283,7 @@ export default function Home() {
             flexGrow: 1,
             p: 3,
             width: { sm: `calc(100% - ${drawerWidth}px)` },
-            backgroundColor: "background.default", // This will apply the light grey
+            backgroundColor: "background.default",
             minHeight: "100vh",
           }}
         >
@@ -313,3 +294,4 @@ export default function Home() {
     </ThemeProvider>
   );
 }
+
