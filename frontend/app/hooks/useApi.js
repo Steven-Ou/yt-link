@@ -3,43 +3,83 @@
 import { useState, useCallback } from "react";
 
 /**
- * A custom hook to simplify API fetch calls.
- * It manages loading state and error handling.
+ * @typedef {{
+ * post: (endpoint: string, body: Record<string, any>) => Promise<{ data: any, error: string | null }>,
+ * isApiLoading: boolean,
+ * error: string | null
+ * }} UseApiHook
+ */
+
+/**
+ * @returns {UseApiHook}
  */
 export const useApi = () => {
   const [isApiLoading, setIsApiLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  /**
-   * Performs a POST request.
-   * @param {string} url - The API endpoint to call.
-   * @param {object} body - The JSON body to send.
-   * @returns {Promise<{data: any, error: string | null}>}
-   */
-  const post = useCallback(async (url, body) => {
+  const post = useCallback(async (endpoint, body) => {
     setIsApiLoading(true);
+    setError(null);
+
+    // --- START OF THE FIX ---
+
+    // 1. Check if we are running in the Electron app
+    // @ts-ignore
+    const isElectron = !!window.electronAPI?.getBackendUrl;
+
+    let baseUrl = "";
+    let finalEndpoint = endpoint;
+
+    if (isElectron) {
+      // 2. We ARE in the packaged app. Get the Python URL.
+      // @ts-ignore
+      baseUrl = window.electronAPI.getBackendUrl(); // e.g., "http://127.0.0.1:5003"
+      // 3. Remove the "/api" prefix, because the Python service doesn't use it.
+      finalEndpoint = endpoint.replace("/api/", "/"); // e.g., "/api/get-formats" -> "/get-formats"
+    }
+
+    // 4. Construct the final URL
+    // In DEV: baseUrl is "" and finalEndpoint is "/api/get-formats"
+    //    -> fullUrl = "/api/get-formats" (Correct for Next.js dev server)
+    // In PROD: baseUrl is "http://..." and finalEndpoint is "/get-formats"
+    //    -> fullUrl = "http://127.0.0.1:5003/get-formats" (Correct for Python backend)
+    const fullUrl = baseUrl + finalEndpoint;
+
+    console.log(`[useApi] Fetching: ${fullUrl}`);
+
+    // --- END OF THE FIX ---
+
     try {
-      const response = await fetch(url, {
+      const response = await fetch(fullUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(body),
       });
 
-      const responseData = await response.json();
-
       if (!response.ok) {
-        throw new Error(responseData.error || "API request failed");
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage =
+          errorData.error ||
+          errorData.details ||
+          `Server error: ${response.status} ${response.statusText}`;
+        console.error(`API Error on ${endpoint}:`, errorMessage);
+        throw new Error(errorMessage);
       }
 
+      const data = await response.json();
+      return { data, error: null };
+    } catch (err) {
+      console.error(`API Error on ${endpoint}:`, err.message);
+      // @ts-ignore
+      setError(err.message);
+      // @ts-ignore
+      return { data: null, error: err.message };
+    } finally {
       setIsApiLoading(false);
-      return { data: responseData, error: null };
-    } catch (error) {
-      console.error(`API Error on POST ${url}:`, error);
-      setIsApiLoading(false);
-      return { data: null, error: error.message || "An unknown error occurred" };
     }
-  }, []); // useCallback ensures this function doesn't change on re-renders
+  }, []);
 
-  // You could add 'get', 'put', 'delete' methods here in the future if needed
-
-  return { post, isApiLoading };
+  return { post, isApiLoading, error };
 };
