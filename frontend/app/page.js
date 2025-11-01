@@ -195,6 +195,8 @@ export default function Home() {
       setError(error);
     } else {
       console.log("Job started:", data); // Or whatever you do on success
+      setPollingJobId(data.jobId); // <-- ADD THIS LINE
+      setUrl(""); // <-- Optional: Clears the URL bar
     }
   };
 
