@@ -236,6 +236,7 @@ export default function Home() {
     if (error) {
       setError(error);
     } else {
+      console.log("Formats data from backend:", data);
       const videoFormats = data.filter((f) => f.resolution);
       setFormats(videoFormats || []);
       if (videoFormats && videoFormats.length > 0) {
