@@ -442,53 +442,80 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
     data = request.get_json()
     if not data or "url" not in data:
         return jsonify({"error": "Invalid request, URL is required."}), 400
+
     url = data["url"]
+    cookies = data.get("cookies")  # Get cookies from the request
+    cookie_file = None
+
     try:
         ydl_opts: Dict[str, Any] = {
             "quiet": True,
             "no_warnings": True,
             "nocheckcertificate": True,
         }
+
+        # Create a temporary cookie file if cookies are provided
+        if cookies:
+            try:
+                with tempfile.NamedTemporaryFile(
+                    delete=False, mode="w", encoding="utf-8"
+                ) as f:
+                    f.write(cookies)
+                    cookie_file = f.name
+                ydl_opts["cookiefile"] = cookie_file
+            except Exception as e:
+                print(f"[get-formats] ERROR: Failed to create cookie file: {e}")
+                # Don't fail the request, just proceed without cookies
+                pass
+
         with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
             info = ydl.extract_info(url, download=False) or {}
-            unique_formats: Dict[int, Dict[str, Any]] = {}
-            all_formats: List[Dict[str, Any]] = info.get("formats", []) or []
 
-            def get_height(f: Dict[str, Any]) -> int:
-                return int(f.get("height") or 0)
+        unique_formats: Dict[int, Dict[str, Any]] = {}
+        all_formats: List[Dict[str, Any]] = info.get("formats", []) or []
 
-            all_formats.sort(key=get_height, reverse=True)
-            for f in all_formats:
-                height = get_height(f)
-                if not height or height in unique_formats:
-                    continue
-                if f.get("vcodec") != "none":
-                    filesize = f.get("filesize") or f.get("filesize_approx")
-                    note = f.get("ext", "unknown")
-                    if filesize:
-                        filesize_mb = filesize / (1024 * 1024)
-                        note = f"{note} (~{filesize_mb:.1f} MB)"
-                    note += (
-                        " (video+audio)"
-                        if f.get("acodec") != "none"
-                        else " (video-only)"
-                    )
-                    unique_formats[height] = {
-                        "format_id": f.get("format_id"),
-                        "ext": f.get("ext"),
-                        "resolution": f"{height}p",
-                        "height": height,
-                        "note": note,
-                    }
-            final_formats = sorted(
-                unique_formats.values(), key=lambda x: x["height"], reverse=True
-            )
-            return jsonify(final_formats)
-    except DownloadError:
+        def get_height(f: Dict[str, Any]) -> int:
+            return int(f.get("height") or 0)
+
+        all_formats.sort(key=get_height, reverse=True)
+        for f in all_formats:
+            height = get_height(f)
+            if not height or height in unique_formats:
+                continue
+            if f.get("vcodec") != "none":
+                filesize = f.get("filesize") or f.get("filesize_approx")
+                note = f.get("ext", "unknown")
+                if filesize:
+                    filesize_mb = filesize / (1024 * 1024)
+                    note = f"{note} (~{filesize_mb:.1f} MB)"
+                note += (
+                    " (video+audio)" if f.get("acodec") != "none" else " (video-only)"
+                )
+                unique_formats[height] = {
+                    "format_id": f.get("format_id"),
+                    "ext": f.get("ext"),
+                    "resolution": f"{height}p",
+                    "height": height,
+                    "note": note,
+                }
+        final_formats = sorted(
+            unique_formats.values(), key=lambda x: x["height"], reverse=True
+        )
+        return jsonify(final_formats)
+
+    except yt_dlp.utils.DownloadError as e:
+        print(f"[get-formats] ERROR: {e}")
         return jsonify({"error": "Video not found or unavailable."}), 404
     except Exception as e:
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        print(f"[get-formats] UNEXPECTED ERROR: {e}")
+        return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
+    finally:
+        # Clean up the temporary cookie file
+        if cookie_file and os.path.exists(cookie_file):
+            try:
+                os.remove(cookie_file)
+            except Exception as e:
+                print(f"[get-formats] ERROR: Failed to delete cookie file: {e}")
 
 
 # --- (start_job_endpoint - unchanged) ---
