@@ -78,7 +78,7 @@ export default function SingleVideoView({
             >
               {formats.map((format) => (
                 <MenuItem key={format.format_id} value={format.format_id}>
-                  {format.resolution} - ({format.note})
+                  {format.resolution} ({format.note})
                 </MenuItem>
               ))}
             </Select>
