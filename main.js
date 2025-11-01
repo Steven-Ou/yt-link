@@ -12,54 +12,80 @@ const PYTHON_SERVICE_PORT = 5003;
 // --- No longer needed, as useApi.js handles this ---
 // const PYTHON_SERVICE_URL = `http://127.0.0.1:${PYTHON_SERVICE_PORT}`;
 
-// --- MODIFIED: This function now gets the *compiled* executable ---
 /**
- * @returns {string | null}
+ * Gets the command and arguments needed to start the Python backend.
+ * @param {string} port
+ * @param {string} ffmpegPath
+ * @returns {{ command: string, args: string[] } | null}
  */
-function getPythonExecutablePath() {
-  let execName = "app"; // Default executable name
-  if (process.platform === "win32") {
-    execName = "app.exe";
-  }
+function getPythonBackendConfig(port, ffmpegPath) {
+  const platform = process.platform;
+  // This is the executable name you defined in package.json build:backend
+  const execName = platform === "win32" ? "yt-link-backend.exe" : "yt-link-backend";
 
-  // Path in packaged app
-  const packagedPath = path.join(__dirname, "service", execName);
-  if (fs.existsSync(packagedPath)) {
-    console.log(`[Electron] Found packaged backend at: ${packagedPath}`);
-    return packagedPath;
-  }
+  if (app.isPackaged) {
+    // --- Packaged Mode ---
+    // Finds the executable in the 'backend' folder inside 'resources'
+    // (based on your package.json extraResources config)
+    const backendPath = path.join(process.resourcesPath, "backend", execName);
+    if (!fs.existsSync(backendPath)) {
+      console.error(
+        `[Electron] ERROR: Packaged backend not found at: ${backendPath}`
+      );
+      return null;
+    }
+    console.log(`[Electron] Found packaged backend at: ${backendPath}`);
+    return {
+      command: backendPath,
+      args: [port, ffmpegPath],
+    };
+  } else {
+    // --- Development Mode ---
+    // Finds the script in the 'service' folder in the project root
+    const scriptPath = path.join(__dirname, "service", "app.py");
+    if (!fs.existsSync(scriptPath)) {
+      console.error(
+        `[Electron] ERROR: Dev backend script not found at: ${scriptPath}`
+      );
+      return null;
+    }
+    console.log(`[Electron] Found dev backend script at: ${scriptPath}`);
 
-  // Path in development (points to the *source* file, NOT the compiled one)
-  const devPath = path.join(__dirname, "..", "service", "app.py");
-  if (fs.existsSync(devPath)) {
-    console.log(`[Electron] Found dev backend script at: ${devPath}`);
-    return "python"; // In dev, we return "python" to be used as the command
+    const pythonCommand = platform === "win32" ? "python" : "python3";
+    return {
+      command: pythonCommand,
+      args: ["-u", scriptPath, port, ffmpegPath],
+    };
   }
-
-  console.error(
-    "[Electron] ERROR: Could not find backend executable or script."
-  );
-  return null;
 }
 
 /**
  * @returns {string | null}
  */
 function getFFmpegPath() {
-  let execName = "ffmpeg";
-  if (process.platform === "win32") {
-    execName = "ffmpeg.exe";
-  }
+  const execName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
 
-  const binDir = path.join(__dirname, "bin");
-  if (fs.existsSync(path.join(binDir, execName))) {
-    // Packaged app: 'bin' dir is copied
-    return path.join(binDir, execName);
-  }
-  // Dev app: 'bin' is in parent dir
-  const devBinDir = path.join(__dirname, "..", "bin");
-  if (fs.existsSync(path.join(devBinDir, execName))) {
-    return path.join(devBinDir, execName);
+  if (app.isPackaged) {
+    // --- Packaged Mode ---
+    // Finds ffmpeg in the 'bin' folder inside 'resources'
+    // (based on your package.json extraResources config)
+    const packagedPath = path.join(process.resourcesPath, "bin", execName);
+    if (fs.existsSync(packagedPath)) {
+      console.log(`[Electron] Found packaged ffmpeg at: ${packagedPath}`);
+      return packagedPath;
+    }
+    console.error(
+      `[Electron] ERROR: Could not find packaged ffmpeg at: ${packagedPath}`
+    );
+  } else {
+    // --- Development Mode ---
+    // Finds ffmpeg in the 'bin' folder in the project root
+    const devPath = path.join(__dirname, "bin", execName);
+    if (fs.existsSync(devPath)) {
+      console.log(`[Electron] Found dev ffmpeg at: ${devPath}`);
+      return devPath;
+    }
+    console.error(`[Electron] ERROR: Could not find dev ffmpeg at: ${devPath}`);
   }
 
   console.error("[Electron] ERROR: Could not find ffmpeg executable.");
@@ -70,45 +96,28 @@ function getFFmpegPath() {
  * @param {string} port
  */
 function startPythonBackend(port) {
-  const command = getPythonExecutablePath();
   const ffmpegPath = getFFmpegPath();
-
-  if (!command || !ffmpegPath) {
+  if (!ffmpegPath) {
     console.error(
-      "[Electron] Failed to get paths for backend or ffmpeg. Aborting start."
+      "[Electron] Failed to get path for ffmpeg. Aborting start."
     );
     return;
   }
 
-  let args = [];
-  let finalCommand = command;
-
-  if (command === "python") {
-    // --- Development Mode ---
-
-    // --- FIX: Use 'python3' on Mac/Linux and 'python' on Windows ---
-    finalCommand = process.platform === "win32" ? "python" : "python3";
-    // --- END FIX ---
-
-    const scriptPath = path.join(__dirname, "..", "service", "app.py");
-    args = ["-u", scriptPath, port, ffmpegPath];
-    // --- FIX: Update log message to show the correct command ---
-    console.log(
-      `[Electron] Starting dev backend with command: "${finalCommand}"`
+  const backendConfig = getPythonBackendConfig(port, ffmpegPath);
+  if (!backendConfig) {
+    console.error(
+      "[Electron] Failed to get config for backend. Aborting start."
     );
-  } else {
-    // --- Packaged Mode ---
-    // 'command' is the full path to the compiled executable
-    finalCommand = command;
-    args = [port, ffmpegPath];
-    console.log(
-      `[Electron] Starting packaged backend with command: ${finalCommand}`
-    );
+    return;
   }
 
+  const { command, args } = backendConfig;
+
+  console.log(`[Electron] Starting backend with command: ${command}`);
   console.log(`[Electron] Using arguments: [${args.join(", ")}]`);
 
-  pythonProcess = spawn(finalCommand, args);
+  pythonProcess = spawn(command, args);
 
   pythonProcess.stdout.on("data", (data) => {
     const output = data.toString();
@@ -117,12 +126,14 @@ function startPythonBackend(port) {
       console.log("[Electron] Backend is ready.");
     }
   });
-  // ... rest of the file is identical to the one I sent before ...
+  
   pythonProcess.stderr.on("data", (data) => {
-    // ...
+    console.error(`[Python STDERR]: ${data.toString().trim()}`);
   });
+
   pythonProcess.on("close", (code) => {
-    // ...
+    console.log(`[Electron] Python backend process exited with code ${code}.`);
+    pythonProcess = null;
   });
 }
 
