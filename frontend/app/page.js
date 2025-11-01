@@ -231,8 +231,11 @@ export default function Home() {
       setError("Please enter a YouTube URL.");
       return;
     }
-
-    const { data, error } = await postGetFormats("/api/get-formats", { url });
+    const cookies = localStorage.getItem("youtubeCookies") || "";
+    const { data, error } = await postGetFormats("/api/get-formats", {
+      url,
+      cookies,
+    });
     if (error) {
       setError(error);
     } else {
