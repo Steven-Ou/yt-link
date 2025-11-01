@@ -146,15 +146,16 @@ class Job:
         }
 
         if self.job_type == "singleVideo":
-            quality = self.data.get("quality", "best")
-            format_string = (
-                f"bestvideo[ext=mp4][height<={quality}]+bestaudio[ext=m4a]/best[ext=mp4][height<={quality}]"
-                if quality != "best"
-                else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
-            )
+            # Get the format_id (e.g., "137+140") sent from the frontend
+            quality = self.data.get("quality")
+
+            # If for any reason it's missing, fall back to "best"
+            if not quality:
+                quality = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
+
             ydl_opts.update(
                 {
-                    "format": format_string,
+                    "format": quality,  # <-- This is the fix: Use the format_id directly
                     "outtmpl": output_template,
                     "noplaylist": True,
                     "merge_output_format": "mp4",
