@@ -170,38 +170,31 @@ export default function Home() {
       return;
     }
 
-    let apiEndpoint = "";
+    // The API endpoint is ALWAYS /api/start-job
+    const apiEndpoint = "/api/start-job";
     const cookies = localStorage.getItem("youtubeCookies") || "";
-    let body = { url, cookies };
 
-    switch (type) {
-      case "singleMp3":
-        apiEndpoint = "/api/start-single-mp3-job";
-        break;
-      case "playlistZip":
-        apiEndpoint = "/api/start-playlist-zip-job";
-        break;
-      case "combineMp3":
-        apiEndpoint = "/api/start-combine-playlist-mp3-job";
-        break;
-      case "singleVideo":
-        if (!selectedQuality) {
-          setError("Please fetch and select a video quality first.");
-          return;
-        }
-        apiEndpoint = "/api/start-single-video-job";
-        body = { ...body, format: selectedQuality };
-        break;
-      default:
-        setError(`Invalid download type: ${type}`);
+    // We build the body dynamically based on the job type
+    let body = {
+      jobType: type, // Pass the 'type' as 'jobType' in the body
+      url: url,
+      cookies: cookies,
+    };
+
+    // Special case for 'singleVideo', add the quality to the body
+    if (type === "singleVideo") {
+      if (!selectedQuality) {
+        setError("Please fetch and select a video quality first.");
         return;
+      }
+      body.quality = selectedQuality; // Add 'quality' to the body
     }
 
     const { data, error } = await postDownload(apiEndpoint, body);
     if (error) {
       setError(error);
     } else {
-      // Job started successfully
+      console.log("Job started:", data); // Or whatever you do on success
     }
   };
 
@@ -294,4 +287,3 @@ export default function Home() {
     </ThemeProvider>
   );
 }
-
