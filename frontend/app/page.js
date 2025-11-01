@@ -125,6 +125,79 @@ export default function Home() {
     const savedCookies = localStorage.getItem("youtubeCookies") || "";
     setCookies(savedCookies);
   }, []);
+  
+  useEffect(() => {
+    if (!pollingJobId) return;
+
+    // Start polling every 2 seconds
+    const intervalId = setInterval(async () => {
+      try {
+        // Get the base URL from the Electron API (same logic as useApi)
+        let baseUrl = "";
+        // @ts-ignore
+        if (window.electronAPI?.getBackendUrl) {
+          // @ts-ignore
+          baseUrl = window.electronAPI.getBackendUrl(); // e.g., "http://127.0.0.1:5003"
+        }
+
+        // We must build the URL manually for fetch
+        // In dev: /api/job-status?jobId=...
+        // In prod: http://127.0.0.1:5003/job-status?jobId=...
+        const statusUrl = baseUrl
+          ? `${baseUrl}/job-status?jobId=${pollingJobId}`
+          : `/api/job-status?jobId=${pollingJobId}`;
+
+        const response = await fetch(statusUrl);
+        if (!response.ok) {
+          throw new Error("Failed to fetch job status");
+        }
+
+        const job = await response.json();
+
+        // 1. Job is done!
+        if (job.status === "completed") {
+          console.log("Job completed, starting download:", job.file_name);
+          // Stop polling
+          clearInterval(intervalId);
+          setPollingJobId(null);
+
+          // Trigger the download!
+          // We need the *full* backend URL here
+          const downloadUrl = `${baseUrl}/download/${job.job_id}`;
+
+          // Create an invisible link to trigger the browser's download prompt
+          const link = document.createElement("a");
+          link.href = downloadUrl;
+          link.setAttribute("download", job.file_name || "download");
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+
+          // 2. Job failed!
+        } else if (job.status === "failed") {
+          console.error("Job failed:", job.error);
+          setError(job.message || job.error); // Show the error from the backend
+
+          // Stop polling
+          clearInterval(intervalId);
+          setPollingJobId(null);
+        }
+
+        // 3. Job is still processing...
+        // (do nothing, the interval will run again)
+      } catch (err) {
+        console.error("Polling error:", err);
+        setError("Lost connection to backend.");
+        clearInterval(intervalId);
+        setPollingJobId(null);
+      }
+    }, 2000); // Poll every 2 seconds
+
+    // Cleanup function to stop polling if the component unmounts
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [pollingJobId]); // This effect re-runs ONLY when pollingJobId changes
 
   const handleSaveCookies = () => {
     try {
