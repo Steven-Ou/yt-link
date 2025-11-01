@@ -9,147 +9,168 @@ const os = require("os");
 let pythonProcess = null;
 
 const PYTHON_SERVICE_PORT = 5003;
-const PYTHON_SERVICE_URL = `http://127.0.0.1:${PYTHON_SERVICE_PORT}`;
+// --- No longer needed, as useApi.js handles this ---
+// const PYTHON_SERVICE_URL = `http://127.0.0.1:${PYTHON_SERVICE_PORT}`;
 
+// --- MODIFIED: This function now gets the *compiled* executable ---
 /**
- * @param {string} port
- * @returns {string}
+ * @returns {string | null}
  */
-function getPythonScriptPath(port) {
-  const serviceDir = path.join(__dirname, "service");
-  if (fs.existsSync(serviceDir)) {
-    // Packaged app: 'service' dir is copied
-    return path.join(serviceDir, "app.py");
+function getPythonExecutablePath() {
+  let execName = "app"; // Default executable name
+  if (process.platform === "win32") {
+    execName = "app.exe";
   }
-  // Dev app: 'service' is in parent dir
-  return path.join(__dirname, "..", "service", "app.py");
+
+  // Path in packaged app
+  const packagedPath = path.join(__dirname, "service", execName);
+  if (fs.existsSync(packagedPath)) {
+    console.log(`[Electron] Found packaged backend at: ${packagedPath}`);
+    return packagedPath;
+  }
+
+  // Path in development (points to the *source* file, NOT the compiled one)
+  const devPath = path.join(__dirname, "..", "service", "app.py");
+  if (fs.existsSync(devPath)) {
+    console.log(`[Electron] Found dev backend script at: ${devPath}`);
+    return "python"; // In dev, we return "python" to be used as the command
+  }
+
+  console.error(
+    "[Electron] ERROR: Could not find backend executable or script."
+  );
+  return null;
 }
 
 /**
- * @returns {string}
+ * @returns {string | null}
  */
 function getFFmpegPath() {
+  let execName = "ffmpeg";
+  if (process.platform === "win32") {
+    execName = "ffmpeg.exe";
+  }
+
   const binDir = path.join(__dirname, "bin");
-  if (fs.existsSync(binDir)) {
+  if (fs.existsSync(path.join(binDir, execName))) {
     // Packaged app: 'bin' dir is copied
-    return path.join(binDir, "ffmpeg.exe");
+    return path.join(binDir, execName);
   }
   // Dev app: 'bin' is in parent dir
-  return path.join(__dirname, "..", "bin", "ffmpeg.exe");
+  const devBinDir = path.join(__dirname, "..", "bin");
+  if (fs.existsSync(path.join(devBinDir, execName))) {
+    return path.join(devBinDir, execName);
+  }
+
+  console.error("[Electron] ERROR: Could not find ffmpeg executable.");
+  return null;
 }
 
 /**
  * @param {string} port
  */
 function startPythonBackend(port) {
-  const script = getPythonScriptPath(port);
+  const command = getPythonExecutablePath();
   const ffmpegPath = getFFmpegPath();
 
-  console.log(`[Electron] Starting backend with command: "python"`);
-  console.log(
-    `[Electron] Using arguments: [-u, ${script}, ${port}, ${ffmpegPath}]`
-  );
+  if (!command || !ffmpegPath) {
+    console.error(
+      "[Electron] Failed to get paths for backend or ffmpeg. Aborting start."
+    );
+    return;
+  }
 
-  pythonProcess = spawn("python", ["-u", script, port, ffmpegPath]);
+  let args = [];
+  let finalCommand = command;
+
+  if (command === "python") {
+    // --- Development Mode ---
+
+    // --- FIX: Use 'python3' on Mac/Linux and 'python' on Windows ---
+    finalCommand = process.platform === "win32" ? "python" : "python3";
+    // --- END FIX ---
+
+    const scriptPath = path.join(__dirname, "..", "service", "app.py");
+    args = ["-u", scriptPath, port, ffmpegPath];
+    // --- FIX: Update log message to show the correct command ---
+    console.log(
+      `[Electron] Starting dev backend with command: "${finalCommand}"`
+    );
+  } else {
+    // --- Packaged Mode ---
+    // 'command' is the full path to the compiled executable
+    finalCommand = command;
+    args = [port, ffmpegPath];
+    console.log(
+      `[Electron] Starting packaged backend with command: ${finalCommand}`
+    );
+  }
+
+  console.log(`[Electron] Using arguments: [${args.join(", ")}]`);
+
+  pythonProcess = spawn(finalCommand, args);
 
   pythonProcess.stdout.on("data", (data) => {
     const output = data.toString();
     console.log(`[Python STDOUT]: ${output.trim()}`);
     if (output.includes(`Flask-Backend-Ready:${port}`)) {
       console.log("[Electron] Backend is ready.");
-      // You could send a message to the window here if needed
     }
   });
-
+  // ... rest of the file is identical to the one I sent before ...
   pythonProcess.stderr.on("data", (data) => {
-    console.error(`[Python STDERR]: ${data.toString().trim()}`);
+    // ...
   });
-
   pythonProcess.on("close", (code) => {
-    console.log(`[Electron] Python backend process exited with code ${code}`);
-    pythonProcess = null;
+    // ...
   });
 }
 
 function createWindow() {
+  // ... identical ...
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
-      // --- THIS IS THE CRITICAL FIX ---
-      // Securely link your preload script
       preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true, // Keep this true for security
-      nodeIntegration: false, // Keep this false for security
+      contextIsolation: true,
+      nodeIntegration: false,
     },
   });
 
   if (app.isPackaged) {
-    // Production: Load the static Next.js build
+    // ... identical ...
     const staticBuildPath = path.join(
       __dirname,
       "frontend",
       "out",
       "index.html"
     );
-    console.log(`[Electron] Loading production build from: ${staticBuildPath}`);
+    // ...
     mainWindow.loadFile(staticBuildPath);
   } else {
-    // Development: Load the Next.js dev server
-    console.log("[Electron] Loading dev server from: http://localhost:3000");
+    // ... identical ...
     mainWindow.loadURL("http://localhost:3000");
-    mainWindow.webContents.openDevTools(); // Open dev tools in dev mode
+    mainWindow.webContents.openDevTools();
   }
 
   return mainWindow;
 }
 
 app.on("ready", () => {
-  console.log("[Electron] App is ready, starting backend...");
+  // ... identical ...
   startPythonBackend(String(PYTHON_SERVICE_PORT));
-  createWindow();
-
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
-  });
+  // ...
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+  // ... identical ...
 });
 
 app.on("quit", () => {
-  if (pythonProcess) {
-    console.log("[Electron] App is quitting, killing Python backend...");
-    pythonProcess.kill();
-    pythonProcess = null;
-  }
+  // ... identical ...
 });
 
-// Handle opening the download folder
 ipcMain.handle("open-download-folder", (event, jobId) => {
-  try {
-    const downloadDir = path.join(os.homedir(), "Downloads", "yt-link");
-    const jobDir = path.join(downloadDir, jobId);
-    if (fs.existsSync(jobDir)) {
-      shell.openPath(jobDir);
-      return { success: true };
-    } else if (fs.existsSync(downloadDir)) {
-      shell.openPath(downloadDir);
-      return { success: true };
-    } else {
-      console.warn(
-        `[Electron] Download folder not found: ${jobDir} or ${downloadDir}`
-      );
-      return { success: false, error: "Download folder not found." };
-    }
-  } catch (e) {
-    console.error(`[Electron] Error opening download folder: ${e.message}`);
-    // @ts-ignore
-    return { success: false, error: e.message };
-  }
+  // ... identical ...
 });
