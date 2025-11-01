@@ -9,179 +9,147 @@ const os = require("os");
 let pythonProcess = null;
 
 const PYTHON_SERVICE_PORT = 5003;
-// --- No longer needed, as useApi.js handles this ---
-// const PYTHON_SERVICE_URL = `http://127.0.0.1:${PYTHON_SERVICE_PORT}`;
+const PYTHON_SERVICE_URL = `http://127.0.0.1:${PYTHON_SERVICE_PORT}`;
 
 /**
- * Gets the command and arguments needed to start the Python backend.
  * @param {string} port
- * @param {string} ffmpegPath
- * @returns {{ command: string, args: string[] } | null}
+ * @returns {string}
  */
-function getPythonBackendConfig(port, ffmpegPath) {
-  const platform = process.platform;
-  // This is the executable name you defined in package.json build:backend
-  const execName = platform === "win32" ? "yt-link-backend.exe" : "yt-link-backend";
-
-  if (app.isPackaged) {
-    // --- Packaged Mode ---
-    // Finds the executable in the 'backend' folder inside 'resources'
-    // (based on your package.json extraResources config)
-    const backendPath = path.join(process.resourcesPath, "backend", execName);
-    if (!fs.existsSync(backendPath)) {
-      console.error(
-        `[Electron] ERROR: Packaged backend not found at: ${backendPath}`
-      );
-      return null;
-    }
-    console.log(`[Electron] Found packaged backend at: ${backendPath}`);
-    return {
-      command: backendPath,
-      args: [port, ffmpegPath],
-    };
-  } else {
-    // --- Development Mode ---
-    // Finds the script in the 'service' folder in the project root
-    const scriptPath = path.join(__dirname, "service", "app.py");
-    if (!fs.existsSync(scriptPath)) {
-      console.error(
-        `[Electron] ERROR: Dev backend script not found at: ${scriptPath}`
-      );
-      return null;
-    }
-    console.log(`[Electron] Found dev backend script at: ${scriptPath}`);
-
-    const pythonCommand = platform === "win32" ? "python" : "python3";
-    return {
-      command: pythonCommand,
-      args: ["-u", scriptPath, port, ffmpegPath],
-    };
+function getPythonScriptPath(port) {
+  const serviceDir = path.join(__dirname, "service");
+  if (fs.existsSync(serviceDir)) {
+    // Packaged app: 'service' dir is copied
+    return path.join(serviceDir, "app.py");
   }
+  // Dev app: 'service' is in parent dir
+  return path.join(__dirname, "..", "service", "app.py");
 }
 
 /**
- * @returns {string | null}
+ * @returns {string}
  */
 function getFFmpegPath() {
-  const execName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
-
-  if (app.isPackaged) {
-    // --- Packaged Mode ---
-    // Finds ffmpeg in the 'bin' folder inside 'resources'
-    // (based on your package.json extraResources config)
-    const packagedPath = path.join(process.resourcesPath, "bin", execName);
-    if (fs.existsSync(packagedPath)) {
-      console.log(`[Electron] Found packaged ffmpeg at: ${packagedPath}`);
-      return packagedPath;
-    }
-    console.error(
-      `[Electron] ERROR: Could not find packaged ffmpeg at: ${packagedPath}`
-    );
-  } else {
-    // --- Development Mode ---
-    // Finds ffmpeg in the 'bin' folder in the project root
-    const devPath = path.join(__dirname, "bin", execName);
-    if (fs.existsSync(devPath)) {
-      console.log(`[Electron] Found dev ffmpeg at: ${devPath}`);
-      return devPath;
-    }
-    console.error(`[Electron] ERROR: Could not find dev ffmpeg at: ${devPath}`);
+  const binDir = path.join(__dirname, "bin");
+  if (fs.existsSync(binDir)) {
+    // Packaged app: 'bin' dir is copied
+    return path.join(binDir, "ffmpeg.exe");
   }
-
-  console.error("[Electron] ERROR: Could not find ffmpeg executable.");
-  return null;
+  // Dev app: 'bin' is in parent dir
+  return path.join(__dirname, "..", "bin", "ffmpeg.exe");
 }
 
 /**
  * @param {string} port
  */
 function startPythonBackend(port) {
+  const script = getPythonScriptPath(port);
   const ffmpegPath = getFFmpegPath();
-  if (!ffmpegPath) {
-    console.error(
-      "[Electron] Failed to get path for ffmpeg. Aborting start."
-    );
-    return;
-  }
 
-  const backendConfig = getPythonBackendConfig(port, ffmpegPath);
-  if (!backendConfig) {
-    console.error(
-      "[Electron] Failed to get config for backend. Aborting start."
-    );
-    return;
-  }
+  console.log(`[Electron] Starting backend with command: "python"`);
+  console.log(
+    `[Electron] Using arguments: [-u, ${script}, ${port}, ${ffmpegPath}]`
+  );
 
-  const { command, args } = backendConfig;
-
-  console.log(`[Electron] Starting backend with command: ${command}`);
-  console.log(`[Electron] Using arguments: [${args.join(", ")}]`);
-
-  pythonProcess = spawn(command, args);
+  pythonProcess = spawn("python", ["-u", script, port, ffmpegPath]);
 
   pythonProcess.stdout.on("data", (data) => {
     const output = data.toString();
     console.log(`[Python STDOUT]: ${output.trim()}`);
     if (output.includes(`Flask-Backend-Ready:${port}`)) {
       console.log("[Electron] Backend is ready.");
+      // You could send a message to the window here if needed
     }
   });
-  
+
   pythonProcess.stderr.on("data", (data) => {
     console.error(`[Python STDERR]: ${data.toString().trim()}`);
   });
 
   pythonProcess.on("close", (code) => {
-    console.log(`[Electron] Python backend process exited with code ${code}.`);
+    console.log(`[Electron] Python backend process exited with code ${code}`);
     pythonProcess = null;
   });
 }
 
 function createWindow() {
-  // ... identical ...
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
+      // --- THIS IS THE CRITICAL FIX ---
+      // Securely link your preload script
       preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
+      contextIsolation: true, // Keep this true for security
+      nodeIntegration: false, // Keep this false for security
     },
   });
 
   if (app.isPackaged) {
-    // ... identical ...
+    // Production: Load the static Next.js build
     const staticBuildPath = path.join(
       __dirname,
       "frontend",
       "out",
       "index.html"
     );
-    // ...
+    console.log(`[Electron] Loading production build from: ${staticBuildPath}`);
     mainWindow.loadFile(staticBuildPath);
   } else {
-    // ... identical ...
+    // Development: Load the Next.js dev server
+    console.log("[Electron] Loading dev server from: http://localhost:3000");
     mainWindow.loadURL("http://localhost:3000");
-    mainWindow.webContents.openDevTools();
+    mainWindow.webContents.openDevTools(); // Open dev tools in dev mode
   }
 
   return mainWindow;
 }
 
 app.on("ready", () => {
-  // ... identical ...
+  console.log("[Electron] App is ready, starting backend...");
   startPythonBackend(String(PYTHON_SERVICE_PORT));
-  // ...
+  createWindow();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
 });
 
 app.on("window-all-closed", () => {
-  // ... identical ...
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
 });
 
 app.on("quit", () => {
-  // ... identical ...
+  if (pythonProcess) {
+    console.log("[Electron] App is quitting, killing Python backend...");
+    pythonProcess.kill();
+    pythonProcess = null;
+  }
 });
 
+// Handle opening the download folder
 ipcMain.handle("open-download-folder", (event, jobId) => {
-  // ... identical ...
+  try {
+    const downloadDir = path.join(os.homedir(), "Downloads", "yt-link");
+    const jobDir = path.join(downloadDir, jobId);
+    if (fs.existsSync(jobDir)) {
+      shell.openPath(jobDir);
+      return { success: true };
+    } else if (fs.existsSync(downloadDir)) {
+      shell.openPath(downloadDir);
+      return { success: true };
+    } else {
+      console.warn(
+        `[Electron] Download folder not found: ${jobDir} or ${downloadDir}`
+      );
+      return { success: false, error: "Download folder not found." };
+    }
+  } catch (e) {
+    console.error(`[Electron] Error opening download folder: ${e.message}`);
+    // @ts-ignore
+    return { success: false, error: e.message };
+  }
 });
