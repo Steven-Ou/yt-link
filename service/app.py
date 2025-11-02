@@ -5,9 +5,14 @@ import shutil
 import sys
 import datetime
 try:
-    # Get user's desktop path
-    desktop = os.path.join(os.path.expanduser('~'), 'Desktop')
-    log_file_path = os.path.join(desktop, 'yt-link-backend-errors.log')
+    # --- THIS IS THE FIX ---
+    # Get the directory of the current script (service/app.py)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Go up one level to the project root (yt-link/)
+    project_root = os.path.dirname(script_dir)
+    # Create the log file path right inside the project root
+    log_file_path = os.path.join(project_root, 'yt-link-backend-errors.log')
+    # --- END OF FIX ---
     
     # Create/overwrite the log file and write a startup message
     with open(log_file_path, 'w', encoding='utf-8') as f:
@@ -20,13 +25,13 @@ try:
     sys.stderr = log_file_stream
     sys.stdout = log_file_stream
 
-    print("--- Python logging redirected to yt-link-backend-errors.log on Desktop ---")
+    print("--- Python logging redirected to yt-link-backend-errors.log ---")
     print(f"--- Log file path: {log_file_path} ---")
 
 except Exception as e:
     # In case logging fails, print to original stderr (which might be hidden)
     print(f"FATAL: Failed to set up file logging: {e}", file=sys.__stderr__)
-import io
+# --- END OF NEW LOGGING --
 import tempfile
 import threading
 import time
