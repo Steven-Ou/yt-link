@@ -60,6 +60,11 @@ export default function CombineMp3View({
               {error}
             </Alert>
           )}
+          {currentJob && (
+            <Box sx={{ mt: 3 }}>
+              <JobCard job={currentJob} />
+            </Box>
+          )}
         </Stack>
       </Paper>
     </Container>
