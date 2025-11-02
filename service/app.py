@@ -582,11 +582,16 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
                 continue
 
             if vcodec != "none":  # This is the critical filter
-                filesize = f.get("filesize") or f.get("filesize_approx")
+                filesize_raw = f.get("filesize") or f.get("filesize_approx")
                 note = f.get("ext", "unknown")
-                if filesize:
-                    filesize_mb = filesize / (1024 * 1024)
-                    note = f"{note} (~{filesize_mb:.1f} MB)"
+                if filesize_raw:
+                    try:
+                        # Try to convert filesize to a float before calculating
+                        filesize_mb = float(filesize_raw) / (1024 * 1024)
+                        note = f"{note} (~{filesize_mb:.1f} MB)"
+                    except (ValueError, TypeError):
+                        # If it fails, just use the extension as the note
+                        pass
                 note += (
                     " (video+audio)" if f.get("acodec") != "none" else " (video-only)"
                 )
