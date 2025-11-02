@@ -241,12 +241,6 @@ export default function Home() {
     }
     const cookies = localStorage.getItem("youtubeCookies") || "";
 
-    let body = {
-      jobType: type,
-      url: url,
-      cookies: cookies,
-    };
-    
     const { data, error } = await postGetFormats("/api/get-formats", {
       url,
       cookies,
@@ -290,6 +284,14 @@ export default function Home() {
       body.quality = selectedQuality; // Add 'quality' to the body
     }
 
+    setCurrentJob({
+      job_id: "new",
+      status: "queued",
+      message: "Job is starting...",
+      file_name: "Resolving video...", // Placeholder name
+      progress: 0,
+    });
+    
     const { data, error } = await postDownload(apiEndpoint, body);
     if (error) {
       setError(error);
