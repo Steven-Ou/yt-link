@@ -92,9 +92,7 @@ export default function JobCard({ job, onResume, onClose }) {
           display: "flex",
           alignItems: "center",
           mb: 1,
-          // Add minWidth to make truncation work
-          minWidth: 0,
-          // Constrain width to avoid hitting the close button
+          minWidth: 0, 
           maxWidth: "calc(100% - 40px)",
         }}
       >
@@ -113,11 +111,11 @@ export default function JobCard({ job, onResume, onClose }) {
           {displayName}
         </Typography>
       </Box>
-    
+
       <Typography
         variant="body2"
         sx={{
-          mb: 2, // Add margin bottom
+          mb: 2,
           color: "text.secondary",
           overflowWrap: "break-word",
           wordBreak: "break-all",
@@ -144,7 +142,7 @@ export default function JobCard({ job, onResume, onClose }) {
       {!isDone && !isFailed && !isPaused && (
         <LinearProgress
           variant="determinate"
-          value={overallProgress}
+          value={overallProgress} // Use the new overallProgress
           sx={{ height: "8px", borderRadius: "4px", mb: 2 }}
         />
       )}
