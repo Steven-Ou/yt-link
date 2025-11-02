@@ -418,12 +418,6 @@ class Job:
         }
 
 
-# --- (UTF-8 Fix - unchanged) ---
-if sys.stdout.encoding != "utf-8":
-    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")  # type: ignore[arg-type]
-if sys.stderr.encoding != "utf-8":
-    sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")  # type: ignore[arg-type]
-
 
 # --- (sanitize_filename - unchanged) ---
 def sanitize_filename(filename: str) -> str:
