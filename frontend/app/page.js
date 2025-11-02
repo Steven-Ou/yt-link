@@ -157,7 +157,7 @@ export default function Home() {
         const job = await response.json();
 
         setCurrentJob(job);
-        
+
         // 1. Job is done!
         if (job.status === "completed") {
           console.log("Job completed. Full payload:", job); // Added full logging
@@ -177,6 +177,7 @@ export default function Home() {
           // Trigger the download!
           const downloadUrl = `${baseUrl}/download/${job.job_id}`;
 
+          window.location.href=downloadUrl;
           // Create an invisible link to trigger the browser's download prompt
           const link = document.createElement("a");
           link.href = downloadUrl;
