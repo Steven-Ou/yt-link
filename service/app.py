@@ -3,6 +3,31 @@ import codecs
 import os
 import shutil
 import sys
+def get_binary_path(filename):
+    """
+    Gets the absolute path to a binary bundled with the app.
+    This goes up one directory from the script (service/) 
+    and then into the (bin/) folder.
+    """
+    # Get the directory where the current script (app.py) is located
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Go up one level to the project root
+    project_root = os.path.dirname(script_dir)
+    
+    # Join the project root with the 'bin' folder and the filename
+    binary_path = os.path.join(project_root, 'bin', filename)
+
+    # Add .exe extension if on Windows
+    if sys.platform == "win32" and not binary_path.endswith('.exe'):
+        binary_path += '.exe'
+        
+    return binary_path
+
+# --- Use the function to define your paths ---
+
+YTDL_PATH = get_binary_path('yt-dlp')
+FFMPEG_PATH = get_binary_path('ffmpeg')
 import io
 import tempfile
 import threading
@@ -639,7 +664,7 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
                     flush=True,
                 )
 
-                
+
 # --- (start_job_endpoint - unchanged) ---
 @app.route("/start-job", methods=["POST"])
 def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
