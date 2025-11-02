@@ -4,23 +4,6 @@ import os
 import shutil
 import sys
 import io
-
-if sys.platform == "win32":
-    try:
-        sys.stdout = io.TextIOWrapper(
-            sys.stdout.buffer, encoding="utf-8", errors="replace"
-        )
-        sys.stderr = io.TextIOWrapper(
-            sys.stderr.buffer, encoding="utf-8", errors="replace"
-        )
-        print("--- Windows UTF-8 stdout/stderr wrapper applied ---", flush=True)
-    except Exception as e:
-        # Fallback to default print, which may still crash
-        print(
-            f"Warning: Failed to set UTF-8 encoding for stdout/stderr: {e}",
-            file=sys.stderr,
-            flush=True,
-        )
 import tempfile
 import threading
 import time
@@ -512,10 +495,10 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
     cookies = data.get("cookies")
     cookie_file = None
 
-    #print(f"\n--- [get-formats] Received request for URL: {url}", flush=True)
-    #print(
-        #f"--- [get-formats] Cookies provided: {'Yes' if cookies else 'No'}", flush=True
-    #)
+    print(f"\n--- [get-formats] Received request for URL: {url}", flush=True)
+    print(
+        f"--- [get-formats] Cookies provided: {'Yes' if cookies else 'No'}", flush=True
+    )
 
     try:
         ydl_opts: Dict[str, Any] = {
@@ -534,20 +517,20 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
                     f.write(cookies)
                     cookie_file = f.name
                 ydl_opts["cookiefile"] = cookie_file
-                #print(f"--- [get-formats] Using temp cookie file: {cookie_file}",flush=True,)
+                print(f"--- [get-formats] Using temp cookie file: {cookie_file}",flush=True,)
             except Exception as e:
-                #print(f"[get-formats] ERROR: Failed to create cookie file: {e}",file=sys.stderr, flush=True,)
+                print(f"[get-formats] ERROR: Failed to create cookie file: {e}",file=sys.stderr, flush=True,)
                 pass
 
         with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
-            #print("--- [get-formats] Calling yt-dlp.extract_info...", flush=True)
+            print("--- [get-formats] Calling yt-dlp.extract_info...", flush=True)
             info = ydl.extract_info(url, download=False) or {}
-            #print("--- [get-formats] yt-dlp.extract_info finished.", flush=True)
+            print("--- [get-formats] yt-dlp.extract_info finished.", flush=True)
 
         unique_formats: Dict[int, Dict[str, Any]] = {}
         all_formats: List[Dict[str, Any]] = info.get("formats", []) or []
 
-        #print(f"--- [get-formats] Found {len(all_formats)} total formats.", flush=True)
+        print(f"--- [get-formats] Found {len(all_formats)} total formats.", flush=True)
         if not all_formats:
             print(
                 "--- [get-formats] WARNING: info.get('formats') was empty or missing!",
@@ -581,21 +564,18 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
 
                 continue
 
-            if vcodec != "none":  # This is the critical filter
+            if vcodec != "none":
                 filesize_raw = f.get("filesize") or f.get("filesize_approx")
                 note = f.get("ext", "unknown")
                 if filesize_raw:
                     try:
-                        # Try to convert filesize to a float before calculating
                         filesize_mb = float(filesize_raw) / (1024 * 1024)
                         note = f"{note} (~{filesize_mb:.1f} MB)"
                     except (ValueError, TypeError):
-                        # If it fails, just use the extension as the note
-                        pass
+                        pass # Just use the extension
                 note += (
                     " (video+audio)" if f.get("acodec") != "none" else " (video-only)"
                 )
-
                 print(f"    -> ADDING format: {height}p, note: {note}", flush=True)
 
                 unique_formats[height] = {

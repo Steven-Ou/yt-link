@@ -121,7 +121,12 @@ function startPythonBackend(port) {
   console.log(`[Electron] Starting backend with command: ${command}`);
   console.log(`[Electron] Using arguments: [${args.join(", ")}]`);
 
-  pythonProcess = spawn(command, args);
+  pythonProcess = spawn(command, args,{
+    env: {
+      ...process.env,   // Inherit all existing environment variables
+      PYTHONUTF8: '1',  // Force Python to use UTF-8 for all I/O
+    }
+  });
 
   pythonProcess.stdout.on("data", (data) => {
     const output = data.toString();
