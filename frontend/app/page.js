@@ -114,6 +114,7 @@ export default function Home() {
   const [selectedQuality, setSelectedQuality] = useState("");
   const [cookies, setCookies] = useState("");
   const [pollingJobId, setPollingJobId] = useState(null);
+  const [currentJob,setCurrentJob]= useState(null);
   const [cookieStatus, setCookieStatus] = useState({
     message: null,
     type: null,
