@@ -1,5 +1,5 @@
 // @ts-check
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, session, shell } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
 const fs = require("fs");
@@ -173,7 +173,34 @@ function createWindow() {
     mainWindow.loadURL("http://localhost:3000");
     mainWindow.webContents.openDevTools(); // Open dev tools in dev mode
   }
+  // Intercept all download requests from this window
+  mainWindow.webContents.session.on(
+    "will-download",
+    (event, item, webContents) => {
+      // Get the user's "Downloads" path
+      const downloadsPath = app.getPath("downloads");
+      // Get the sanitized filename from the server
+      const suggestedFilename = item.getFilename();
 
+      // Construct the full save path
+      const savePath = path.join(downloadsPath, suggestedFilename);
+      console.log(`[Electron] Download triggered. Saving to: ${savePath}`);
+
+      // Set the save path, which skips the save dialog
+      item.setSavePath(savePath);
+
+      item.once("done", (event, state) => {
+        if (state === "completed") {
+          console.log(`[Electron] Download complete: ${savePath}`);
+          // Open the folder where the file was saved
+          shell.showItemInFolder(savePath);
+        } else {
+          console.error(`[Electron] Download failed: ${state}`);
+        }
+      });
+    }
+  );
+  
   return mainWindow;
 }
 
