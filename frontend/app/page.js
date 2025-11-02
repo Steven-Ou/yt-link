@@ -387,11 +387,6 @@ export default function Home() {
           }}
         >
           <Toolbar />
-          {currentJob && (
-            <Box sx={{ mb: 3 }}>
-              <JobCard job={currentJob} />
-            </Box>
-          )}
           {renderContent()}
         </Box>
       </Box>
