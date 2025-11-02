@@ -3,31 +3,6 @@ import codecs
 import os
 import shutil
 import sys
-def get_binary_path(filename):
-    """
-    Gets the absolute path to a binary bundled with the app.
-    This goes up one directory from the script (service/) 
-    and then into the (bin/) folder.
-    """
-    # Get the directory where the current script (app.py) is located
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # Go up one level to the project root
-    project_root = os.path.dirname(script_dir)
-    
-    # Join the project root with the 'bin' folder and the filename
-    binary_path = os.path.join(project_root, 'bin', filename)
-
-    # Add .exe extension if on Windows
-    if sys.platform == "win32" and not binary_path.endswith('.exe'):
-        binary_path += '.exe'
-        
-    return binary_path
-
-# --- Use the function to define your paths ---
-
-YTDL_PATH = get_binary_path('yt-dlp')
-FFMPEG_PATH = get_binary_path('ffmpeg')
 import io
 import tempfile
 import threading
@@ -520,106 +495,72 @@ cleanup_old_job_dirs()
 
 @app.route("/get-formats", methods=["POST"])
 def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
-    data = request.get_json()
-    if not data or "url" not in data:
-        return jsonify({"error": "Invalid request, URL is required."}), 400
-
-    url = data["url"]
-    cookies = data.get("cookies")
-    cookie_file = None  # Define here for the 'finally' block
-
-    print(f"\n--- [get-formats] Received request for URL: {url}", flush=True)
-    print(
-        f"--- [get-formats] Cookies provided: {'Yes' if cookies else 'No'}", flush=True
-    )
-
+    print("\n--- [get-formats] HIT ENDPOINT. ---", flush=True)
     try:
-        # This is the options block.
-        ydl_opts: Dict[str, Any] = {
-            "quiet": True,
-            "no_warnings": True,
-            "nocheckcertificate": True,
-            "noplaylist": True,
-            "noprogress": True,
-            # --- THIS IS THE ONE-LINE FIX ---
-            "ffmpeg_location": ffmpeg_exe,
-            # --------------------------------
-        }
+        data = request.get_json()
+        if not data or "url" not in data:
+            print("[get-formats] ERROR: Invalid request, 400.", file=sys.stderr, flush=True)
+            return jsonify({"error": "Invalid request, URL is required."}), 400
 
-        if cookies:
-            try:
-                # Use a temporary file for cookies
-                with tempfile.NamedTemporaryFile(
-                    "w", delete=False, encoding="utf-8"
-                ) as f:
-                    f.write(cookies)
-                    cookie_file = f.name
-                ydl_opts["cookiefile"] = cookie_file
-                print(
-                    f"--- [get-formats] Using temp cookie file: {cookie_file}",
-                    flush=True,
-                )
-            except Exception as e:
-                # Log error but don't fail the request
-                print(
-                    f"[get-formats] ERROR: Failed to create cookie file: {e}",
-                    file=sys.stderr,
-                    flush=True,
-                )
-                pass
+        url = data["url"]
+        cookies = data.get("cookies")
+        cookie_file = None
 
-        with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
-            print("--- [get-formats] Calling yt-dlp.extract_info...", flush=True)
-            info = ydl.extract_info(url, download=False) or {}
-            print("--- [get-formats] yt-dlp.extract_info finished.", flush=True)
+        print(f"--- [get-formats] Received request for URL: {url}", flush=True)
+        print(f"--- [get-formats] Cookies provided: {'Yes' if cookies else 'No'}", flush=True)
 
-        unique_formats: Dict[int, Dict[str, Any]] = {}
-        all_formats: List[Dict[str, Any]] = info.get("formats", []) or []
+        # This is the original inner try/except block
+        try:
+            ydl_opts: Dict[str, Any] = {
+                "quiet": True,
+                "no_warnings": True,
+                "nocheckcertificate": True,
+                "noplaylist": True,
+                "noprogress": True,
+                "ffmpeg_location": ffmpeg_exe,
+            }
 
-        print(f"--- [get-formats] Found {len(all_formats)} total formats.", flush=True)
-        if not all_formats:
-            print(
-                "--- [get-formats] WARNING: info.get('formats') was empty or missing!",
-                flush=True,
-            )
+            if cookies:
+                try:
+                    with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as f:
+                        f.write(cookies)
+                        cookie_file = f.name
+                    ydl_opts["cookiefile"] = cookie_file
+                    print(f"--- [get-formats] Using temp cookie file: {cookie_file}", flush=True)
+                except Exception as e:
+                    print(f"[get-formats] ERROR: Failed to create cookie file: {e}", file=sys.stderr, flush=True)
+                    pass
 
-        def get_height(f: Dict[str, Any]) -> int:
-            try:
-                return int(float(f.get("height") or 0))
-            except (ValueError, TypeError):
-                return 0
+            with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
+                print("--- [get-formats] Calling yt-dlp.extract_info...", flush=True)
+                info = ydl.extract_info(url, download=False) or {}
+                print("--- [get-formats] yt-dlp.extract_info finished.", flush=True)
 
-        all_formats.sort(key=get_height, reverse=True)
+            unique_formats: Dict[int, Dict[str, Any]] = {}
+            all_formats: List[Dict[str, Any]] = info.get("formats", []) or []
+            print(f"--- [get-formats] Found {len(all_formats)} total formats.", flush=True)
 
-        for i, f in enumerate(all_formats):
-            height = get_height(f)
-            vcodec = f.get("vcodec")
+            def get_height(f: Dict[str, Any]) -> int:
+                try: return int(float(f.get("height") or 0))
+                except (ValueError, TypeError): return 0
 
-            if i < 15:
-                print(
-                    f"  > Format {i}: height={height}, vcodec='{vcodec}', acodec='{f.get('acodec')}', ext='{f.get('ext')}'",
-                    flush=True,
-                )
+            all_formats.sort(key=get_height, reverse=True)
 
-            if not height or height in unique_formats:
-                if i < 15:
-                    print(f"    -> SKIPPING (height is 0 or duplicate)", flush=True)
+            for i, f in enumerate(all_formats):
+                height = get_height(f)
+                vcodec = f.get("vcodec")
 
-                continue
+                if not height or height in unique_formats: continue
+                if vcodec == "none": continue
 
-            if vcodec != "none":
                 filesize_raw = f.get("filesize") or f.get("filesize_approx")
                 note = f.get("ext", "unknown")
                 if filesize_raw:
                     try:
                         filesize_mb = float(filesize_raw) / (1024 * 1024)
                         note = f"{note} (~{filesize_mb:.1f} MB)"
-                    except (ValueError, TypeError):
-                        pass 
-                note += (
-                    " (video+audio)" if f.get("acodec") != "none" else " (video-only)"
-                )
-                print(f"    -> ADDING format: {height}p, note: {note}", flush=True)
+                    except (ValueError, TypeError): pass
+                note += " (video+audio)" if f.get("acodec") != "none" else " (video-only)"
 
                 unique_formats[height] = {
                     "format_id": f.get("format_id"),
@@ -628,43 +569,35 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
                     "height": height,
                     "note": note,
                 }
-            else:
-                if i < 15:
-                    print(f"    -> SKIPPING (vcodec is 'none')", flush=True)
-                pass
 
-        final_formats = sorted(
-            unique_formats.values(), key=lambda x: x["height"], reverse=True
-        )
-        
-        return jsonify(final_formats)
+            final_formats = sorted(unique_formats.values(), key=lambda x: x["height"], reverse=True)
+            print("--- [get-formats] SUCCESS: Returning formats.", flush=True)
+            return jsonify(final_formats)
 
-    except yt_dlp.utils.DownloadError as e:
-        print(f"[get-formats] ERROR: {e}", file=sys.stderr, flush=True)
-        return jsonify({"error": "Video not found or unavailable."}), 404
+        except yt_dlp.utils.DownloadError as e:
+            print(f"[get-formats] DOWNLOAD ERROR: {e}", file=sys.stderr, flush=True)
+            return jsonify({"error": "Video not found or unavailable."}), 404
+
+        except Exception as e:
+            print(f"[get-formats] INNER UNEXPECTED ERROR: {traceback.format_exc()}", file=sys.stderr, flush=True)
+            return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
+
+        finally:
+            if cookie_file and os.path.exists(cookie_file):
+                try:
+                    os.remove(cookie_file)
+                    print("--- [get-formats] Cleaned up temp cookie file.", flush=True)
+                except Exception as e:
+                    print(f"[get-formats] ERROR: Failed to delete temp cookie file: {e}", file=sys.stderr, flush=True)
+
+    # This is the NEW outer "catch-all" block
     except Exception as e:
-        print(
-            f"[get-formats] UNEXPECTED ERROR: {traceback.format_exc()}",
-            file=sys.stderr,
-            flush=True,
-        )
-        return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
-    finally:
-        # Clean up the temporary cookie file if it was created
-        if cookie_file and os.path.exists(cookie_file):
-            try:
-                os.remove(cookie_file)
-                print(
-                    "--- [get-formats] Cleaned up temp cookie file.", flush=True
-                )
-            except Exception as e:
-                print(
-                    f"[get-formats] ERROR: Failed to delete temp cookie file: {e}",
-                    file=sys.stderr,
-                    flush=True,
-                )
+        print(f"\n\n--- [get-formats] !!! FATAL ERROR IN ENDPOINT !!! ---", file=sys.stderr, flush=True)
+        print(f"{traceback.format_exc()}", file=sys.stderr, flush=True)
+        print(f"--- [get-formats] !!! END OF TRACEBACK !!! --- \n\n", file=sys.stderr, flush=True)
+        return jsonify({"error": f"A fatal server error occurred: {e}"}), 500
 
-
+        
 # --- (start_job_endpoint - unchanged) ---
 @app.route("/start-job", methods=["POST"])
 def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
