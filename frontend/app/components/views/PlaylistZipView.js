@@ -9,8 +9,13 @@ import {
   Button,
   CircularProgress,
   Alert,
+  Box,
 } from "@mui/material";
-import { Download as DownloadIcon } from "@mui/icons-material";
+import {
+  Download as DownloadIcon,
+  Search as SearchIcon,
+} from "@mui/icons-material";
+import JobCard from "../JobCard";
 
 // This component is based on your renderPlaylistZipForm() function
 export default function PlaylistZipView({
