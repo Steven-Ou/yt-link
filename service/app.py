@@ -512,10 +512,10 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
     cookies = data.get("cookies")
     cookie_file = None
 
-    print(f"\n--- [get-formats] Received request for URL: {url}", flush=True)
-    print(
-        f"--- [get-formats] Cookies provided: {'Yes' if cookies else 'No'}", flush=True
-    )
+    #print(f"\n--- [get-formats] Received request for URL: {url}", flush=True)
+    #print(
+        #f"--- [get-formats] Cookies provided: {'Yes' if cookies else 'No'}", flush=True
+    #)
 
     try:
         ydl_opts: Dict[str, Any] = {
@@ -534,27 +534,20 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
                     f.write(cookies)
                     cookie_file = f.name
                 ydl_opts["cookiefile"] = cookie_file
-                print(
-                    f"--- [get-formats] Using temp cookie file: {cookie_file}",
-                    flush=True,
-                )
+                #print(f"--- [get-formats] Using temp cookie file: {cookie_file}",flush=True,)
             except Exception as e:
-                print(
-                    f"[get-formats] ERROR: Failed to create cookie file: {e}",
-                    file=sys.stderr,
-                    flush=True,
-                )
+                #print(f"[get-formats] ERROR: Failed to create cookie file: {e}",file=sys.stderr, flush=True,)
                 pass
 
         with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
-            print("--- [get-formats] Calling yt-dlp.extract_info...", flush=True)
+            #print("--- [get-formats] Calling yt-dlp.extract_info...", flush=True)
             info = ydl.extract_info(url, download=False) or {}
-            print("--- [get-formats] yt-dlp.extract_info finished.", flush=True)
+            #print("--- [get-formats] yt-dlp.extract_info finished.", flush=True)
 
         unique_formats: Dict[int, Dict[str, Any]] = {}
         all_formats: List[Dict[str, Any]] = info.get("formats", []) or []
 
-        print(f"--- [get-formats] Found {len(all_formats)} total formats.", flush=True)
+        #print(f"--- [get-formats] Found {len(all_formats)} total formats.", flush=True)
         if not all_formats:
             print(
                 "--- [get-formats] WARNING: info.get('formats') was empty or missing!",
@@ -562,7 +555,12 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             )
 
         def get_height(f: Dict[str, Any]) -> int:
-            return int(f.get("height") or 0)
+            try:
+                # Try to convert whatever we get (even "720.0") to an integer
+                return int(float(f.get("height") or 0))
+            except (ValueError, TypeError):
+                # If it fails (e.g., "720p", None, []), return 0
+                return 0
 
         all_formats.sort(key=get_height, reverse=True)
 
@@ -612,10 +610,10 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             unique_formats.values(), key=lambda x: x["height"], reverse=True
         )
 
-        print(
-            f"--- [get-formats] Returning {len(final_formats)} formats to frontend.",
-            flush=True,
-        )
+        # print(
+        #     f"--- [get-formats] Returning {len(final_formats)} formats to frontend.",
+        #     flush=True,
+        # )
 
         return jsonify(final_formats)
 
