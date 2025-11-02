@@ -4,6 +4,23 @@ import os
 import shutil
 import sys
 import io
+
+if sys.platform == "win32":
+    try:
+        sys.stdout = io.TextIOWrapper(
+            sys.stdout.buffer, encoding="utf-8", errors="replace"
+        )
+        sys.stderr = io.TextIOWrapper(
+            sys.stderr.buffer, encoding="utf-8", errors="replace"
+        )
+        print("--- Windows UTF-8 stdout/stderr wrapper applied ---", flush=True)
+    except Exception as e:
+        # Fallback to default print, which may still crash
+        print(
+            f"Warning: Failed to set UTF-8 encoding for stdout/stderr: {e}",
+            file=sys.stderr,
+            flush=True,
+        )
 import tempfile
 import threading
 import time
@@ -140,7 +157,7 @@ class Job:
             "nocheckcertificate": True,
             "quiet": True,
             "no_warnings": True,
-            "noprogress":True,
+            "noprogress": True,
             "ffmpeg_location": ffmpeg_exe,
             "retries": 10,
             "fragment_retries": 10,
@@ -276,9 +293,9 @@ class Job:
 
     def _finalize(self) -> None:
         self.set_status("processing", "Finalizing files...", self.progress or 100)
-        assert self.temp_dir and self.info is not None, (
-            "Job temp_dir or info is not set"
-        )
+        assert (
+            self.temp_dir and self.info is not None
+        ), "Job temp_dir or info is not set"
 
         if self.job_type == "singleVideo":
             video_extensions = [".mp4", ".mkv", ".webm", ".mov", ".avi"]
@@ -417,7 +434,6 @@ class Job:
             "error": self.error,
             "file_name": self.file_name,
         }
-
 
 
 # --- (sanitize_filename - unchanged) ---
