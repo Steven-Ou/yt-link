@@ -23,6 +23,8 @@ export default function CombineMp3View({
   isDownloading,
   handleDownload,
   error,
+  currentJob,
+  handleClearJob,
 }) {
   return (
     <Container maxWidth="md">
@@ -66,7 +68,7 @@ export default function CombineMp3View({
           )}
           {currentJob && (
             <Box sx={{ mt: 3 }}>
-              <JobCard job={currentJob} />
+              <JobCard job={currentJob} onClose={handleClearJob} />
             </Box>
           )}
         </Stack>
