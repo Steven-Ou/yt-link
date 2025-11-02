@@ -113,7 +113,7 @@ export default function Home() {
   const [selectedQuality, setSelectedQuality] = useState("");
   const [cookies, setCookies] = useState("");
   const [pollingJobId, setPollingJobId] = useState(null);
-  const [currentJob,setCurrentJob]= useState(null);
+  const [currentJob, setCurrentJob] = useState(null);
   const [cookieStatus, setCookieStatus] = useState({
     message: null,
     type: null,
@@ -176,7 +176,7 @@ export default function Home() {
           // Trigger the download!
           const downloadUrl = `${baseUrl}/download/${job.job_id}`;
 
-          window.location.href=downloadUrl;
+          window.location.href = downloadUrl;
           // Create an invisible link to trigger the browser's download prompt
           const link = document.createElement("a");
           link.href = downloadUrl;
@@ -194,7 +194,7 @@ export default function Home() {
           clearInterval(intervalId);
           setPollingJobId(null);
 
-          setTimeout(()=>setCurrentJob(null),10000);
+          setTimeout(() => setCurrentJob(null), 10000);
         }
 
         // 3. Job is still processing...
@@ -289,7 +289,7 @@ export default function Home() {
       message: "Job is starting...",
       file_name: "Resolving video...", // Placeholder name
       progress: 0,
-      url:url,
+      url: url,
     });
 
     const { data, error } = await postDownload(apiEndpoint, body);
@@ -298,11 +298,13 @@ export default function Home() {
       setCurrentJob(null);
     } else {
       console.log("Job started:", data); // Or whatever you do on success
-      setPollingJobId(data.jobId); 
+      setPollingJobId(data.jobId);
       setUrl(""); // <-- Optional: Clears the URL bar
     }
   };
-
+  const handleClearJob = () => {
+    setCurrentJob(null);
+  };
   const renderContent = () => {
     const baseProps = {
       url,
@@ -311,6 +313,7 @@ export default function Home() {
       setError,
       setCurrentView,
       currentJob,
+      handleClearJob,
     };
 
     switch (currentView) {
