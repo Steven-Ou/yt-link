@@ -55,7 +55,10 @@ function getPythonBackendConfig(port, ffmpegPath) {
     console.log(`[Electron] Found dev backend script at: ${scriptPath}`);
 
     // Use 'python3' on Mac/Linux and 'python' on Windows
-    const pythonCommand = platform === "win32" ? "python" : "python3";
+    const venvPath = path.join(__dirname, 'service', 'venv');
+    const pythonCommand = os.platform() === 'win32'
+      ? path.join(venvPath, 'Scripts', 'python.exe') // Windows path
+      : path.join(venvPath, 'bin', 'python');
     return {
       command: pythonCommand,
       args: ["-u", scriptPath, port, ffmpegPath],
