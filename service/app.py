@@ -640,7 +640,7 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
                     file=sys.stderr,
                     flush=True,
                 )
-
+        
 # --- (start_job_endpoint - unchanged) ---
 @app.route("/start-job", methods=["POST"])
 def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
