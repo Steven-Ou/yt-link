@@ -19,7 +19,6 @@ import SingleMp3View from "./components/views/SingleMp3View";
 import PlaylistZipView from "./components/views/PlaylistZipView";
 import CombineMp3View from "./components/views/CombineMp3View";
 import SingleVideoView from "./components/views/SingleVideoView";
-import JobCard from "./components/JobCard";
 
 const drawerWidth = 240;
 
@@ -311,6 +310,7 @@ export default function Home() {
       error,
       setError,
       setCurrentView,
+      currentJob,
     };
 
     switch (currentView) {
