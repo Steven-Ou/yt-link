@@ -484,11 +484,10 @@ cleanup_old_job_dirs()
 
 # --- Flask Routes ---
 
-
 @app.route("/get-formats", methods=["POST"])
 def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
     cookie_file = None  # Define here for the 'finally' block
-
+    
     # --- FIX: The try block now wraps EVERYTHING ---
     try:
         data = request.get_json() # <--- This line is now safely inside
@@ -502,7 +501,7 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
         print(
             f"--- [get-formats] Cookies provided: {'Yes' if cookies else 'No'}", flush=True
         )
-
+        
         # (The rest of your original function is unchanged)
         ydl_opts: Dict[str, Any] = {
             "quiet": True,
@@ -617,7 +616,7 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
 
 @app.route("/start-job", methods=["POST"])
 def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
-
+    
     # --- FIX: The try block now wraps EVERYTHING ---
     try:
         data = request.get_json() # <--- This line is now safely inside
@@ -644,7 +643,7 @@ def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
             flush=True,
         )
         return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
-
+        
 # --- (get_job_status - unchanged) ---
 @app.route("/job-status", methods=["GET"])
 def get_job_status() -> Union[Response, tuple[Response, int]]:
