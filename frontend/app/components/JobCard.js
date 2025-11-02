@@ -69,6 +69,8 @@ export default function JobCard({ job, onResume, onClose }) {
       overallProgress = job.progress || 0;
     }
   }
+  const displayName = job?.file_name || "Processing...";
+  const displayUrl = job?.url || "Starting job...";
   // --- End Playlist Progress Logic ---
 
   return (

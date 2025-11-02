@@ -290,6 +290,7 @@ export default function Home() {
       message: "Job is starting...",
       file_name: "Resolving video...", // Placeholder name
       progress: 0,
+      url:url,
     });
 
     const { data, error } = await postDownload(apiEndpoint, body);
