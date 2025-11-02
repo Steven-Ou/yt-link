@@ -240,6 +240,13 @@ export default function Home() {
       return;
     }
     const cookies = localStorage.getItem("youtubeCookies") || "";
+
+    let body = {
+      jobType: type,
+      url: url,
+      cookies: cookies,
+    };
+    
     const { data, error } = await postGetFormats("/api/get-formats", {
       url,
       cookies,
