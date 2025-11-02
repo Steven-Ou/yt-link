@@ -44,9 +44,9 @@ export default function JobCard({ job, onResume, onClose }) {
   // This logic calculates the *overall* playlist progress,
   // not just the progress of a single file.
   let overallProgress = job.progress || 0;
-  
+
   // Check for the "[1/50]" pattern in the message
-  const match = job.message.match(/\[(\d+)\/(\d+)\]/); 
+  const match = job.message.match(/\[(\d+)\/(\d+)\]/);
 
   if (match) {
     try {
@@ -85,10 +85,11 @@ export default function JobCard({ job, onResume, onClose }) {
       }}
     >
       {/* --- Close Button --- */}
-      {(isDone || isFailed) && (
+      {(job.status === "completed" || job.status === "failed") && (
         <IconButton
+          size="small"
           aria-label="Close"
-          onClick={() => onClose(job.jobId)}
+          onClick={() => typeof onClose === "function" && onClose(job.job_id)}
           sx={{
             position: "absolute",
             top: 8,
