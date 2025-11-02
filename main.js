@@ -37,10 +37,16 @@ function getPythonBackendConfig(port, ffmpegPath) {
       );
       return null;
     }
+    
+    // --- START FIX ---
+    // Normalize slashes for Python argument on Windows
+    const normalizedFfmpegPath = ffmpegPath.replace(/\\/g, "/"); // <-- THIS IS THE FIX
+    // --- END FIX ---
+
     console.log(`[Electron] Found packaged backend at: ${backendPath}`);
     return {
       command: backendPath,
-      args: [port, ffmpegPath],
+      args: [port, normalizedFfmpegPath], // <-- THIS IS THE FIX
     };
   } else {
     // --- Development Mode ---
@@ -54,7 +60,6 @@ function getPythonBackendConfig(port, ffmpegPath) {
     }
     console.log(`[Electron] Found dev backend script at: ${scriptPath}`);
 
-    // --- START FIX ---
     // Build the platform-specific path to the venv python
     const venvPath = path.join(__dirname, 'service', 'venv');
     const pythonCommand = platform === "win32"
@@ -66,11 +71,15 @@ function getPythonBackendConfig(port, ffmpegPath) {
       console.error(`[Electron] FATAL: Python venv not found at: ${pythonCommand}`);
       console.error("[Electron] Please run 'python -m venv venv' in the /service folder.");
     }
-    // --- END FIX ---
+    
+ 
+    const normalizedScriptPath = scriptPath.replace(/\\/g, "/"); // <-- THIS IS THE FIX
+    const normalizedFfmpegPath = ffmpegPath.replace(/\\/g, "/"); // <-- THIS IS THE FIX
+  
     
     return {
       command: pythonCommand,
-      args: ["-u", scriptPath, port, ffmpegPath],
+      args: ["-u", normalizedScriptPath, port, normalizedFfmpegPath], // <-- THIS IS THE FIX
     };
   }
 }
