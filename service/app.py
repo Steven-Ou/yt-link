@@ -515,6 +515,8 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             "nocheckcertificate": True,
             "noplaylist": True,
             "noprogress": True, 
+            "retries":10,
+            "fragment_retries":10,
         }
 
         if cookies:
