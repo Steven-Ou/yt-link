@@ -291,10 +291,11 @@ export default function Home() {
       file_name: "Resolving video...", // Placeholder name
       progress: 0,
     });
-    
+
     const { data, error } = await postDownload(apiEndpoint, body);
     if (error) {
       setError(error);
+      setCurrentJob(null);
     } else {
       console.log("Job started:", data); // Or whatever you do on success
       setPollingJobId(data.jobId); // <-- ADD THIS LINE
