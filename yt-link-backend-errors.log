@@ -1,0 +1,13 @@
+--- Log started at 2025-11-02 12:28:17.099882 ---
+
+--- Python logging redirected to yt-link-backend-errors.log ---
+--- Log file path: C:\Users\ostev\OneDrive\Desktop\yt-link\yt-link-backend-errors.log ---
+--- Backend starting on port 5003 ---
+--- Using FFmpeg from: C:/Users/ostev/OneDrive/Desktop/yt-link/bin/ffmpeg.exe ---
+--- Worker thread started ---
+Flask-Backend-Ready:5003
+ * Serving Flask app 'app'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:5003
+Press CTRL+C to quit
