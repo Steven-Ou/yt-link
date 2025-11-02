@@ -3,6 +3,29 @@ import codecs
 import os
 import shutil
 import sys
+import datetime
+try:
+    # Get user's desktop path
+    desktop = os.path.join(os.path.expanduser('~'), 'Desktop')
+    log_file_path = os.path.join(desktop, 'yt-link-backend-errors.log')
+    
+    # Create/overwrite the log file and write a startup message
+    with open(log_file_path, 'w', encoding='utf-8') as f:
+        f.write(f"--- Log started at {datetime.datetime.now()} ---\n\n")
+    
+    # Redirect both stdout and stderr to this log file
+    # We open in 'a' (append) mode, line-buffered (buffering=1)
+    log_file_stream = open(log_file_path, 'a', encoding='utf-8', buffering=1)
+    
+    sys.stderr = log_file_stream
+    sys.stdout = log_file_stream
+
+    print("--- Python logging redirected to yt-link-backend-errors.log on Desktop ---")
+    print(f"--- Log file path: {log_file_path} ---")
+
+except Exception as e:
+    # In case logging fails, print to original stderr (which might be hidden)
+    print(f"FATAL: Failed to set up file logging: {e}", file=sys.__stderr__)
 import io
 import tempfile
 import threading
@@ -140,8 +163,6 @@ class Job:
             "nocheckcertificate": True,
             "quiet": True,
             "no_warnings": True,
-            "noprogress": True,
-            "ffmpeg_location": ffmpeg_exe,
             "retries": 10,
             "fragment_retries": 10,
             "download_archive": os.path.join(self.temp_dir, "downloaded.txt"),
@@ -516,8 +537,6 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
                 "no_warnings": True,
                 "nocheckcertificate": True,
                 "noplaylist": True,
-                "noprogress": True,
-                "ffmpeg_location": ffmpeg_exe,
             }
 
             if cookies:
