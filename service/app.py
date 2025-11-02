@@ -457,6 +457,7 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             "quiet": True,
             "no_warnings": True,
             "nocheckcertificate": True,
+            "noplaylist": True
         }
 
         if cookies:
