@@ -1,8 +1,8 @@
 // @ts-check
 const { app, BrowserWindow, ipcMain, session, shell } = require("electron");
 const path = require("path");
-const { spawn } = require("child_process");
 const fs = require("fs");
+const { spawn } = require("child_process");
 const os = require("os");
 
 /** @type {import("child_process").ChildProcessWithoutNullStreams | null} */
@@ -54,11 +54,20 @@ function getPythonBackendConfig(port, ffmpegPath) {
     }
     console.log(`[Electron] Found dev backend script at: ${scriptPath}`);
 
-    // Use 'python3' on Mac/Linux and 'python' on Windows
+    // --- START FIX ---
+    // Build the platform-specific path to the venv python
     const venvPath = path.join(__dirname, 'service', 'venv');
-    const pythonCommand = os.platform() === 'win32'
-      ? path.join(venvPath, 'Scripts', 'python.exe') // Windows path
-      : path.join(venvPath, 'bin', 'python');
+    const pythonCommand = platform === "win32"
+      ? path.join(venvPath, 'Scripts', 'python.exe') // Windows
+      : path.join(venvPath, 'bin', 'python');        // macOS/Linux
+
+    // Add a check to give a good error if the venv is missing
+    if (!fs.existsSync(pythonCommand)) {
+      console.error(`[Electron] FATAL: Python venv not found at: ${pythonCommand}`);
+      console.error("[Electron] Please run 'python -m venv venv' in the /service folder.");
+    }
+    // --- END FIX ---
+    
     return {
       command: pythonCommand,
       args: ["-u", scriptPath, port, ffmpegPath],
