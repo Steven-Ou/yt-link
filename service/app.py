@@ -416,7 +416,7 @@ class Job:
                     self.file_path,
                 ]
                 process = subprocess.run(
-                    command, capture_output=True, text=True, encoding="utf-8"
+                    command, capture_output=True, text=True
                 )
                 if process.returncode != 0:
                     raise Exception(f"FFMPEG Concat Error: {process.stderr}")
