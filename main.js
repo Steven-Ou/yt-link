@@ -23,13 +23,18 @@ const PYTHON_SERVICE_PORT = 5003;
  */
 function getPythonBackendConfig(port, ffmpegPath) {
   const platform = process.platform;
-  // This name matches your 'build:backend' script in package.json
   const execName =
     platform === "win32" ? "yt-link-backend.exe" : "yt-link-backend";
 
+  // --- START OF FIX ---
+  // On Windows, Python's sys.argv corrupts paths with backslashes.
+  // We MUST replace backslashes with forward slashes for any path
+  // being passed as a command-line ARGUMENT.
+  const normalizedFfmpegPath = ffmpegPath.replace(/\\/g, "/");
+  // --- END OF FIX ---
+
   if (app.isPackaged) {
     // --- Packaged Mode ---
-    // Finds the executable in the 'backend' folder inside 'resources'
     const backendPath = path.join(process.resourcesPath, "backend", execName);
     if (!fs.existsSync(backendPath)) {
       console.error(
@@ -37,20 +42,13 @@ function getPythonBackendConfig(port, ffmpegPath) {
       );
       return null;
     }
-    
-    // --- START FIX ---
-    // Normalize slashes for Python argument on Windows
-    const normalizedFfmpegPath = ffmpegPath.replace(/\\/g, "/"); // <-- THIS IS THE FIX
-    // --- END FIX ---
-
     console.log(`[Electron] Found packaged backend at: ${backendPath}`);
     return {
       command: backendPath,
-      args: [port, normalizedFfmpegPath], // <-- THIS IS THE FIX
+      args: [port, normalizedFfmpegPath], // <-- Use normalized path
     };
   } else {
     // --- Development Mode ---
-    // Finds the script in the 'service' folder in the project root
     const scriptPath = path.join(__dirname, "service", "app.py");
     if (!fs.existsSync(scriptPath)) {
       console.error(
@@ -60,26 +58,23 @@ function getPythonBackendConfig(port, ffmpegPath) {
     }
     console.log(`[Electron] Found dev backend script at: ${scriptPath}`);
 
-    // Build the platform-specific path to the venv python
     const venvPath = path.join(__dirname, 'service', 'venv');
     const pythonCommand = platform === "win32"
       ? path.join(venvPath, 'Scripts', 'python.exe') // Windows
       : path.join(venvPath, 'bin', 'python');        // macOS/Linux
 
-    // Add a check to give a good error if the venv is missing
     if (!fs.existsSync(pythonCommand)) {
       console.error(`[Electron] FATAL: Python venv not found at: ${pythonCommand}`);
       console.error("[Electron] Please run 'python -m venv venv' in the /service folder.");
     }
     
- 
-    const normalizedScriptPath = scriptPath.replace(/\\/g, "/"); // <-- THIS IS THE FIX
-    const normalizedFfmpegPath = ffmpegPath.replace(/\\/g, "/"); // <-- THIS IS THE FIX
-  
-    
     return {
       command: pythonCommand,
-      args: ["-u", normalizedScriptPath, port, normalizedFfmpegPath], // <-- THIS IS THE FIX
+      // --- START OF FIX ---
+      // We use the ORIGINAL scriptPath (with backslashes) for python.exe
+      // but the NORMALIZED ffmpegPath (with forward slashes) for the argument.
+      args: ["-u", scriptPath, port, normalizedFfmpegPath], // <-- The correct combination
+      // --- END OF FIX ---
     };
   }
 }
