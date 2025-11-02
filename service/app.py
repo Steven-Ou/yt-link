@@ -501,7 +501,14 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
 
     url = data["url"]
     cookies = data.get("cookies")
-    cookie_file = None
+    
+    # --- START OF FIX ---
+    # Create a temporary directory for this request, just like a Job
+    request_id = str(uuid.uuid4())
+    temp_dir = os.path.join(APP_TEMP_DIR, f"get-formats-{request_id}")
+    cookie_file: Optional[str] = None
+    os.makedirs(temp_dir, exist_ok=True)
+    # --- END OF FIX ---
 
     print(f"\n--- [get-formats] Received request for URL: {url}", flush=True)
     print(
@@ -509,23 +516,30 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
     )
 
     try:
+        # --- START OF FIX ---
+        # Build ydl_opts to be almost identical to _build_ydl_opts
         ydl_opts: Dict[str, Any] = {
             "quiet": True,
             "no_warnings": True,
+            "noprogress": True,
             "nocheckcertificate": True,
             "noplaylist": True,
-            "noprogress": True, 
-            "retries":10,
-            "fragment_retries":10,
+            "ffmpeg_location": ffmpeg_exe,
+            "retries": 10,
+            "fragment_retries": 10,
+            "download_archive": os.path.join(temp_dir, "archive.txt"),
         }
+        # --- END OF FIX ---
 
         if cookies:
             try:
-                with tempfile.NamedTemporaryFile(
-                    delete=False, mode="w", encoding="utf-8"
-                ) as f:
+                # --- START OF FIX ---
+                # Use the new temp_dir for the cookie file, matching Job logic
+                cookie_file = os.path.join(temp_dir, "cookies.txt")
+                with open(cookie_file, "w", encoding="utf-8") as f:
                     f.write(cookies)
-                    cookie_file = f.name
+                # --- END OF FIX ---
+                
                 ydl_opts["cookiefile"] = cookie_file
                 print(f"--- [get-formats] Using temp cookie file: {cookie_file}",flush=True,)
             except Exception as e:
@@ -549,10 +563,8 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
 
         def get_height(f: Dict[str, Any]) -> int:
             try:
-                # Try to convert whatever we get (even "720.0") to an integer
                 return int(float(f.get("height") or 0))
             except (ValueError, TypeError):
-                # If it fails (e.g., "720p", None, []), return 0
                 return 0
 
         all_formats.sort(key=get_height, reverse=True)
@@ -561,7 +573,6 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             height = get_height(f)
             vcodec = f.get("vcodec")
 
-            # Print details for the first 15 formats to avoid spam
             if i < 15:
                 print(
                     f"  > Format {i}: height={height}, vcodec='{vcodec}', acodec='{f.get('acodec')}', ext='{f.get('ext')}'",
@@ -582,7 +593,7 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
                         filesize_mb = float(filesize_raw) / (1024 * 1024)
                         note = f"{note} (~{filesize_mb:.1f} MB)"
                     except (ValueError, TypeError):
-                        pass # Just use the extension
+                        pass 
                 note += (
                     " (video+audio)" if f.get("acodec") != "none" else " (video-only)"
                 )
@@ -598,18 +609,12 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             else:
                 if i < 15:
                     print(f"    -> SKIPPING (vcodec is 'none')", flush=True)
-
                 pass
 
         final_formats = sorted(
             unique_formats.values(), key=lambda x: x["height"], reverse=True
         )
-
-        # print(
-        #     f"--- [get-formats] Returning {len(final_formats)} formats to frontend.",
-        #     flush=True,
-        # )
-
+        
         return jsonify(final_formats)
 
     except yt_dlp.utils.DownloadError as e:
@@ -623,17 +628,19 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
         )
         return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
     finally:
-        if cookie_file and os.path.exists(cookie_file):
+        # --- START OF FIX ---
+        # Clean up the temporary directory we created
+        if temp_dir and os.path.exists(temp_dir):
             try:
-                os.remove(cookie_file)
-                print(f"--- [get-formats] Cleaned up temp cookie file.", flush=True)
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                print(f"--- [get-formats] Cleaned up temp dir: {temp_dir}", flush=True)
             except Exception as e:
                 print(
-                    f"[get-formats] ERROR: Failed to delete cookie file: {e}",
+                    f"[get-formats] ERROR: Failed to delete temp dir: {e}",
                     file=sys.stderr,
                     flush=True,
                 )
-
+        # --- END OF FIX ---
 
 # --- (start_job_endpoint - unchanged) ---
 @app.route("/start-job", methods=["POST"])
