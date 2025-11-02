@@ -3,6 +3,7 @@ import codecs
 import os
 import shutil
 import sys
+import io
 import tempfile
 import threading
 import time
