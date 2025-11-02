@@ -139,6 +139,7 @@ class Job:
             "nocheckcertificate": True,
             "quiet": True,
             "no_warnings": True,
+            "noprogress":True,
             "ffmpeg_location": ffmpeg_exe,
             "retries": 10,
             "fragment_retries": 10,
