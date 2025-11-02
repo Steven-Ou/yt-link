@@ -20,6 +20,7 @@ import {
   Search as SearchIcon,
 } from "@mui/icons-material";
 import JobCard from "../JobCard";
+
 // This component is based on your renderSingleVideoForm() function
 export default function SingleVideoView({
   url,
@@ -32,6 +33,7 @@ export default function SingleVideoView({
   isDownloading,
   handleDownload,
   error,
+  currentJob,
 }) {
   return (
     <Container maxWidth="md">
