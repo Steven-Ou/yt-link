@@ -597,25 +597,35 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
         print(f"--- [get-formats] !!! END OF TRACEBACK !!! --- \n\n", file=sys.stderr, flush=True)
         return jsonify({"error": f"A fatal server error occurred: {e}"}), 500
 
-        
+
 # --- (start_job_endpoint - unchanged) ---
 @app.route("/start-job", methods=["POST"])
 def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
-    data = request.get_json()
-    if not data or "url" not in data or "jobType" not in data:
-        return jsonify({"error": "Invalid request body"}), 400
+    print("\n--- [start-job] HIT ENDPOINT. ---", flush=True)
+    try:
+        data = request.get_json()
+        if not data or "url" not in data or "jobType" not in data:
+            print("[start-job] ERROR: Invalid request, 400.", file=sys.stderr, flush=True)
+            return jsonify({"error": "Invalid request body"}), 400
 
-    job_id = str(uuid.uuid4())
-    job_type = data["jobType"]
+        job_id = str(uuid.uuid4())
+        job_type = data["jobType"]
 
-    job = Job(job_id=job_id, job_type=job_type, data=data)
+        job = Job(job_id=job_id, job_type=job_type, data=data)
 
-    with jobs_lock:
-        jobs[job_id] = job
-    job_queue.put(job)
+        with jobs_lock:
+            jobs[job_id] = job
+        job_queue.put(job)
 
-    print(f"Job enqueued: {job_id} ({job_type})")
-    return jsonify({"jobId": job_id})
+        print(f"--- [start-job] Job enqueued: {job_id} ({job_type})", flush=True)
+        return jsonify({"jobId": job_id})
+
+    # This is the NEW "catch-all" block
+    except Exception as e:
+        print(f"\n\n--- [start-job] !!! FATAL ERROR IN ENDPOINT !!! ---", file=sys.stderr, flush=True)
+        print(f"{traceback.format_exc()}", file=sys.stderr, flush=True)
+        print(f"--- [start-job] !!! END OF TRACEBACK !!! --- \n\n", file=sys.stderr, flush=True)
+        return jsonify({"error": f"A fatal server error occurred: {e}"}), 500
 
 
 # --- (get_job_status - unchanged) ---
