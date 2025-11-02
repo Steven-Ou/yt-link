@@ -495,101 +495,151 @@ cleanup_old_job_dirs()
 
 @app.route("/get-formats", methods=["POST"])
 def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
-    
-    print("--- [get-formats] DEBUG: TOP OF FUNCTION ---", file=sys.stderr, flush=True)
-    temp_dir = None  # Define temp_dir here to be accessible in 'finally'
-    
+    data = request.get_json()
+    if not data or "url" not in data:
+        return jsonify({"error": "Invalid request, URL is required."}), 400
+
+    url = data["url"]
+    cookies = data.get("cookies")
+    cookie_file = None  # Define here for the 'finally' block
+
+    print(f"\n--- [get-formats] Received request for URL: {url}", flush=True)
+    print(
+        f"--- [get-formats] Cookies provided: {'Yes' if cookies else 'No'}", flush=True
+    )
+
     try:
-        data = request.get_json()
-        if not data or "url" not in data:
-            print("--- [get-formats] DEBUG: ERROR: No URL in request ---", file=sys.stderr, flush=True)
-            return jsonify({"error": "Invalid request, URL is required."}), 400
-
-        url = data["url"]
-        cookies = data.get("cookies")
-        
-        request_id = str(uuid.uuid4())
-        temp_dir = os.path.join(APP_TEMP_DIR, f"get-formats-{request_id}")
-        cookie_file: Optional[str] = None
-        os.makedirs(temp_dir, exist_ok=True)
-        print(f"--- [get-formats] DEBUG: Temp dir created: {temp_dir} ---", file=sys.stderr, flush=True)
-
-        print(f"\n--- [get-formats] Received request for URL: {url}", flush=True)
-
+        # This is the options block.
         ydl_opts: Dict[str, Any] = {
             "quiet": True,
             "no_warnings": True,
-            "noprogress": True,
             "nocheckcertificate": True,
             "noplaylist": True,
+            "noprogress": True,
+            # --- THIS IS THE ONE-LINE FIX ---
             "ffmpeg_location": ffmpeg_exe,
-            "retries": 10,
-            "fragment_retries": 10,
-            "download_archive": os.path.join(temp_dir, "archive.txt"),
+            # --------------------------------
         }
-        print("--- [get-formats] DEBUG: ydl_opts created ---", file=sys.stderr, flush=True)
 
         if cookies:
             try:
-                cookie_file = os.path.join(temp_dir, "cookies.txt")
-                with open(cookie_file, "w", encoding="utf-8") as f:
+                # Use a temporary file for cookies
+                with tempfile.NamedTemporaryFile(
+                    "w", delete=False, encoding="utf-8"
+                ) as f:
                     f.write(cookies)
+                    cookie_file = f.name
                 ydl_opts["cookiefile"] = cookie_file
-                print(f"--- [get-formats] Using temp cookie file: {cookie_file}", flush=True)
+                print(
+                    f"--- [get-formats] Using temp cookie file: {cookie_file}",
+                    flush=True,
+                )
             except Exception as e:
-                print(f"[get-formats] ERROR: Failed to create cookie file: {e}", file=sys.stderr, flush=True)
+                # Log error but don't fail the request
+                print(
+                    f"[get-formats] ERROR: Failed to create cookie file: {e}",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 pass
 
-        print("--- [get-formats] DEBUG: Calling yt-dlp.YoutubeDL... ---", file=sys.stderr, flush=True)
         with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
-            print("--- [get-formats] DEBUG: Calling yt-dlp.extract_info... ---", file=sys.stderr, flush=True)
+            print("--- [get-formats] Calling yt-dlp.extract_info...", flush=True)
             info = ydl.extract_info(url, download=False) or {}
-            print("--- [get-formats] DEBUG: yt-dlp.extract_info finished. ---", file=sys.stderr, flush=True)
+            print("--- [get-formats] yt-dlp.extract_info finished.", flush=True)
 
-        # --- (Format processing logic, this is probably fine) ---
         unique_formats: Dict[int, Dict[str, Any]] = {}
         all_formats: List[Dict[str, Any]] = info.get("formats", []) or []
+
+        print(f"--- [get-formats] Found {len(all_formats)} total formats.", flush=True)
+        if not all_formats:
+            print(
+                "--- [get-formats] WARNING: info.get('formats') was empty or missing!",
+                flush=True,
+            )
+
         def get_height(f: Dict[str, Any]) -> int:
-            try: return int(float(f.get("height") or 0))
-            except (ValueError, TypeError): return 0
+            try:
+                return int(float(f.get("height") or 0))
+            except (ValueError, TypeError):
+                return 0
+
         all_formats.sort(key=get_height, reverse=True)
+
         for i, f in enumerate(all_formats):
             height = get_height(f)
             vcodec = f.get("vcodec")
-            if not height or height in unique_formats: continue
+
+            if i < 15:
+                print(
+                    f"  > Format {i}: height={height}, vcodec='{vcodec}', acodec='{f.get('acodec')}', ext='{f.get('ext')}'",
+                    flush=True,
+                )
+
+            if not height or height in unique_formats:
+                if i < 15:
+                    print(f"    -> SKIPPING (height is 0 or duplicate)", flush=True)
+
+                continue
+
             if vcodec != "none":
+                filesize_raw = f.get("filesize") or f.get("filesize_approx")
                 note = f.get("ext", "unknown")
-                note += " (video+audio)" if f.get("acodec") != "none" else " (video-only)"
+                if filesize_raw:
+                    try:
+                        filesize_mb = float(filesize_raw) / (1024 * 1024)
+                        note = f"{note} (~{filesize_mb:.1f} MB)"
+                    except (ValueError, TypeError):
+                        pass 
+                note += (
+                    " (video+audio)" if f.get("acodec") != "none" else " (video-only)"
+                )
+                print(f"    -> ADDING format: {height}p, note: {note}", flush=True)
+
                 unique_formats[height] = {
-                    "format_id": f.get("format_id"), "ext": f.get("ext"),
-                    "resolution": f"{height}p", "height": height, "note": note,
+                    "format_id": f.get("format_id"),
+                    "ext": f.get("ext"),
+                    "resolution": f"{height}p",
+                    "height": height,
+                    "note": note,
                 }
-        final_formats = sorted(unique_formats.values(), key=lambda x: x["height"], reverse=True)
-        print("--- [get-formats] DEBUG: Format processing complete. ---", file=sys.stderr, flush=True)
+            else:
+                if i < 15:
+                    print(f"    -> SKIPPING (vcodec is 'none')", flush=True)
+                pass
+
+        final_formats = sorted(
+            unique_formats.values(), key=lambda x: x["height"], reverse=True
+        )
         
-        response = jsonify(final_formats)
-        print("--- [get-formats] DEBUG: Returning 200 OK. ---", file=sys.stderr, flush=True)
+        return jsonify(final_formats)
 
     except yt_dlp.utils.DownloadError as e:
-        print(f"--- [get-formats] DEBUG: DownloadError CAUGHT: {e} ---", file=sys.stderr, flush=True)
-        response = jsonify({"error": "Video not found or unavailable."}), 404
+        print(f"[get-formats] ERROR: {e}", file=sys.stderr, flush=True)
+        return jsonify({"error": "Video not found or unavailable."}), 404
     except Exception as e:
-        print(f"--- [get-formats] DEBUG: Generic Exception CAUGHT: {e} ---", file=sys.stderr, flush=True)
-        print("--- [get-formats] DEBUG: TRACEBACK ---", file=sys.stderr, flush=True)
-        print(traceback.format_exc(), file=sys.stderr, flush=True)
-        print("--- [get-formats] DEBUG: END TRACEBACK ---", file=sys.stderr, flush=True)
-        response = jsonify({"error": f"An unexpected error occurred: {e}"}), 500
+        print(
+            f"[get-formats] UNEXPECTED ERROR: {traceback.format_exc()}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
     finally:
-        print("--- [get-formats] DEBUG: In FINALLY block. ---", file=sys.stderr, flush=True)
-        if temp_dir and os.path.exists(temp_dir):
+        # Clean up the temporary cookie file if it was created
+        if cookie_file and os.path.exists(cookie_file):
             try:
-                shutil.rmtree(temp_dir, ignore_errors=True)
-                print(f"--- [get-formats] DEBUG: Cleaned up temp dir: {temp_dir}", flush=True)
+                os.remove(cookie_file)
+                print(
+                    "--- [get-formats] Cleaned up temp cookie file.", flush=True
+                )
             except Exception as e:
-                print(f"--- [get-formats] DEBUG: ERROR: Failed to delete temp dir: {e}", file=sys.stderr, flush=True)
-    
-    print("--- [get-formats] DEBUG: Returning response. ---", file=sys.stderr, flush=True)
-    return response
+                print(
+                    f"[get-formats] ERROR: Failed to delete temp cookie file: {e}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+
+                
 # --- (start_job_endpoint - unchanged) ---
 @app.route("/start-job", methods=["POST"])
 def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
