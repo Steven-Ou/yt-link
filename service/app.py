@@ -131,13 +131,12 @@ class Job:
         output_template = os.path.join(self.temp_dir, "%(title)s.%(ext)s")
         if self.job_type in ["playlistZip", "combineMp3"]:
             output_template = os.path.join(
-                self.temp_dir, "%(playlist_index)03d-%(title)s.%(ext)s"
+                self.temp_dir, "%(playlist_index)03d-%(title).100s.%(ext)s"
             )
 
         ydl_opts: Dict[str, Any] = {
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
-            "quiet": True,
             "no_warnings": True,
             "noprogress":True,
             "ffmpeg_location": ffmpeg_exe,
