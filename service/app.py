@@ -288,11 +288,35 @@ class Job:
             ]
             if not found_files:
                 raise Exception("No final video file found after download.")
-            found_files = sorted(
-                found_files, key=lambda x: (0 if x.lower().endswith(".mp4") else 1, x)
-            )
-            self.file_name = sanitize_filename(found_files[0])
+            # 1. Get the original downloaded filename (e.g., "().mkv")
+            original_filename = found_files[0]
+            original_filepath = os.path.join(self.temp_dir, original_filename)
+
+            # 2. Get the title from the info we fetched earlier
+            video_title = self.info.get("title", "video")
+
+            # 3. Create a new, sanitized filename ending in .mp4
+            self.file_name = sanitize_filename(f"{video_title}.mp4")
             self.file_path = os.path.join(self.temp_dir, self.file_name)
+
+            # 4. Rename the downloaded file to our new, clean name
+            if original_filepath != self.file_path:
+                try:
+                    # Note: os.rename() will fail if the .part file is still being processed
+                    # This check assumes the .part file is gone and the final file is present
+                    os.rename(original_filepath, self.file_path)
+                    print(f"Renamed '{original_filename}' to '{self.file_name}'")
+                except OSError as e:
+                    print(
+                        f"Warning: Could not rename file. Using original path. Error: {e}",
+                        file=sys.stderr,
+                    )
+                    # Fallback: Use the original, ugly name if rename fails
+                    self.file_name = sanitize_filename(original_filename)
+                    self.file_path = original_filepath
+            else:
+                # If the name is already correct, just sanitize it
+                self.file_name = sanitize_filename(original_filename)
         else:
             mp3_files = sorted(
                 [
@@ -311,8 +335,37 @@ class Job:
             )
 
             if self.job_type == "singleMp3":
-                self.file_name = sanitize_filename(os.path.basename(mp3_files[0]))
-                self.file_path = mp3_files[0]
+                # 1. Get the original downloaded filename (e.g., "().mp3")
+                original_filepath = mp3_files[0]
+
+                # 2. Get the title from the info
+                track_title = self.info.get("title", "track")
+
+                # 3. Create a new, sanitized filename
+                self.file_name = sanitize_filename(f"{track_title}.mp3")
+                self.file_path = os.path.join(self.temp_dir, self.file_name)
+
+                # 4. Rename the file
+                if original_filepath != self.file_path:
+                    try:
+                        os.rename(original_filepath, self.file_path)
+                        print(
+                            f"Renamed '{os.path.basename(original_filepath)}' to '{self.file_name}'"
+                        )
+                    except OSError as e:
+                        print(
+                            f"Warning: Could not rename file. Using original path. Error: {e}",
+                            file=sys.stderr,
+                        )
+                        # Fallback
+                        self.file_name = sanitize_filename(
+                            os.path.basename(original_filepath)
+                        )
+                        self.file_path = original_filepath
+                else:
+                    self.file_name = sanitize_filename(
+                        os.path.basename(original_filepath)
+                    )
             elif self.job_type == "playlistZip":
                 self.set_status("processing", "Creating ZIP archive...", self.progress)
                 self.file_name = f"{playlist_title}.zip"
