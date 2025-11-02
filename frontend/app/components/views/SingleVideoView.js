@@ -106,6 +106,11 @@ export default function SingleVideoView({
               {error}
             </Alert>
           )}
+          {currentJob && (
+            <Box sx={{ mt: 3 }}>
+              <JobCard job={currentJob} />
+            </Box>
+          )}
         </Stack>
       </Paper>
     </Container>
