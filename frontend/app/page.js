@@ -298,7 +298,7 @@ export default function Home() {
       setCurrentJob(null);
     } else {
       console.log("Job started:", data); // Or whatever you do on success
-      setPollingJobId(data.jobId); // <-- ADD THIS LINE
+      setPollingJobId(data.jobId); 
       setUrl(""); // <-- Optional: Clears the URL bar
     }
   };
@@ -386,6 +386,11 @@ export default function Home() {
           }}
         >
           <Toolbar />
+          {currentJob && (
+            <Box sx={{ mb: 3 }}>
+              <JobCard job={currentJob} />
+            </Box>
+          )}
           {renderContent()}
         </Box>
       </Box>
