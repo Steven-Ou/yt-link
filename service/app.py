@@ -382,21 +382,29 @@ class Job:
                 concat_list_path = os.path.join(self.temp_dir, "concat_list.txt")
                 with open(concat_list_path, "w", encoding="utf-8") as f:
                     for mp3_file in mp3_files:
-                        escaped = mp3_file.replace("'", "'\\''")
-                        f.write(f"file '{escaped}'\n")
+                        # Convert backslashes to forward slashes for ffmpeg
+                        safe_path = mp3_file.replace("\\", "/") 
+                        # Escape single quotes
+                        safe_path = safe_path.replace("'", "'\\''") 
+                        f.write(f"file '{safe_path}'\n")
 
+                # Also fix the paths in the command list itself
+                safe_ffmpeg_exe = str(ffmpeg_exe).replace("\\", "/")
+                safe_concat_list_path = concat_list_path.replace("\\", "/")
+                safe_file_path = self.file_path.replace("\\", "/")
+                
                 command = [
-                    str(ffmpeg_exe),
+                    safe_ffmpeg_exe,
                     "-f",
                     "concat",
                     "-safe",
                     "0",
                     "-i",
-                    concat_list_path,
+                    safe_concat_list_path,
                     "-c",
                     "copy",
                     "-y",
-                    self.file_path,
+                    safe_file_path,
                 ]
                 process = subprocess.run(
                     command, capture_output=True, text=True
@@ -783,7 +791,8 @@ if __name__ == "__main__":
 
     port_arg, ffmpeg_path_arg = sys.argv[1], sys.argv[2]
 
-    ffmpeg_exe = resolve_ffmpeg_path(ffmpeg_path_arg)
+    ffmpeg_path = resolve_ffmpeg_path(ffmpeg_path_arg)
+    ffmpeg_exe = ffmpeg_path.replace("\\", "/")
     port = int(port_arg)
 
     worker_thread = threading.Thread(target=queue_worker, daemon=True)
