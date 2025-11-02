@@ -615,25 +615,35 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
                     flush=True,
                 )
 
-# --- (start_job_endpoint - unchanged) ---
 @app.route("/start-job", methods=["POST"])
 def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
-    data = request.get_json()
-    if not data or "url" not in data or "jobType" not in data:
-        return jsonify({"error": "Invalid request body"}), 400
 
-    job_id = str(uuid.uuid4())
-    job_type = data["jobType"]
+    # --- FIX: The try block now wraps EVERYTHING ---
+    try:
+        data = request.get_json() # <--- This line is now safely inside
+        if not data or "url" not in data or "jobType" not in data:
+            return jsonify({"error": "Invalid request body"}), 400
 
-    job = Job(job_id=job_id, job_type=job_type, data=data)
+        job_id = str(uuid.uuid4())
+        job_type = data["jobType"]
 
-    with jobs_lock:
-        jobs[job_id] = job
-    job_queue.put(job)
+        job = Job(job_id=job_id, job_type=job_type, data=data)
 
-    print(f"Job enqueued: {job_id} ({job_type})")
-    return jsonify({"jobId": job_id})
+        with jobs_lock:
+            jobs[job_id] = job
+        job_queue.put(job)
 
+        print(f"Job enqueued: {job_id} ({job_type})")
+        return jsonify({"jobId": job_id})
+
+    # --- This block will now catch any errors ---
+    except Exception as e:
+        print(
+            f"[start-job] UNEXPECTED ERROR: {traceback.format_exc()}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
 
 # --- (get_job_status - unchanged) ---
 @app.route("/job-status", methods=["GET"])
