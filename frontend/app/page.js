@@ -205,6 +205,7 @@ export default function Home() {
         setError("Lost connection to backend.");
         clearInterval(intervalId);
         setPollingJobId(null);
+        setCurrentJob(null);
       }
     }, 2000); // Poll every 2 seconds
 
