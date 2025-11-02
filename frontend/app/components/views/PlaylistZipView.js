@@ -56,9 +56,13 @@ export default function PlaylistZipView({
               {error}
             </Alert>
           )}
+          {currentJob && (
+            <Box sx={{ mt: 3 }}>
+              <JobCard job={currentJob} />
+            </Box>
+          )}
         </Stack>
       </Paper>
     </Container>
   );
 }
-
