@@ -40,38 +40,25 @@ export default function JobCard({ job, onResume, onClose }) {
   const isFailed = job.status === "failed" || job.status === "error";
   const isPaused = job.status === "paused";
 
-  // --- Playlist Progress Logic ---
-  // This logic calculates the *overall* playlist progress,
-  // not just the progress of a single file.
   let overallProgress = job.progress || 0;
-
-  // Check for the "[1/50]" pattern in the message
   const match = job.message.match(/\[(\d+)\/(\d+)\]/);
-
   if (match) {
     try {
-      const index = parseFloat(match[1]); // Current file number
-      const count = parseFloat(match[2]); // Total files
-      const currentFileProgress = (job.progress || 0) / 100; // Progress of current file (0 to 1)
-
+      const index = parseFloat(match[1]);
+      const count = parseFloat(match[2]);
+      const currentFileProgress = (job.progress || 0) / 100;
       if (count > 0) {
-        // 1. Calculate progress from all *completed* files
         const progressOfCompletedFiles = ((index - 1) / count) * 100;
-        // 2. Calculate progress of the *current* file (relative to the total job)
         const progressOfCurrentFile = currentFileProgress * (100 / count);
-
-        // Add them together for the total overall progress
         overallProgress = progressOfCompletedFiles + progressOfCurrentFile;
       }
     } catch (e) {
       console.error("Error parsing progress:", e);
-      // Fallback to single file progress if parsing fails
       overallProgress = job.progress || 0;
     }
   }
   const displayName = job?.file_name || "Processing...";
   const displayUrl = job?.url || "Starting job...";
-  // --- End Playlist Progress Logic ---
 
   return (
     <Paper
@@ -81,10 +68,9 @@ export default function JobCard({ job, onResume, onClose }) {
         mb: 2,
         backgroundColor: "white",
         borderRadius: "8px",
-        position: "relative", // Needed for positioning the close button
+        position: "relative",
       }}
     >
-      {/* --- Close Button --- */}
       {(job.status === "completed" || job.status === "failed") && (
         <IconButton
           size="small"
@@ -100,14 +86,46 @@ export default function JobCard({ job, onResume, onClose }) {
           <CloseIcon />
         </IconButton>
       )}
-      {/* --- End Close Button --- */}
 
-      <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          mb: 1,
+          // Add minWidth to make truncation work
+          minWidth: 0,
+          // Constrain width to avoid hitting the close button
+          maxWidth: "calc(100% - 40px)",
+        }}
+      >
         {getStatusIcon(job.status)}
-        <Typography variant="h6" sx={{ ml: 1, fontWeight: "500" }}>
-          {job.url.length > 50 ? `${job.url.substring(0, 50)}...` : job.url}
+        <Typography
+          variant="h6"
+          sx={{
+            ml: 1,
+            fontWeight: "500",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+          title={displayName} // Show full filename on hover
+        >
+          {displayName}
         </Typography>
       </Box>
+    
+      <Typography
+        variant="body2"
+        sx={{
+          mb: 2, // Add margin bottom
+          color: "text.secondary",
+          overflowWrap: "break-word",
+          wordBreak: "break-all",
+        }}
+        title={displayUrl} // Show full URL on hover
+      >
+        {displayUrl}
+      </Typography>
 
       <Typography
         variant="body2"
@@ -123,23 +141,20 @@ export default function JobCard({ job, onResume, onClose }) {
         {job.message}
       </Typography>
 
-      {/* Show progress bar if not done, failed, or paused */}
       {!isDone && !isFailed && !isPaused && (
         <LinearProgress
           variant="determinate"
-          value={overallProgress} // Use the new overallProgress
+          value={overallProgress}
           sx={{ height: "8px", borderRadius: "4px", mb: 2 }}
         />
       )}
 
-      {/* Show error message if failed */}
       {isFailed && job.error && (
         <Alert severity="error" sx={{ mt: 2 }}>
           <strong>Error:</strong> {job.error}
         </Alert>
       )}
 
-      {/* Show action buttons */}
       <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 2 }}>
         {isPaused && (
           <Button
