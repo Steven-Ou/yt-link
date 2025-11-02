@@ -194,6 +194,8 @@ export default function Home() {
           // Stop polling
           clearInterval(intervalId);
           setPollingJobId(null);
+
+          setTimeout(()=>setCurrentJob(null),10000);
         }
 
         // 3. Job is still processing...
