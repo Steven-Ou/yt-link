@@ -504,6 +504,7 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
     
     # --- START OF FIX ---
     # Create a temporary directory for this request, just like a Job
+    # This avoids Windows file permission issues with tempfile.NamedTemporaryFile
     request_id = str(uuid.uuid4())
     temp_dir = os.path.join(APP_TEMP_DIR, f"get-formats-{request_id}")
     cookie_file: Optional[str] = None
@@ -517,17 +518,17 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
 
     try:
         # --- START OF FIX ---
-        # Build ydl_opts to be almost identical to _build_ydl_opts
+        # Build ydl_opts to be identical to the robust Job class options
         ydl_opts: Dict[str, Any] = {
             "quiet": True,
             "no_warnings": True,
             "noprogress": True,
             "nocheckcertificate": True,
             "noplaylist": True,
-            "ffmpeg_location": ffmpeg_exe,
+            "ffmpeg_location": ffmpeg_exe,      # Use the global ffmpeg path
             "retries": 10,
             "fragment_retries": 10,
-            "download_archive": os.path.join(temp_dir, "archive.txt"),
+            "download_archive": os.path.join(temp_dir, "archive.txt"), # Provide a writable archive path
         }
         # --- END OF FIX ---
 
@@ -582,7 +583,6 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             if not height or height in unique_formats:
                 if i < 15:
                     print(f"    -> SKIPPING (height is 0 or duplicate)", flush=True)
-
                 continue
 
             if vcodec != "none":
@@ -640,7 +640,6 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
                     file=sys.stderr,
                     flush=True,
                 )
-        # --- END OF FIX ---
 
 # --- (start_job_endpoint - unchanged) ---
 @app.route("/start-job", methods=["POST"])
