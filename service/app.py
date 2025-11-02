@@ -291,7 +291,7 @@ class Job:
             found_files = sorted(
                 found_files, key=lambda x: (0 if x.lower().endswith(".mp4") else 1, x)
             )
-            self.file_name = found_files[0]
+            self.file_name = sanitize_filename(found_files[0])
             self.file_path = os.path.join(self.temp_dir, self.file_name)
         else:
             mp3_files = sorted(
@@ -311,7 +311,7 @@ class Job:
             )
 
             if self.job_type == "singleMp3":
-                self.file_name = os.path.basename(mp3_files[0])
+                self.file_name = sanitize_filename(os.path.basename(mp3_files[0]))
                 self.file_path = mp3_files[0]
             elif self.job_type == "playlistZip":
                 self.set_status("processing", "Creating ZIP archive...", self.progress)
@@ -457,7 +457,7 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             "quiet": True,
             "no_warnings": True,
             "nocheckcertificate": True,
-            "noplaylist": True
+            "noplaylist": True,
         }
 
         if cookies:
