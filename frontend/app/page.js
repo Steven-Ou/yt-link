@@ -156,6 +156,8 @@ export default function Home() {
 
         const job = await response.json();
 
+        setCurrentJob(job);
+        
         // 1. Job is done!
         if (job.status === "completed") {
           console.log("Job completed. Full payload:", job); // Added full logging
