@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-13
+          - os: macos-latest
             arch: universal
           - os: windows-latest
             arch: x64
