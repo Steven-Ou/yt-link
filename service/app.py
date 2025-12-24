@@ -667,7 +667,6 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
     with jobs_lock:
         job = jobs.get(job_id)
 
-    # Verify the job and file exist before starting
     if (
         not job
         or job.status != "completed"
@@ -676,9 +675,7 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
     ):
         return jsonify({"error": "Job not found, not ready, or file is missing."}), 404
 
-    def file_generator(
-        file_path: str, temp_dir: Optional[str]
-    ) -> Generator[bytes, None, None]:
+    def file_generator(file_path: str, temp_dir: Optional[str]) -> Generator[bytes, None, None]:
         try:
             with open(file_path, "rb") as f:
                 while True:
@@ -687,7 +684,7 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
                         break
                     yield chunk
         finally:
-            # Short delay ensures Electron has finished writing the file to disk
+            # Wait 2 seconds so Electron can finish writing the file before we delete it
             time.sleep(2) 
             if temp_dir and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
@@ -695,28 +692,21 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
                 jobs.pop(job_id, None)
             print(f"Cleaned up job and temp files for job_id: {job_id}")
 
-    # 1. Determine the final filename
+    # Determine names
     final_name = job.file_name if job.file_name else f"{job_id}.mp3"
-
-    # 2. Encode for special characters (Chinese, etc.)
-    encoded_file_name = quote(str(final_name))
-
-    # 3. Create a safe fallback
-    fallback_file_name = (
-        str(final_name).encode("ascii", "ignore").decode("ascii").replace('"', "")
-    )
-
-    # 4. Set headers with Content-Length (CRITICAL)
+    encoded_name = quote(final_name)
+    
+    # Get the actual size of the file on your disk
     file_size = os.path.getsize(job.file_path)
+
+    # Simplified, standard headers
     headers = {
-        "Content-Disposition": f'attachment; filename="{fallback_file_name}"; filename*="UTF-8\'\'{encoded_file_name}"',
+        "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_name}",
         "Content-Type": "audio/mpeg",
-        "Content-Length": str(file_size), # Tells Electron how much data to wait for
+        "Content-Length": str(file_size)
     }
 
     return Response(file_generator(job.file_path, job.temp_dir), headers=headers)
-
-
 
 @app.route("/pause-all-jobs", methods=["POST"])
 def pause_all_jobs_endpoint() -> Response:
