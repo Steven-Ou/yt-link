@@ -138,7 +138,7 @@ class Job:
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
             "no_warnings": True,
-            "noprogress":True,
+            "noprogress": True,
             "ffmpeg_location": ffmpeg_exe,
             "retries": 10,
             "fragment_retries": 10,
@@ -274,9 +274,9 @@ class Job:
 
     def _finalize(self) -> None:
         self.set_status("processing", "Finalizing files...", self.progress or 100)
-        assert self.temp_dir and self.info is not None, (
-            "Job temp_dir or info is not set"
-        )
+        assert (
+            self.temp_dir and self.info is not None
+        ), "Job temp_dir or info is not set"
 
         if self.job_type == "singleVideo":
             video_extensions = [".mp4", ".mkv", ".webm", ".mov", ".avi"]
@@ -417,7 +417,6 @@ class Job:
         }
 
 
-
 # --- (sanitize_filename - unchanged) ---
 def sanitize_filename(filename: str) -> str:
     invalid_chars = '<>:"/\\|?*'
@@ -483,13 +482,14 @@ cleanup_old_job_dirs()
 
 # --- Flask Routes ---
 
+
 @app.route("/get-formats", methods=["POST"])
 def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
     cookie_file = None  # Define here for the 'finally' block
-    
+
     # --- FIX: The try block now wraps EVERYTHING ---
     try:
-        data = request.get_json() # <--- This line is now safely inside
+        data = request.get_json()  # <--- This line is now safely inside
         if not data or "url" not in data:
             return jsonify({"error": "Invalid request, URL is required."}), 400
 
@@ -498,9 +498,10 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
 
         print(f"\n--- [get-formats] Received request for URL: {url}", flush=True)
         print(
-            f"--- [get-formats] Cookies provided: {'Yes' if cookies else 'No'}", flush=True
+            f"--- [get-formats] Cookies provided: {'Yes' if cookies else 'No'}",
+            flush=True,
         )
-        
+
         # (The rest of your original function is unchanged)
         ydl_opts: Dict[str, Any] = {
             "quiet": True,
@@ -613,12 +614,13 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
                     flush=True,
                 )
 
+
 @app.route("/start-job", methods=["POST"])
 def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
-    
+
     # --- FIX: The try block now wraps EVERYTHING ---
     try:
-        data = request.get_json() # <--- This line is now safely inside
+        data = request.get_json()  # <--- This line is now safely inside
         if not data or "url" not in data or "jobType" not in data:
             return jsonify({"error": "Invalid request body"}), 400
 
@@ -642,7 +644,8 @@ def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
             flush=True,
         )
         return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
-        
+
+
 # --- (get_job_status - unchanged) ---
 @app.route("/job-status", methods=["GET"])
 def get_job_status() -> Union[Response, tuple[Response, int]]:
@@ -690,25 +693,28 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
                 jobs.pop(job_id, None)
             print(f"Cleaned up job and temp files for job_id: {job_id}")
 
-    final_name = job.file_name if job.file_name else f"{job_id}.mp3" 
+    # 1. Determine the final filename (ensuring it ends in .mp3)
+
+
+    final_name = job.file_name if job.file_name else f"{job_id}.mp3"
+
+    # 2. Encode it for the browser/Electron to understand special characters (like Chinese or Emojis)
     encoded_file_name = quote(str(final_name))
+
+    # 3. Create a safe fallback for older browsers (no special characters)
     fallback_file_name = (
-        (job.file_name or "download.dat")
-        .encode("ascii", "ignore")
-        .decode("ascii")
-        .replace('"', "")
+        str(final_name).encode("ascii", "ignore").decode("ascii").replace('"', "")
     )
+
+    # 4. Set the NEW headers
     headers = {
-        "Content-Disposition": f'attachment; filename="{fallback_file_name}"; filename*="UTF-8\'\'{encoded_file_name}"'
+        "Content-Disposition": f'attachment; filename="{fallback_file_name}"; filename*="UTF-8\'\'{encoded_file_name}"',
+        "Content-Type": "audio/mpeg",  # This tells the system it's specifically an MP3
     }
-    return Response(
-        file_generator(job.file_path, job.temp_dir),
-        mimetype="application/octet-stream",
-        headers=headers,
-    )
+
+    return Response(file_generator(job.file_path, job.temp_dir), headers=headers)
 
 
-# --- (Pause and Resume Endpoints - unchanged) ---
 
 
 @app.route("/pause-all-jobs", methods=["POST"])
