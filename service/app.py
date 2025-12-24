@@ -662,12 +662,12 @@ def get_job_status() -> Union[Response, tuple[Response, int]]:
     return jsonify(job.to_dict())
 
 
-# --- (download_file_route - unchanged) ---
 @app.route("/download/<job_id>", methods=["GET"])
 def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
     with jobs_lock:
         job = jobs.get(job_id)
 
+    # Verify the job and file exist before starting
     if (
         not job
         or job.status != "completed"
@@ -687,34 +687,34 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
                         break
                     yield chunk
         finally:
-            time.sleep(1)
+            # Short delay ensures Electron has finished writing the file to disk
+            time.sleep(2) 
             if temp_dir and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
             with jobs_lock:
                 jobs.pop(job_id, None)
             print(f"Cleaned up job and temp files for job_id: {job_id}")
 
-    # 1. Determine the final filename (ensuring it ends in .mp3)
-
-
+    # 1. Determine the final filename
     final_name = job.file_name if job.file_name else f"{job_id}.mp3"
 
-    # 2. Encode it for the browser/Electron to understand special characters (like Chinese or Emojis)
+    # 2. Encode for special characters (Chinese, etc.)
     encoded_file_name = quote(str(final_name))
 
-    # 3. Create a safe fallback for older browsers (no special characters)
+    # 3. Create a safe fallback
     fallback_file_name = (
         str(final_name).encode("ascii", "ignore").decode("ascii").replace('"', "")
     )
 
-    # 4. Set the NEW headers
+    # 4. Set headers with Content-Length (CRITICAL)
+    file_size = os.path.getsize(job.file_path)
     headers = {
         "Content-Disposition": f'attachment; filename="{fallback_file_name}"; filename*="UTF-8\'\'{encoded_file_name}"',
-        "Content-Type": "audio/mpeg",  # This tells the system it's specifically an MP3
+        "Content-Type": "audio/mpeg",
+        "Content-Length": str(file_size), # Tells Electron how much data to wait for
     }
 
     return Response(file_generator(job.file_path, job.temp_dir), headers=headers)
-
 
 
 
