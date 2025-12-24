@@ -687,6 +687,7 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
                         break
                     yield chunk
         finally:
+            time.sleep(1)
             if temp_dir and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
             with jobs_lock:
