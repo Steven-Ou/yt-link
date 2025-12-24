@@ -690,7 +690,8 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
                 jobs.pop(job_id, None)
             print(f"Cleaned up job and temp files for job_id: {job_id}")
 
-    encoded_file_name = quote(str(job.file_name or ""))
+    final_name = job.file_name if job.file_name else f"{job_id}.mp3" 
+    encoded_file_name = quote(str(final_name))
     fallback_file_name = (
         (job.file_name or "download.dat")
         .encode("ascii", "ignore")
