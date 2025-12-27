@@ -152,12 +152,12 @@ class Job:
             )
 
         ydl_opts: Dict[str, Any] = {
-            "progress_hooks": [self._progress_hook],
-            "nocheckcertificate": True,
+            "quiet": True,
             "no_warnings": True,
             "noprogress": True,
-            "quiet": True,
             "logger":SafeLogger(),
+            "progress_hooks": [self._progress_hook],
+            "nocheckcertificate": True,
             "ffmpeg_location": ffmpeg_exe,
             "retries": 10,
             "fragment_retries": 10,
