@@ -35,6 +35,18 @@ job_queue: queue.Queue["Job"] = queue.Queue()
 MAX_RETRIES = 5
 RETRY_DELAY = 300  # 5 minutes
 
+class SafeLogger:
+    def debug(self, msg):
+        pass
+    def warning(self, msg):
+        pass
+    def error(self, msg):
+        # Safely handle characters that crash the Windows/Electron pipe
+        try:
+            clean_msg = str(msg).encode('ascii', 'ignore').decode('ascii')
+            print(f"[yt-dlp Error]: {clean_msg}", file=sys.stderr, flush=True)
+        except:
+            pass
 
 class Job:
     def __init__(self, job_id: str, job_type: str, data: Dict[str, Any]) -> None:
