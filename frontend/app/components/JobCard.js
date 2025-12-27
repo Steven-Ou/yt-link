@@ -18,7 +18,6 @@ import {
   Close as CloseIcon,
 } from "@mui/icons-material";
 
-// Helper function to get the right icon based on status
 const getStatusIcon = (status) => {
   switch (status) {
     case "completed":
@@ -36,12 +35,15 @@ const getStatusIcon = (status) => {
 };
 
 export default function JobCard({ job, onResume, onClose }) {
-  const isDone = job.status === "completed";
-  const isFailed = job.status === "failed" || job.status === "error";
-  const isPaused = job.status === "paused";
+  const isDone = job?.status === "completed";
+  const isFailed = job?.status === "failed" || job?.status === "error";
+  const isPaused = job?.status === "paused";
 
-  let overallProgress = job.progress || 0;
-  const match = job?.file_name?.match(/.../) || null;
+  let overallProgress = job?.progress || 0;
+
+  // FIX: Added safe access (?.) and fallback to prevent the .match() crash
+  const match = job?.file_name?.match(/\[(\d+)\/(\d+)\]/) || null;
+
   if (match) {
     try {
       const index = parseFloat(match[1]);
@@ -57,6 +59,7 @@ export default function JobCard({ job, onResume, onClose }) {
       overallProgress = job.progress || 0;
     }
   }
+
   const displayName = job?.file_name || "Processing...";
   const displayUrl = job?.url || "Starting job...";
 
@@ -71,10 +74,9 @@ export default function JobCard({ job, onResume, onClose }) {
         position: "relative",
       }}
     >
-      {(job.status === "completed" || job.status === "failed") && (
+      {(job?.status === "completed" || job?.status === "failed") && (
         <IconButton
           size="small"
-          aria-label="Close"
           onClick={() => typeof onClose === "function" && onClose(job.job_id)}
           sx={{
             position: "absolute",
@@ -92,11 +94,11 @@ export default function JobCard({ job, onResume, onClose }) {
           display: "flex",
           alignItems: "center",
           mb: 1,
-          minWidth: 0, 
+          minWidth: 0,
           maxWidth: "calc(100% - 40px)",
         }}
       >
-        {getStatusIcon(job.status)}
+        {getStatusIcon(job?.status)}
         <Typography
           variant="h6"
           sx={{
@@ -106,7 +108,7 @@ export default function JobCard({ job, onResume, onClose }) {
             overflow: "hidden",
             textOverflow: "ellipsis",
           }}
-          title={displayName} // Show full filename on hover
+          title={displayName}
         >
           {displayName}
         </Typography>
@@ -120,7 +122,7 @@ export default function JobCard({ job, onResume, onClose }) {
           overflowWrap: "break-word",
           wordBreak: "break-all",
         }}
-        title={displayUrl} // Show full URL on hover
+        title={displayUrl}
       >
         {displayUrl}
       </Typography>
@@ -136,18 +138,18 @@ export default function JobCard({ job, onResume, onClose }) {
           textOverflow: "ellipsis",
         }}
       >
-        {job.message}
+        {job?.message}
       </Typography>
 
       {!isDone && !isFailed && !isPaused && (
         <LinearProgress
           variant="determinate"
-          value={overallProgress} // Use the new overallProgress
+          value={overallProgress}
           sx={{ height: "8px", borderRadius: "4px", mb: 2 }}
         />
       )}
 
-      {isFailed && job.error && (
+      {isFailed && job?.error && (
         <Alert severity="error" sx={{ mt: 2 }}>
           <strong>Error:</strong> {job.error}
         </Alert>
@@ -159,7 +161,7 @@ export default function JobCard({ job, onResume, onClose }) {
             variant="contained"
             color="primary"
             startIcon={<PlayArrowIcon />}
-            onClick={() => onResume(job.jobId)}
+            onClick={() => onResume(job.job_id)}
           >
             Resume
           </Button>
@@ -169,7 +171,7 @@ export default function JobCard({ job, onResume, onClose }) {
             variant="contained"
             color="success"
             startIcon={<DownloadIcon />}
-            href={`/api/download/${job.jobId}`}
+            href={`/api/download/${job.job_id}`}
           >
             Download File
           </Button>
