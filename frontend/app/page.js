@@ -118,7 +118,7 @@ export default function Home() {
     message: null,
     type: null,
   });
-
+  const  [activeJobs, setActiveJobs] = useState({});
   const { post: postGetFormats, isApiLoading: isLoadingFormats } = useApi();
   const { post: postDownload, isApiLoading: isDownloading } = useApi();
 
