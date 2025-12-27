@@ -5,13 +5,12 @@ import {
   Box,
   Drawer,
   Toolbar,
-  CssBaseline, // Restored for background color
-  createTheme, // Restored for custom theme
-  ThemeProvider, // Restored for custom theme
+  CssBaseline,
+  createTheme,
+  ThemeProvider,
 } from "@mui/material";
-import { useApi } from "./hooks/useApi"; // This path is now correct
+import { useApi } from "./hooks/useApi";
 
-// --- MODIFIED: Fixed all component import paths ---
 import Sidebar from "./components/Sidebar";
 import HomeView from "./components/views/HomeView";
 import CookieView from "./components/views/CookieView";
@@ -22,7 +21,6 @@ import SingleVideoView from "./components/views/SingleVideoView";
 
 const drawerWidth = 240;
 
-// --- Your original custom theme... (Theme object unchanged) ---
 const customTheme = createTheme({
   palette: {
     mode: "light",
@@ -30,7 +28,7 @@ const customTheme = createTheme({
     secondary: { main: "#1A1A1A", contrastText: "#FFFFFF" },
     warning: { main: "#FFB300" },
     background: {
-      default: "#fafafa", // Light grey background
+      default: "#fafafa",
       paper: "#ffffff",
     },
     text: {
@@ -103,7 +101,6 @@ const customTheme = createTheme({
     },
   },
 });
-// --- End Theme ---
 
 export default function Home() {
   const [currentView, setCurrentView] = useState("home");
@@ -112,13 +109,16 @@ export default function Home() {
   const [formats, setFormats] = useState([]);
   const [selectedQuality, setSelectedQuality] = useState("");
   const [cookies, setCookies] = useState("");
-  const [pollingJobId, setPollingJobId] = useState(null);
-  const [currentJob, setCurrentJob] = useState({});
+
+  // --- UPGRADE 1: Initialize states to handle collections ---
+  const [pollingJobId, setPollingJobId] = useState([]); // Array of IDs
+  const [currentJob, setCurrentJob] = useState({}); // Object of job data
+
   const [cookieStatus, setCookieStatus] = useState({
     message: null,
     type: null,
   });
-
+  const [activeJobs, setActiveJobs] = useState({});
   const { post: postGetFormats, isApiLoading: isLoadingFormats } = useApi();
   const { post: postDownload, isApiLoading: isDownloading } = useApi();
 
@@ -127,92 +127,72 @@ export default function Home() {
     setCookies(savedCookies);
   }, []);
 
+  // --- UPGRADE 2: Multi-job Polling Logic (Preserving your Electron logic) ---
   useEffect(() => {
-    if (!pollingJobId) return;
+    if (pollingJobId.length === 0) return;
 
-    // Start polling every 2 seconds
     const intervalId = setInterval(async () => {
-      try {
-        // Get the base URL from the Electron API (same logic as useApi)
-        let baseUrl = "";
-        // @ts-ignore
-        if (window.electronAPI?.getBackendUrl) {
+      // Loop through every job ID in your array
+      for (const jobId of pollingJobId) {
+        try {
+          let baseUrl = "";
           // @ts-ignore
-          baseUrl = window.electronAPI.getBackendUrl(); // e.g., "http://127.0.0.1:5003"
+          if (window.electronAPI?.getBackendUrl) {
+            // @ts-ignore
+            baseUrl = window.electronAPI.getBackendUrl();
+          }
+
+          const statusUrl = baseUrl
+            ? `${baseUrl}/job-status?jobId=${jobId}`
+            : `/api/job-status?jobId=${jobId}`;
+
+          const response = await fetch(statusUrl);
+          if (!response.ok) {
+            throw new Error("Failed to fetch job status");
+          }
+
+          const job = await response.json();
+
+          // Update specifically that job in your collection
+          setCurrentJob((prev) => ({ ...prev, [jobId]: job }));
+
+          if (job.status === "completed") {
+            console.log("Job completed. Full payload:", job);
+
+            // Remove from polling list
+            setPollingJobId((prev) => prev.filter((id) => id !== jobId));
+
+            const fileName =
+              job.file_name || job.file_path || `${jobId}-download`;
+            console.log("Triggering download. Filename:", fileName);
+
+            const downloadUrl = `${baseUrl}/download/${job.job_id}`;
+            window.location.href = downloadUrl;
+
+            const link = document.createElement("a");
+            link.href = downloadUrl;
+            link.setAttribute("download", fileName);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          } else if (job.status === "failed") {
+            console.error("Job failed:", job.error);
+            setError(job.message || job.error);
+            setPollingJobId((prev) => prev.filter((id) => id !== jobId));
+
+            // Auto-clear failed job after 10s
+            setTimeout(() => handleClearJob(jobId), 10000);
+          }
+        } catch (err) {
+          console.error("Polling error:", err);
+          setError("Lost connection to backend.");
+          setPollingJobId((prev) => prev.filter((id) => id !== jobId));
         }
-
-        // We must build the URL manually for fetch
-        // In dev: /api/job-status?jobId=...
-        // In prod: http://127.0.0.1:5003/job-status?jobId=...
-        const statusUrl = baseUrl
-          ? `${baseUrl}/job-status?jobId=${pollingJobId}`
-          : `/api/job-status?jobId=${pollingJobId}`;
-
-        const response = await fetch(statusUrl);
-        if (!response.ok) {
-          throw new Error("Failed to fetch job status");
-        }
-
-        const job = await response.json();
-
-        setCurrentJob(job);
-
-        // 1. Job is done!
-        if (job.status === "completed") {
-          console.log("Job completed. Full payload:", job); // Added full logging
-
-          // Stop polling
-          clearInterval(intervalId);
-          setPollingJobId(null);
-
-          // Sanitize the filename on the frontend as a fallback
-          const fileName =
-            job.file_name ||
-            job.file_path || // Try file_path as a backup
-            `${pollingJobId}-download`; // Use Job ID as last resort
-
-          console.log("Triggering download. Filename:", fileName);
-
-          // Trigger the download!
-          const downloadUrl = `${baseUrl}/download/${job.job_id}`;
-
-          window.location.href = downloadUrl;
-          // Create an invisible link to trigger the browser's download prompt
-          const link = document.createElement("a");
-          link.href = downloadUrl;
-          link.setAttribute("download", fileName);
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-
-          // 2. Job failed!
-        } else if (job.status === "failed") {
-          console.error("Job failed:", job.error);
-          setError(job.message || job.error); // Show the error from the backend
-
-          // Stop polling
-          clearInterval(intervalId);
-          setPollingJobId(null);
-
-          setTimeout(() => setCurrentJob(null), 10000);
-        }
-
-        // 3. Job is still processing...
-        // (do nothing, the interval will run again)
-      } catch (err) {
-        console.error("Polling error:", err);
-        setError("Lost connection to backend.");
-        clearInterval(intervalId);
-        setPollingJobId(null);
-        setCurrentJob(null);
       }
-    }, 2000); // Poll every 2 seconds
+    }, 2000);
 
-    // Cleanup function to stop polling if the component unmounts
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [pollingJobId]); // This effect re-runs ONLY when pollingJobId changes
+    return () => clearInterval(intervalId);
+  }, [pollingJobId]);
 
   const handleSaveCookies = () => {
     try {
@@ -263,48 +243,68 @@ export default function Home() {
       return;
     }
 
-    // The API endpoint is ALWAYS /api/start-job
     const apiEndpoint = "/api/start-job";
     const cookies = localStorage.getItem("youtubeCookies") || "";
 
-    // We build the body dynamically based on the job type
     let body = {
-      jobType: type, // Pass the 'type' as 'jobType' in the body
+      jobType: type,
       url: url,
       cookies: cookies,
     };
 
-    // Special case for 'singleVideo', add the quality to the body
     if (type === "singleVideo") {
       if (!selectedQuality) {
         setError("Please fetch and select a video quality first.");
         return;
       }
-      body.quality = selectedQuality; // Add 'quality' to the body
+      body.quality = selectedQuality;
     }
 
-    setCurrentJob({
-      job_id: "new",
-      status: "queued",
-      message: "Job is starting...",
-      file_name: "Resolving video...", // Placeholder name
-      progress: 0,
-      url: url,
-    });
+    // --- UPGRADE 3: Set placeholder for specific job ---
+    const placeholderId = `pending-${Date.now()}`;
+    setCurrentJob((prev) => ({
+      ...prev,
+      [placeholderId]: {
+        job_id: placeholderId,
+        status: "queued",
+        message: "Job is starting...",
+        file_name: "Resolving video...",
+        progress: 0,
+        url: url,
+      },
+    }));
 
     const { data, error } = await postDownload(apiEndpoint, body);
     if (error) {
       setError(error);
-      setCurrentJob(null);
+      handleClearJob(placeholderId);
     } else {
-      console.log("Job started:", data); // Or whatever you do on success
-      setPollingJobId(data.jobId);
-      setUrl(""); // <-- Optional: Clears the URL bar
+      console.log("Job started:", data);
+      // Remove placeholder, add real Job ID to polling and collection
+      handleClearJob(placeholderId);
+      setPollingJobId((prev) => [...prev, data.jobId]);
+      setCurrentJob((prev) => ({
+        ...prev,
+        [data.jobId]: {
+          job_id: data.jobId,
+          status: "queued",
+          progress: 0,
+          url: url,
+        },
+      }));
+      setUrl("");
     }
   };
-  const handleClearJob = () => {
-    setCurrentJob(null);
+
+  // MODIFIED: Accepts jobId to clear specific box
+  const handleClearJob = (jobId) => {
+    setCurrentJob((prev) => {
+      const newState = { ...prev };
+      delete newState[jobId];
+      return newState;
+    });
   };
+
   const renderContent = () => {
     const baseProps = {
       url,
@@ -312,7 +312,7 @@ export default function Home() {
       error,
       setError,
       setCurrentView,
-      currentJob,
+      currentJob, // Passing the full collection object
       handleClearJob,
     };
 
