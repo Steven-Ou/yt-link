@@ -11,6 +11,7 @@ import uuid
 import zipfile
 import subprocess
 import queue
+import hashlib
 from typing import Any, Dict, Generator, List, Optional, cast, Union
 # Force stdout and stderr to use UTF-8 and ignore errors to prevent [Errno 22]
 if sys.stdout.encoding != 'UTF-8':
@@ -420,7 +421,10 @@ class Job:
             "file_name": self.file_name,
         }
 
-
+def get_cache_dir(url:str) -> str:
+    url_hash = hashlib.md5(url.encode('utf-8')).hexdigest()
+    return os.path.join(APP_TEMP_DIR, f"cache_{url_hash}")
+    
 # --- (sanitize_filename - unchanged) ---
 def sanitize_filename(filename: str) -> str:
     invalid_chars = '<>:"/\\|?*'
