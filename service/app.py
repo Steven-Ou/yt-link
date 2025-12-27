@@ -144,6 +144,8 @@ class Job:
             "nocheckcertificate": True,
             "no_warnings": True,
             "noprogress": True,
+            "quiet": True,
+            "logger":SafeLogger(),
             "ffmpeg_location": ffmpeg_exe,
             "retries": 10,
             "fragment_retries": 10,
@@ -517,7 +519,6 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             flush=True,
         )
 
-        # (The rest of your original function is unchanged)
         ydl_opts: Dict[str, Any] = {
             "quiet": True,
             "no_warnings": True,
