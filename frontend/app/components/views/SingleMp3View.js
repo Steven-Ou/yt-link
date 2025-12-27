@@ -25,7 +25,7 @@ export default function SingleMp3View({
   handleDownload,
   error,
   currentJob,
-  handleClearJob
+  handleClearJob,
 }) {
   return (
     <Container maxWidth="md">
@@ -63,11 +63,13 @@ export default function SingleMp3View({
               {error}
             </Alert>
           )}
-          {currentJob && (
-            <Box sx={{ mt: 3 }}>
-              <JobCard job={currentJob} onClose={handleClearJob} />
-            </Box>
-          )}
+          <Box sx={{ mt: 4 }}>
+            {Object.values(currentJob).map((job) => (
+              <Box key={job.job_id} sx={{ mb: 2 }}>
+                <JobCard job={job} onClose={() => handleClearJob(job.job_id)} />
+              </Box>
+            ))}
+          </Box>
         </Stack>
       </Paper>
     </Container>
