@@ -690,8 +690,6 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
         finally:
             # Wait 2 seconds so Electron can finish writing the file before we delete it
             time.sleep(2) 
-            if temp_dir and os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir, ignore_errors=True)
             with jobs_lock:
                 jobs.pop(job_id, None)
             print(f"Cleaned up job and temp files for job_id: {job_id}")
