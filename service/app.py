@@ -222,13 +222,17 @@ class Job:
 
         self.set_status("processing", "Preparing download...", 0)
         os.makedirs(self.temp_dir, exist_ok=True)
-        existing_mp3s = [f for f in os.listdir(self.temp_dir) if f.endswith(".mp3")]
-        
+        existing_mp3s = [f for f in os.listdir(self.temp_dir) if f.lower().endswith("mp3")]        
         if existing_mp3s and self.job_type in ["playlistZip", "combineMp3"]:
             self.set_status("processing", "Found existing files! Reusing for combination...", 50)
-            # Skip straight to finalization (combining/zipping)
-            self._finalize()
-            return
+            try:
+                # IMPORTANT: You MUST get the info even if you skip the download
+                with yt_dlp.YoutubeDL({'quiet': True, 'nocheckcertificate': True}) as ydl:
+                    self.info = ydl.extract_info(self.url, download=False)
+                self._finalize()
+                return
+            except Exception as e:
+                print(f"Cache re-validation failed: {e}")
         ydl_opts = self._build_ydl_opts()
 
         retries = 0
