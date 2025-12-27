@@ -692,7 +692,7 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
             time.sleep(2) 
             with jobs_lock:
                 jobs.pop(job_id, None)
-            print(f"Cleaned up job and temp files for job_id: {job_id}")
+            print(f"Cleaned up job and temp files are kept for reuse. job_id: {job_id}")
 
     # Determine names
     final_name = job.file_name if job.file_name else f"{job_id}.mp3"
