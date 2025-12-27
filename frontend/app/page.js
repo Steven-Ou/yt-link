@@ -312,8 +312,10 @@ export default function Home() {
       error,
       setError,
       setCurrentView,
-      currentJob,
-      handleClearJob,
+      activeJobs,
+      handleCloseJob,
+      handleDownload,
+      
     };
 
     switch (currentView) {
