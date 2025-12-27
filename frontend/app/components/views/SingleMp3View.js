@@ -1,81 +1,72 @@
 "use client";
 
 import {
-  Container,
-  Typography,
-  Paper,
-  Stack,
+  Box,
   TextField,
   Button,
-  CircularProgress,
-  Alert,
-  Box,
+  Typography,
+  Paper,
+  Container,
+  Stack,
 } from "@mui/material";
-import {
-  Download as DownloadIcon,
-  Search as SearchIcon,
-} from "@mui/icons-material";
+import { Download as DownloadIcon } from "@mui/icons-material";
 import JobCard from "../JobCard";
 
-// This component is based on your renderSingleMp3Form() function
 export default function SingleMp3View({
   url,
   setUrl,
-  isDownloading,
-  handleDownload,
   error,
   currentJob,
+  handleDownload,
   handleClearJob,
+  isDownloading,
 }) {
   return (
     <Container maxWidth="md">
-      <Paper elevation={3} sx={{ p: 4, mt: 4 }}>
-        <Typography variant="h4" gutterBottom>
+      <Paper elevation={3} sx={{ p: 4, mt: 4, borderRadius: "12px" }}>
+        <Typography
+          variant="h4"
+          gutterBottom
+          sx={{ fontWeight: "bold", color: "primary.main", mb: 3 }}
+        >
           Download Single MP3
         </Typography>
-        <Stack spacing={2} sx={{ mt: 2 }}>
+
+        <Stack spacing={3}>
           <TextField
+            fullWidth
             label="YouTube Video URL"
             variant="outlined"
-            fullWidth
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            disabled={isDownloading}
+            placeholder="https://www.youtube.com/watch?v=..."
+            error={!!error}
+            helperText={error}
           />
+
           <Button
+            fullWidth
             variant="contained"
-            color="primary"
-            startIcon={
-              isDownloading ? (
-                <CircularProgress size={20} color="inherit" />
-              ) : (
-                <DownloadIcon />
-              )
-            }
-            disabled={isDownloading || !url}
+            size="large"
+            startIcon={<DownloadIcon />}
             onClick={() => handleDownload("singleMp3")}
-            sx={{ height: 56 }}
+            disabled={isDownloading}
+            sx={{ py: 1.5, fontSize: "1.1rem" }}
           >
             {isDownloading ? "Starting..." : "Download MP3"}
           </Button>
-          {error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {error}
-            </Alert>
-          )}
-          <Box sx={{ mt: 4, width: "100%" }}>
-            {currentJob &&
-              typeof currentJob === "object" &&
-              Object.values(currentJob).map((job) => (
-                <Box key={job.job_id} sx={{ mb: 2 }}>
-                  <JobCard
-                    job={job}
-                    onClose={() => handleClearJob(job.job_id)}
-                  />
-                </Box>
-              ))}
-          </Box>
         </Stack>
+
+        {/* UPGRADE: Loop through all active jobs */}
+        <Box sx={{ mt: 4 }}>
+          {currentJob &&
+            typeof currentJob === "object" &&
+            Object.values(currentJob).map((job) => (
+              <Box key={job.job_id} sx={{ mb: 2 }}>
+                <JobCard job={job} onClose={() => handleClearJob(job.job_id)} />
+              </Box>
+            ))}
+        </Box>
       </Paper>
     </Container>
   );
