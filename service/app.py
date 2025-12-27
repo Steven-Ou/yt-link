@@ -13,11 +13,12 @@ import subprocess
 import queue
 import hashlib
 from typing import Any, Dict, Generator, List, Optional, cast, Union
+
 # Force stdout and stderr to use UTF-8 and ignore errors to prevent [Errno 22]
-if sys.stdout.encoding != 'UTF-8':
-    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach(), errors='ignore')
-if sys.stderr.encoding != 'UTF-8':
-    sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach(), errors='ignore')
+if sys.stdout.encoding != "UTF-8":
+    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach(), errors="ignore")
+if sys.stderr.encoding != "UTF-8":
+    sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach(), errors="ignore")
 from flask import Flask, Response, request, jsonify
 from flask_cors import CORS
 
@@ -37,18 +38,22 @@ job_queue: queue.Queue["Job"] = queue.Queue()
 MAX_RETRIES = 5
 RETRY_DELAY = 300  # 5 minutes
 
+
 class SafeLogger:
     def debug(self, msg):
         pass
+
     def warning(self, msg):
         pass
+
     def error(self, msg):
         # Safely handle characters that crash the Windows/Electron pipe
         try:
-            clean_msg = str(msg).encode('ascii', 'ignore').decode('ascii')
+            clean_msg = str(msg).encode("ascii", "ignore").decode("ascii")
             print(f"[yt-dlp Error]: {clean_msg}", file=sys.stderr, flush=True)
         except:
             pass
+
 
 class Job:
     def __init__(self, job_id: str, job_type: str, data: Dict[str, Any]) -> None:
@@ -157,7 +162,7 @@ class Job:
             "quiet": True,
             "no_warnings": True,
             "noprogress": True,
-            "logger":SafeLogger(),
+            "logger": SafeLogger(),
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
             "ffmpeg_location": ffmpeg_exe,
@@ -210,8 +215,7 @@ class Job:
             cookie_file = os.path.join(APP_TEMP_DIR, f"cookies_{self.job_id}.txt")
             with open(cookie_file, "w", encoding="utf-8") as f:
                 f.write(self.data["cookies"])
-            ydl_opts["cookiefile"] = cookie_file
-
+        ydl_opts["cookiefile"] = cookie_file
         return ydl_opts
 
     def _progress_hook(self, d: Dict[str, Any]) -> None:
@@ -224,12 +228,18 @@ class Job:
 
         self.set_status("processing", "Preparing download...", 0)
         os.makedirs(self.temp_dir, exist_ok=True)
-        existing_mp3s = [f for f in os.listdir(self.temp_dir) if f.lower().endswith("mp3")]        
+        existing_mp3s = [
+            f for f in os.listdir(self.temp_dir) if f.lower().endswith("mp3")
+        ]
         if existing_mp3s and self.job_type in ["playlistZip", "combineMp3"]:
-            self.set_status("processing", "Found existing files! Reusing for combination...", 50)
+            self.set_status(
+                "processing", "Found existing files! Reusing for combination...", 50
+            )
             try:
                 # IMPORTANT: You MUST get the info even if you skip the download
-                with yt_dlp.YoutubeDL({'quiet': True, 'nocheckcertificate': True}) as ydl:
+                with yt_dlp.YoutubeDL(
+                    {"quiet": True, "nocheckcertificate": True}
+                ) as ydl:
                     self.info = ydl.extract_info(self.url, download=False)
                 self._finalize()
                 return
@@ -448,9 +458,11 @@ class Job:
             "file_name": self.file_name,
         }
 
-def get_cache_dir(url:str) -> str:
-    url_hash = hashlib.md5(url.encode('utf-8')).hexdigest()
+
+def get_cache_dir(url: str) -> str:
+    url_hash = hashlib.md5(url.encode("utf-8")).hexdigest()
     return os.path.join(APP_TEMP_DIR, f"cache_{url_hash}")
+
 
 # --- (sanitize_filename - unchanged) ---
 def sanitize_filename(filename: str) -> str:
@@ -707,7 +719,9 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
     ):
         return jsonify({"error": "Job not found, not ready, or file is missing."}), 404
 
-    def file_generator(file_path: str, temp_dir: Optional[str]) -> Generator[bytes, None, None]:
+    def file_generator(
+        file_path: str, temp_dir: Optional[str]
+    ) -> Generator[bytes, None, None]:
         try:
             with open(file_path, "rb") as f:
                 while True:
@@ -717,7 +731,7 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
                     yield chunk
         finally:
             # Wait 2 seconds so Electron can finish writing the file before we delete it
-            time.sleep(2) 
+            time.sleep(2)
             with jobs_lock:
                 jobs.pop(job_id, None)
             print(f"Cleaned up job and temp files are kept for reuse. job_id: {job_id}")
@@ -725,7 +739,7 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
     # Determine names
     final_name = job.file_name if job.file_name else f"{job_id}.mp3"
     encoded_name = quote(final_name)
-    
+
     # Get the actual size of the file on your disk
     file_size = os.path.getsize(job.file_path)
 
@@ -733,10 +747,11 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
     headers = {
         "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_name}",
         "Content-Type": "audio/mpeg",
-        "Content-Length": str(file_size)
+        "Content-Length": str(file_size),
     }
 
     return Response(file_generator(job.file_path, job.temp_dir), headers=headers)
+
 
 @app.route("/pause-all-jobs", methods=["POST"])
 def pause_all_jobs_endpoint() -> Response:
