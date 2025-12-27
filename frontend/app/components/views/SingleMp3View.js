@@ -63,12 +63,17 @@ export default function SingleMp3View({
               {error}
             </Alert>
           )}
-          <Box sx={{ mt: 4 }}>
-            {Object.values(currentJob).map((job) => (
-              <Box key={job.job_id} sx={{ mb: 2 }}>
-                <JobCard job={job} onClose={() => handleClearJob(job.job_id)} />
-              </Box>
-            ))}
+          <Box sx={{ mt: 4, width: "100%" }}>
+            {currentJob &&
+              typeof currentJob === "object" &&
+              Object.values(currentJob).map((job) => (
+                <Box key={job.job_id} sx={{ mb: 2 }}>
+                  <JobCard
+                    job={job}
+                    onClose={() => handleClearJob(job.job_id)}
+                  />
+                </Box>
+              ))}
           </Box>
         </Stack>
       </Paper>
