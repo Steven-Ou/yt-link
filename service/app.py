@@ -208,6 +208,13 @@ class Job:
 
         self.set_status("processing", "Preparing download...", 0)
         os.makedirs(self.temp_dir, exist_ok=True)
+        existing_mp3s = [f for f in os.listdir(self.temp_dir) if f.endswith(".mp3")]
+        
+        if existing_mp3s and self.job_type in ["playlistZip", "combineMp3"]:
+            self.set_status("processing", "Found existing files! Reusing for combination...", 50)
+            # Skip straight to finalization (combining/zipping)
+            self._finalize()
+            return
         ydl_opts = self._build_ydl_opts()
 
         retries = 0
