@@ -118,7 +118,7 @@ export default function Home() {
     message: null,
     type: null,
   });
-  const  [activeJobs, setActiveJobs] = useState({});
+
   const { post: postGetFormats, isApiLoading: isLoadingFormats } = useApi();
   const { post: postDownload, isApiLoading: isDownloading } = useApi();
 
@@ -312,10 +312,8 @@ export default function Home() {
       error,
       setError,
       setCurrentView,
-      activeJobs,
-      handleCloseJob,
-      handleDownload,
-      
+      currentJob,
+      handleClearJob,
     };
 
     switch (currentView) {
