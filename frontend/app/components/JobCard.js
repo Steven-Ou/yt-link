@@ -41,7 +41,7 @@ export default function JobCard({ job, onResume, onClose }) {
   const isPaused = job.status === "paused";
 
   let overallProgress = job.progress || 0;
-  const match = job.message.match(/\[(\d+)\/(\d+)\]/);
+  const match = job?.file_name?.match(/.../) || null;
   if (match) {
     try {
       const index = parseFloat(match[1]);
