@@ -46,7 +46,7 @@ class Job:
         self.message: str = "Job is queued..."
         self.progress: Optional[float] = None
         self.error: Optional[str] = None
-        self.temp_dir: str = os.path.join(APP_TEMP_DIR, self.job_id)
+        self.temp_dir = get_cache_dir(self.url)
         self.info: Optional[Dict[str, Any]] = None
         self.file_path: Optional[str] = None
         self.file_name: Optional[str] = None
@@ -424,7 +424,7 @@ class Job:
 def get_cache_dir(url:str) -> str:
     url_hash = hashlib.md5(url.encode('utf-8')).hexdigest()
     return os.path.join(APP_TEMP_DIR, f"cache_{url_hash}")
-    
+
 # --- (sanitize_filename - unchanged) ---
 def sanitize_filename(filename: str) -> str:
     invalid_chars = '<>:"/\\|?*'
