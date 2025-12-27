@@ -25,6 +25,8 @@ import yt_dlp  # type: ignore[import]
 from yt_dlp.utils import DownloadError  # type: ignore[import]
 from urllib.parse import quote
 
+APP_TEMP_DIR = os.path.join(tempfile.gettempdir(), "yt-link")
+os.makedirs(APP_TEMP_DIR, exist_ok=True)
 # This will be set at runtime from the command line arguments
 ffmpeg_exe: Optional[str] = None
 
@@ -490,8 +492,6 @@ def resolve_ffmpeg_path(candidate: str) -> str:
 # --- (App setup - unchanged) ---
 app = Flask(__name__)
 CORS(app)
-APP_TEMP_DIR = os.path.join(tempfile.gettempdir(), "yt-link")
-os.makedirs(APP_TEMP_DIR, exist_ok=True)
 
 
 # --- (cleanup_old_job_dirs - unchanged) ---
