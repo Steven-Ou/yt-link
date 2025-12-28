@@ -183,12 +183,6 @@ class Job:
                         "outtmpl": output_template,
                         "noplaylist": True,
                         "merge_output_format": "mp4",
-                        "postprocessors": [
-                            {
-                                "key": "FFmpegVideoConvertor",
-                                "preferedformat": "mp4",
-                            }
-                        ],
                     }
                 )
         else:  # All audio jobs
