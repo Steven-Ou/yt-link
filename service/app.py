@@ -174,7 +174,7 @@ class Job:
 
             # If for any reason it's missing, fall back to "best"
             if not quality:
-                quality = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]"
+                quality = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
 
             ydl_opts.update(
                 {
@@ -194,7 +194,7 @@ class Job:
             ydl_opts.update(
                 {
                     # More robust format string: Prefers M4A, then best audio, then any best
-                    "format": "bestaudio[ext=m4a]/bestaudio/best/bestvideo+bestaudio/best",
+                    "format": "bestaudio[ext=m4a]/bestaudio/best",
                     "outtmpl": output_template,
                     "noplaylist": self.job_type == "singleMp3",
                     "ignoreerrors": self.job_type != "singleMp3",
