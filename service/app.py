@@ -179,7 +179,7 @@ class Job:
                 )
             ydl_opts.update(
                 {
-                    "format": quality,  # <-- This is the fix: Use the format_id directly
+                    "format": quality,
                     "outtmpl": output_template,
                     "noplaylist": True,
                     "merge_output_format": "mp4",
@@ -194,7 +194,6 @@ class Job:
         else:  # All audio jobs
             ydl_opts.update(
                 {
-                    # More robust format string: Prefers M4A, then best audio, then any best
                     "format": "bestaudio[ext=m4a]/bestaudio/best",
                     "outtmpl": output_template,
                     "noplaylist": self.job_type == "singleMp3",
