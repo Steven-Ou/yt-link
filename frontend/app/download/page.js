@@ -177,6 +177,8 @@ export default function Home() {
       selectedQuality,
       setSelectedQuality,
       setCurrentView, // Pass this for navigation
+      handleDownload: handleDownload, 
+      currentJob: currentJob,
     };
 
     switch (currentView) {
