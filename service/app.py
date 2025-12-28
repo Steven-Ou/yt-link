@@ -251,6 +251,10 @@ class Job:
                 print(f"Cache re-validation failed: {e}")
 
         ydl_opts = self._build_ydl_opts()
+        if self.job_type in ["singleMp3", "singleVideo"]:
+            if "download_archive" in ydl_opts:
+                del ydl_opts["download_archive"]
+                
         retries = 0
         success = False
         last_error_str = ""
