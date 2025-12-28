@@ -812,8 +812,10 @@ def queue_worker() -> None:
                     f"Critical worker error: {str(e)}",
                     error=traceback.format_exc(),
                 )
-            job_queue.task_done()
-
+            try:
+                job_queue.task_done()
+            except:
+                pass
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
