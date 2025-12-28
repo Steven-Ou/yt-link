@@ -55,17 +55,22 @@ function getPythonBackendConfig(port, ffmpegPath) {
     console.log(`[Electron] Found dev backend script at: ${scriptPath}`);
 
     // Build the platform-specific path to the venv python
-    const venvPath = path.join(__dirname, 'service', 'venv');
-    const pythonCommand = platform === "win32"
-      ? path.join(venvPath, 'Scripts', 'python.exe') // Windows
-      : path.join(venvPath, 'bin', 'python');        // macOS/Linux
+    const venvPath = path.join(__dirname, "service", "venv");
+    const pythonCommand =
+      platform === "win32"
+        ? path.join(venvPath, "Scripts", "python.exe") // Windows
+        : path.join(venvPath, "bin", "python"); // macOS/Linux
 
     // Add a check to give a good error if the venv is missing
     if (!fs.existsSync(pythonCommand)) {
-      console.error(`[Electron] FATAL: Python venv not found at: ${pythonCommand}`);
-      console.error("[Electron] Please run 'python -m venv venv' in the /service folder.");
+      console.error(
+        `[Electron] FATAL: Python venv not found at: ${pythonCommand}`
+      );
+      console.error(
+        "[Electron] Please run 'python -m venv venv' in the /service folder."
+      );
     }
-    
+
     return {
       command: pythonCommand,
       args: ["-u", scriptPath, port, ffmpegPath], // <-- This is the original, correct line
@@ -131,11 +136,11 @@ function startPythonBackend(port) {
   console.log(`[Electron] Starting backend with command: ${command}`);
   console.log(`[Electron] Using arguments: [${args.join(", ")}]`);
 
-  pythonProcess = spawn(command, args,{
+  pythonProcess = spawn(command, args, {
     env: {
-      ...process.env,   // Inherit all existing environment variables
-      PYTHONUTF8: '1',  // Force Python to use UTF-8 for all I/O
-    }
+      ...process.env, // Inherit all existing environment variables
+      PYTHONUTF8: "1", // Force Python to use UTF-8 for all I/O
+    },
   });
 
   pythonProcess.stdout.on("data", (data) => {
@@ -171,7 +176,18 @@ function createWindow() {
       nodeIntegration: false, // Keep this false for security
     },
   });
-
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [
+          "default-src 'self' 'unsafe-inline' http://localhost:3000 http://127.0.0.1:5003; " +
+            "script-src 'self' 'unsafe-eval' 'unsafe-inline'; " +
+            "connect-src 'self' http://localhost:3000 http://127.0.0.1:5003",
+        ],
+      },
+    });
+  });
   if (app.isPackaged) {
     // Production: Load the static Next.js build
     const staticBuildPath = path.join(
@@ -215,7 +231,7 @@ function createWindow() {
       });
     }
   );
-  
+
   return mainWindow;
 }
 
