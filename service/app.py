@@ -412,6 +412,13 @@ class Job:
                     )
             elif self.job_type == "playlistZip":
                 self.set_status("processing", "Creating ZIP archive...", self.progress)
+                
+                time.sleep(1.5)
+                mp3_files = sorted([
+                    os.path.join(self.temp_dir, f)
+                    for f in os.listdir(self.temp_dir)
+                    if f.lower().endswith(".mp3")
+                ])
                 self.file_name = f"{playlist_title}.zip"
                 self.file_path = os.path.join(self.temp_dir, self.file_name)
                 with zipfile.ZipFile(self.file_path, "w") as zipf:
