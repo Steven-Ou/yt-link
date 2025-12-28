@@ -14,11 +14,6 @@ import queue
 import hashlib
 from typing import Any, Dict, Generator, List, Optional, cast, Union
 
-# Force stdout and stderr to use UTF-8 and ignore errors to prevent [Errno 22]
-if sys.stdout.encoding != "UTF-8":
-    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach(), errors="ignore")
-if sys.stderr.encoding != "UTF-8":
-    sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach(), errors="ignore")
 from flask import Flask, Response, request, jsonify
 from flask_cors import CORS
 
