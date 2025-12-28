@@ -179,7 +179,6 @@ class Job:
                     "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
                 )
 
-
             ydl_opts.update(
                 {
                     "format": quality,
@@ -223,7 +222,7 @@ class Job:
         self.update_progress(d)
 
     def run(self) -> None:
-        # 1. Initial pause check
+        # Initial pause check
         while self.status == "paused":
             self.set_status("paused", "Job is paused. Waiting for resume...")
             time.sleep(1)
@@ -231,7 +230,6 @@ class Job:
         self.set_status("processing", "Preparing download...", 0)
         os.makedirs(self.temp_dir, exist_ok=True)
 
-        # 2. Resource Saving: Reuse existing files for playlists
         existing_mp3s = [
             f for f in os.listdir(self.temp_dir) if f.lower().endswith("mp3")
         ]
@@ -245,80 +243,75 @@ class Job:
                 ) as ydl:
                     self.info = ydl.extract_info(self.url, download=False)
                 self._finalize()
-                return  # Skip download and finish
+                return
             except Exception as e:
                 print(f"Cache re-validation failed: {e}")
 
-        # 3. Build options (this creates the cookie file if needed)
         ydl_opts = self._build_ydl_opts()
         retries = 0
         success = False
         last_error_str = ""
 
-        try:
-            # 4. Main Download Loop
-            while retries < MAX_RETRIES and not success:
-                while self.status == "paused":
-                    self.set_status("paused", "Download paused. Waiting for resume...")
-                    time.sleep(1)
+        # Main Download Loop with Full Retry Logic
+        while retries < MAX_RETRIES and not success:
+            while self.status == "paused":
+                self.set_status("paused", "Download paused. Waiting for resume...")
+                time.sleep(1)
 
-                try:
-                    if retries > 0:
-                        self.set_status(
-                            "processing",
-                            f"Retrying... (Attempt {retries + 1}/{MAX_RETRIES})",
-                            self.progress or 0,
-                        )
+            try:
+                if retries > 0:
+                    self.set_status(
+                        "processing",
+                        f"Retrying... (Attempt {retries + 1}/{MAX_RETRIES})",
+                        self.progress or 0,
+                    )
 
-                    with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
-                        info_dict = ydl.extract_info(self.url, download=True)
-                        if not info_dict:
-                            raise DownloadError("Failed to extract video information.")
-                        self.info = info_dict
+                with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
+                    info_dict = ydl.extract_info(self.url, download=True)
+                    if not info_dict:
+                        raise DownloadError("Failed to extract video information.")
+                    self.info = info_dict
 
-                    self._finalize()
-                    success = True
+                self._finalize()
+                success = True
 
-                except DownloadError as e:
-                    last_error_str = str(e)
-                    # Explicitly catch Rate Limiting
-                    if (
-                        "rate-limit" in last_error_str.lower()
-                        or "429" in last_error_str
-                    ):
-                        self.set_status(
-                            "failed",
-                            "Blocked by YouTube (Rate Limit). Try again in 1 hour.",
-                            error=last_error_str,
-                        )
-                        return
+            except DownloadError as e:
+                last_error_str = str(e)
+                if "rate-limit" in last_error_str.lower() or "429" in last_error_str:
+                    self.set_status(
+                        "failed",
+                        "Rate limited by YouTube. Wait 1 hour.",
+                        error=last_error_str,
+                    )
+                    return
 
-                    if "HTTP Error 403" in last_error_str:
-                        retries += 1
+                if "HTTP Error 403" in last_error_str:
+                    retries += 1
+                    if retries < MAX_RETRIES:
                         time.sleep(RETRY_DELAY)
                     else:
                         self.set_status(
-                            "failed", "Download failed.", error=last_error_str
+                            "failed",
+                            "Failed after max retries (403 Forbidden).",
+                            error=last_error_str,
                         )
-                        break
-                except Exception:
-                    self.set_status(
-                        "failed",
-                        "A processing error occurred.",
-                        error=traceback.format_exc(),
-                    )
+                else:
+                    self.set_status("failed", "Download failed.", error=last_error_str)
                     break
+            except Exception:
+                self.set_status(
+                    "failed",
+                    "A processing error occurred.",
+                    error=traceback.format_exc(),
+                )
+                break
 
-        finally:
-            # --- RESTORED COOKIE CLEANUP ---
-            # This runs regardless of success or failure
-            cookie_file = ydl_opts.get("cookiefile")
-            if cookie_file and os.path.exists(cookie_file):
-                try:
-                    os.remove(cookie_file)
-                    print(f"--- [Job {self.job_id}] Cleaned up temp cookie file.")
-                except OSError as e:
-                    print(f"Warning: could not delete cookie file {cookie_file}: {e}")
+        cookie_file = ydl_opts.get("cookiefile")
+        if cookie_file and os.path.exists(cookie_file):
+            try:
+                os.remove(cookie_file)
+            except OSError as e:
+                print(f"Warning: could not delete cookie file: {e}")
 
     def _finalize(self) -> None:
         self.set_status("processing", "Finalizing files...", self.progress or 100)
