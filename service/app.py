@@ -790,6 +790,7 @@ def resume_job_endpoint(job_id: str) -> Union[Response, tuple[Response, int]]:
 
 # --- (queue_worker - unchanged) ---
 def queue_worker() -> None:
+    print("--- Worker thread loop entered ---", flush=True) # Add this log to verify
     while True:
         job = None
         try:
