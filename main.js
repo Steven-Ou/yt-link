@@ -182,6 +182,8 @@ function createWindow() {
         ...details.responseHeaders,
         "Content-Security-Policy": [
           "default-src 'self' 'unsafe-inline' http://localhost:3000 http://127.0.0.1:5003; " +
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " + // Allow Google Font CSS
+            "font-src 'self' https://fonts.gstatic.com; " + // Allow the actual font files
             "script-src 'self' 'unsafe-eval' 'unsafe-inline'; " +
             "connect-src 'self' http://localhost:3000 http://127.0.0.1:5003",
         ],
