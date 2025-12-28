@@ -174,7 +174,7 @@ class Job:
 
         if self.job_type == "singleVideo":
             selected_format = self.data.get("format") or self.data.get("quality")
-
+            
             if selected_format:
                 quality = f"{selected_format}+bestaudio[ext=m4a]/best"
 

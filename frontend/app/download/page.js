@@ -160,7 +160,7 @@ export default function Home() {
     } else {
       setFormats(data || []);
       if (data && data.length > 0) {
-        setSelectedQuality(data[0].height.toString()); // Set default to best
+        setSelectedQuality(data[0].format_id);
       }
     }
   };
