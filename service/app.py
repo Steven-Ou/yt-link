@@ -183,6 +183,12 @@ class Job:
                         "outtmpl": output_template,
                         "noplaylist": True,
                         "merge_output_format": "mp4",
+                        "postprocessors": [
+                            {
+                                "key": "FFmpegVideoConvertor",
+                                "preferedformat": "mp4",
+                            }
+                        ],
                     }
                 )
         else:  # All audio jobs
@@ -542,7 +548,6 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             "no_warnings": True,
             "nocheckcertificate": True,
             "noplaylist": True,
-            "format": "best",
         }
 
         if cookies:
