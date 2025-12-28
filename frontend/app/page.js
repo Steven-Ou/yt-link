@@ -249,6 +249,7 @@ export default function Home() {
     let body = {
       jobType: type,
       url: url,
+      format:selectedFormat,
       cookies: cookies,
     };
 
