@@ -199,7 +199,7 @@ class Job:
             ydl_opts.update(
                 {
                     # More robust format string: Prefers M4A, then best audio, then any best
-                    "format": "bestaudio[ext=m4a]/bestaudio/best",
+                    "format": "bestaudio[ext=m4a]/bestaudio/best/bestvideo+bestaudio/best",
                     "outtmpl": output_template,
                     "noplaylist": self.job_type == "singleMp3",
                     "ignoreerrors": self.job_type != "singleMp3",
@@ -318,9 +318,9 @@ class Job:
 
     def _finalize(self) -> None:
         self.set_status("processing", "Finalizing files...", self.progress or 100)
-        assert (
-            self.temp_dir and self.info is not None
-        ), "Job temp_dir or info is not set"
+        assert self.temp_dir and self.info is not None, (
+            "Job temp_dir or info is not set"
+        )
 
         if self.job_type == "singleVideo":
             video_extensions = [".mp4", ".mkv", ".webm", ".mov", ".avi"]
@@ -658,7 +658,6 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
 
 @app.route("/start-job", methods=["POST"])
 def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
-
     # --- FIX: The try block now wraps EVERYTHING ---
     try:
         data = request.get_json()  # <--- This line is now safely inside
@@ -790,7 +789,7 @@ def resume_job_endpoint(job_id: str) -> Union[Response, tuple[Response, int]]:
 
 # --- (queue_worker - unchanged) ---
 def queue_worker() -> None:
-    print("--- Worker thread loop entered ---", flush=True) # Add this log to verify
+    print("--- Worker thread loop entered ---", flush=True)  # Add this log to verify
     while True:
         job = None
         try:
@@ -816,6 +815,7 @@ def queue_worker() -> None:
                 job_queue.task_done()
             except:
                 pass
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
