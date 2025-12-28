@@ -171,14 +171,18 @@ export default function Home() {
       setUrl,
       error,
       setError,
-      isApiLoading,
       handleGetFormats,
       formats,
       selectedQuality,
       setSelectedQuality,
+      selectedFormat,
+      setSelectedFormat,
       setCurrentView,
-      currentJob,      // Added: allows JobCard to show progress
-      handleDownload,  // Added: allows buttons to trigger downloads
+      handleClearJob, // Needed to remove the card when finished
+      currentJob, // Needed to display the progress and status
+      isDownloading, // Tracks the initial API call
+      handleDownload,
+      isLoadingFormats,
     };
 
     switch (currentView) {
