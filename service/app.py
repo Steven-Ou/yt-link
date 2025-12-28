@@ -149,6 +149,7 @@ class Job:
     # --- END OF MODIFIED METHOD ---
 
     def _build_ydl_opts(self) -> Dict[str, Any]:
+        # 1. RESTORED: Playlist index template for combined/zip jobs
         output_template = os.path.join(self.temp_dir, "%(title)s.%(ext)s")
         if self.job_type in ["playlistZip", "combineMp3"]:
             output_template = os.path.join(
@@ -163,7 +164,7 @@ class Job:
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
             "ffmpeg_location": ffmpeg_exe,
-            "sleep_interval": 3,
+            "sleep_interval": 3,  # Added to help with rate limits
             "max_sleep_interval": 10,
             "socket_timeout": 30,
             "retries": 10,
@@ -177,6 +178,7 @@ class Job:
                 quality = (
                     "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
                 )
+
 
             ydl_opts.update(
                 {
@@ -192,7 +194,7 @@ class Job:
                     ],
                 }
             )
-        else:  # All audio jobs
+        else:  # Audio jobs
             ydl_opts.update(
                 {
                     "format": "bestaudio[ext=m4a]/bestaudio/best",
@@ -213,7 +215,7 @@ class Job:
             cookie_file = os.path.join(APP_TEMP_DIR, f"cookies_{self.job_id}.txt")
             with open(cookie_file, "w", encoding="utf-8") as f:
                 f.write(self.data["cookies"])
-            ydl_opts["cookiefile"] = cookie_file  # Moved inside if to prevent NameError
+            ydl_opts["cookiefile"] = cookie_file
 
         return ydl_opts
 
