@@ -544,6 +544,7 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             "no_warnings": True,
             "nocheckcertificate": True,
             "noplaylist": True,
+            "format":"best",
         }
 
         if cookies:
