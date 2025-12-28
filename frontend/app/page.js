@@ -9,15 +9,15 @@ import {
   createTheme,
   ThemeProvider,
 } from "@mui/material";
-import { useApi } from "./hooks/useApi";
+import { useApi } from "../hooks/useApi";
 
-import Sidebar from "./components/Sidebar";
-import HomeView from "./components/views/HomeView";
-import CookieView from "./components/views/CookieView";
-import SingleMp3View from "./components/views/SingleMp3View";
-import PlaylistZipView from "./components/views/PlaylistZipView";
-import CombineMp3View from "./components/views/CombineMp3View";
-import SingleVideoView from "./components/views/SingleVideoView";
+import Sidebar from "../components/Sidebar";
+import HomeView from "../components/views/HomeView";
+import CookieView from "../components/views/CookieView";
+import SingleMp3View from "../components/views/SingleMp3View";
+import PlaylistZipView from "../components/views/PlaylistZipView";
+import CombineMp3View from "../components/views/CombineMp3View";
+import SingleVideoView from "../components/views/SingleVideoView";
 
 const drawerWidth = 240;
 
@@ -106,7 +106,8 @@ export default function Home() {
   const [currentView, setCurrentView] = useState("home");
   const [url, setUrl] = useState("");
   const [error, setError] = useState(null);
-  const [formats, setFormats] = useState([]);
+  const [formats, setFormats] = useState([]); // RESTORED: Fixed missing state from original
+  const [selectedFormat, setSelectedFormat] = useState("");
   const [selectedQuality, setSelectedQuality] = useState("");
   const [cookies, setCookies] = useState("");
 
@@ -220,12 +221,12 @@ export default function Home() {
     }
     const cookies = localStorage.getItem("youtubeCookies") || "";
 
-    const { data, error } = await postGetFormats("/api/get-formats", {
+    const { data, error: apiError } = await postGetFormats("/api/get-formats", {
       url,
       cookies,
     });
-    if (error) {
-      setError(error);
+    if (apiError) {
+      setError(apiError);
     } else {
       console.log("Formats data from backend:", data);
       const videoFormats = data.filter((f) => f.resolution);
@@ -249,7 +250,7 @@ export default function Home() {
     let body = {
       jobType: type,
       url: url,
-      format:selectedFormat,
+      format: selectedFormat,
       cookies: cookies,
     };
 
@@ -275,9 +276,9 @@ export default function Home() {
       },
     }));
 
-    const { data, error } = await postDownload(apiEndpoint, body);
-    if (error) {
-      setError(error);
+    const { data, error: dlError } = await postDownload(apiEndpoint, body);
+    if (dlError) {
+      setError(dlError);
       handleClearJob(placeholderId);
     } else {
       console.log("Job started:", data);
@@ -312,9 +313,15 @@ export default function Home() {
       setUrl,
       error,
       setError,
+      handleGetFormats,
+      formats, // Added to props
+      selectedQuality,
+      setSelectedQuality,
+      selectedFormat,
+      setSelectedFormat,
       setCurrentView,
-      currentJob, // Passing the full collection object
       handleClearJob,
+      currentJob, // Added to props so JobCards work
     };
 
     switch (currentView) {
