@@ -174,8 +174,9 @@ class Job:
 
             # If for any reason it's missing, fall back to "best"
             if not quality:
-                quality = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
-
+                quality = (
+                    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
+                )
             ydl_opts.update(
                 {
                     "format": quality,  # <-- This is the fix: Use the format_id directly
@@ -544,7 +545,7 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             "no_warnings": True,
             "nocheckcertificate": True,
             "noplaylist": True,
-            "format":"best",
+            "format": "best",
         }
 
         if cookies:
