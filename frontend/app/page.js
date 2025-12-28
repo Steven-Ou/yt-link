@@ -9,15 +9,15 @@ import {
   createTheme,
   ThemeProvider,
 } from "@mui/material";
-import { useApi } from "../hooks/useApi";
+import { useApi } from "./hooks/useApi";
 
-import Sidebar from "../components/Sidebar";
-import HomeView from "../components/views/HomeView";
-import CookieView from "../components/views/CookieView";
-import SingleMp3View from "../components/views/SingleMp3View";
-import PlaylistZipView from "../components/views/PlaylistZipView";
-import CombineMp3View from "../components/views/CombineMp3View";
-import SingleVideoView from "../components/views/SingleVideoView";
+import Sidebar from "./components/Sidebar";
+import HomeView from "./components/views/HomeView";
+import CookieView from "./components/views/CookieView";
+import SingleMp3View from "./components/views/SingleMp3View";
+import PlaylistZipView from "./components/views/PlaylistZipView";
+import CombineMp3View from "./components/views/CombineMp3View";
+import SingleVideoView from "./components/views/SingleVideoView";
 
 const drawerWidth = 240;
 
