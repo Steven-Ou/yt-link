@@ -188,12 +188,6 @@ class Job:
                     "outtmpl": output_template,
                     "noplaylist": True,
                     "merge_output_format": "mp4",
-                    "postprocessors": [
-                        {
-                            "key": "FFmpegVideoConvertor",
-                            "preferedformat": "mp4",
-                        }
-                    ],
                 }
             )
         else:  # Audio jobs
@@ -366,6 +360,8 @@ class Job:
                 # If the name is already correct, just sanitize it
                 self.file_name = sanitize_filename(original_filename)
         else:
+            time.sleep(1)
+            
             mp3_files = sorted(
                 [
                     os.path.join(self.temp_dir, f)
