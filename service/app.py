@@ -713,40 +713,25 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
         or not job.file_path
         or not os.path.exists(job.file_path)
     ):
-        return jsonify({"error": "Job not found, not ready, or file is missing."}), 404
+        return jsonify({"error": "Job not found or file is missing."}), 404
 
-    def file_generator(
-        file_path: str, temp_dir: Optional[str]
-    ) -> Generator[bytes, None, None]:
-        try:
-            with open(file_path, "rb") as f:
-                while True:
-                    chunk = f.read(8192)
-                    if not chunk:
-                        break
-                    yield chunk
-        finally:
-            # Wait 2 seconds so Electron can finish writing the file before we delete it
-            time.sleep(2)
-            with jobs_lock:
-                jobs.pop(job_id, None)
-            print(f"Cleaned up job and temp files are kept for reuse. job_id: {job_id}")
+    def file_generator(file_path):
+        with open(file_path, "rb") as f:
+            while True:
+                chunk = f.read(8192)
+                if not chunk:
+                    break
+                yield chunk
 
-    # Determine names
+    # Reverted to simplified headers for better Electron compatibility
     final_name = job.file_name if job.file_name else f"{job_id}.mp3"
-    encoded_name = quote(final_name)
-
-    # Get the actual size of the file on your disk
-    file_size = os.path.getsize(job.file_path)
-
-    # Simplified, standard headers
     headers = {
-        "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_name}",
-        "Content-Type": "audio/mpeg",
-        "Content-Length": str(file_size),
+        "Content-Disposition": f'attachment; filename="{quote(final_name)}"',
+        "Content-Type": "application/octet-stream",
+        "Content-Length": str(os.path.getsize(job.file_path)),
     }
 
-    return Response(file_generator(job.file_path, job.temp_dir), headers=headers)
+    return Response(file_generator(job.file_path), headers=headers)
 
 
 @app.route("/pause-all-jobs", methods=["POST"])
