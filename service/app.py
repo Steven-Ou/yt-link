@@ -174,9 +174,7 @@ class Job:
 
             # If for any reason it's missing, fall back to "best"
             if not quality:
-                quality = (
-                    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
-                )
+                quality = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"                
             ydl_opts.update(
                 {
                     "format": quality,
