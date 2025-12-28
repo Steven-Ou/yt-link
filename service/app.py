@@ -174,21 +174,21 @@ class Job:
 
             # If for any reason it's missing, fall back to "best"
             if not quality:
-                quality = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"                
-            ydl_opts.update(
-                {
-                    "format": quality,
-                    "outtmpl": output_template,
-                    "noplaylist": True,
-                    "merge_output_format": "mp4",
-                    "postprocessors": [
-                        {
-                            "key": "FFmpegVideoConvertor",
-                            "preferedformat": "mp4",
-                        }
-                    ],
-                }
-            )
+                quality = "bestvideo+bestaudio/best"
+                ydl_opts.update(
+                    {
+                        "format": quality,
+                        "outtmpl": output_template,
+                        "noplaylist": True,
+                        "merge_output_format": "mp4",
+                        "postprocessors": [
+                            {
+                                "key": "FFmpegVideoConvertor",
+                                "preferedformat": "mp4",
+                            }
+                        ],
+                    }
+                )
         else:  # All audio jobs
             ydl_opts.update(
                 {
