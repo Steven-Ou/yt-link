@@ -173,11 +173,14 @@ class Job:
         }
 
         if self.job_type == "singleVideo":
-            selected_format = self.data.get("format") or self.data.get("quality")            if not quality:
+            selected_format = self.data.get("format") or self.data.get("quality")
+
             if selected_format:
                 quality = f"{selected_format}+bestaudio[ext=m4a]/best"
             else:
-                quality = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
+                quality = (
+                    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
+                )
 
             ydl_opts.update(
                 {
