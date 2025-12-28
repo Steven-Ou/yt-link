@@ -169,12 +169,14 @@ class Job:
         }
 
         if self.job_type == "singleVideo":
-            # Get the format_id (e.g., "137+140") sent from the frontend
             quality = self.data.get("quality")
 
             # If for any reason it's missing, fall back to "best"
             if not quality:
-                quality = "bestvideo+bestaudio/best"
+                quality = (
+                    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
+                )
+
                 ydl_opts.update(
                     {
                         "format": quality,
@@ -529,12 +531,12 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             return jsonify({"error": "Invalid request, URL is required."}), 400
 
         url = data["url"]
+        if url.startswith("# Netscape") or len(url) > 1000:
+            print("CRITICAL: Received cookie data in the URL field. Rejecting request.")
+            return jsonify({"error": "Invalid URL provided."}), 400
+
         cookies = data.get("cookies")
 
-        if url.startswith("# Netscape") or "cookie" in url.lower():
-            print(f"CRITICAL: Frontend sent cookies instead of a URL: {url[:50]}...")
-            return jsonify({"error": "Invalid URL provided (detected cookie data instead of a link)."}), 400
-        
         print(f"\n--- [get-formats] Received request for URL: {url}", flush=True)
         print(
             f"--- [get-formats] Cookies provided: {'Yes' if cookies else 'No'}",
