@@ -177,6 +177,7 @@ class Job:
 
             if selected_format:
                 quality = f"{selected_format}+bestaudio[ext=m4a]/best"
+
             else:
                 quality = (
                     "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
@@ -254,7 +255,7 @@ class Job:
         if self.job_type in ["singleMp3", "singleVideo"]:
             if "download_archive" in ydl_opts:
                 del ydl_opts["download_archive"]
-                
+
         retries = 0
         success = False
         last_error_str = ""
