@@ -171,43 +171,38 @@ export default function Home() {
       setUrl,
       error,
       setError,
+      isApiLoading,
       handleGetFormats,
+      formats,
       selectedQuality,
       setSelectedQuality,
-      selectedFormat,
-      setSelectedFormat,
       setCurrentView,
-      handleClearJob,
-      currentJob, 
-      handleDownload,
-      isDownloading,
-      isLoadingFormats,
-      formats
+      currentJob,      // Added: allows JobCard to show progress
+      handleDownload,  // Added: allows buttons to trigger downloads
     };
 
     switch (currentView) {
       case "home":
-        return <HomeView {...baseProps} />;
+        return <HomeView {...props} />;
       case "singleMp3":
-        return <SingleMp3View {...baseProps} />;
+        return <SingleMp3View {...props} />;
       case "playlistZip":
-        return <PlaylistZipView {...baseProps} />;
+        return <PlaylistZipView {...props} />;
       case "combine":
-        return <CombineMp3View {...baseProps} />;
+        return <CombineMp3View {...props} />;
       case "singleVideo":
-        return <SingleVideoView {...baseProps} />;
+        return <SingleVideoView {...props} />;
       case "cookies":
         return (
           <CookieView
             cookies={cookies}
             setCookies={setCookies}
-            // --- MODIFIED: Pass the new state object ---
             cookieStatus={cookieStatus}
             handleSaveCookies={handleSaveCookies}
           />
         );
       default:
-        return <HomeView {...baseProps} />;
+        return <HomeView {...props} />;
     }
   };
 
