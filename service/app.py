@@ -531,6 +531,10 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
         url = data["url"]
         cookies = data.get("cookies")
 
+        if url.startswith("# Netscape") or "cookie" in url.lower():
+            print(f"CRITICAL: Frontend sent cookies instead of a URL: {url[:50]}...")
+            return jsonify({"error": "Invalid URL provided (detected cookie data instead of a link)."}), 400
+        
         print(f"\n--- [get-formats] Received request for URL: {url}", flush=True)
         print(
             f"--- [get-formats] Cookies provided: {'Yes' if cookies else 'No'}",
