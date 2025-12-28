@@ -171,27 +171,31 @@ export default function Home() {
       setUrl,
       error,
       setError,
-      isApiLoading,
       handleGetFormats,
-      formats,
       selectedQuality,
       setSelectedQuality,
-      setCurrentView, // Pass this for navigation
-      handleDownload: handleDownload, 
-      currentJob: currentJob,
+      selectedFormat,
+      setSelectedFormat,
+      setCurrentView,
+      handleClearJob,
+      currentJob, 
+      handleDownload,
+      isDownloading,
+      isLoadingFormats,
+      formats
     };
 
     switch (currentView) {
       case "home":
-        return <HomeView {...props} />;
+        return <HomeView {...baseProps} />;
       case "singleMp3":
-        return <SingleMp3View {...props} />;
+        return <SingleMp3View {...baseProps} />;
       case "playlistZip":
-        return <PlaylistZipView {...props} />;
+        return <PlaylistZipView {...baseProps} />;
       case "combine":
-        return <CombineMp3View {...props} />;
+        return <CombineMp3View {...baseProps} />;
       case "singleVideo":
-        return <SingleVideoView {...props} />;
+        return <SingleVideoView {...baseProps} />;
       case "cookies":
         return (
           <CookieView
@@ -203,7 +207,7 @@ export default function Home() {
           />
         );
       default:
-        return <HomeView {...props} />;
+        return <HomeView {...baseProps} />;
     }
   };
 
