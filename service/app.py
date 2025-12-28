@@ -173,27 +173,25 @@ class Job:
 
         if self.job_type == "singleVideo":
             quality = self.data.get("quality")
-
-            # If for any reason it's missing, fall back to "best"
             if not quality:
                 quality = (
                     "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
                 )
 
-                ydl_opts.update(
-                    {
-                        "format": quality,
-                        "outtmpl": output_template,
-                        "noplaylist": True,
-                        "merge_output_format": "mp4",
-                        "postprocessors": [
-                            {
-                                "key": "FFmpegVideoConvertor",
-                                "preferedformat": "mp4",
-                            }
-                        ],
-                    }
-                )
+            ydl_opts.update(
+                {
+                    "format": quality,
+                    "outtmpl": output_template,
+                    "noplaylist": True,
+                    "merge_output_format": "mp4",
+                    "postprocessors": [
+                        {
+                            "key": "FFmpegVideoConvertor",
+                            "preferedformat": "mp4",
+                        }
+                    ],
+                }
+            )
         else:  # All audio jobs
             ydl_opts.update(
                 {
@@ -215,7 +213,8 @@ class Job:
             cookie_file = os.path.join(APP_TEMP_DIR, f"cookies_{self.job_id}.txt")
             with open(cookie_file, "w", encoding="utf-8") as f:
                 f.write(self.data["cookies"])
-        ydl_opts["cookiefile"] = cookie_file
+            ydl_opts["cookiefile"] = cookie_file  # Moved inside if to prevent NameError
+
         return ydl_opts
 
     def _progress_hook(self, d: Dict[str, Any]) -> None:
