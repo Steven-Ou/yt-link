@@ -73,7 +73,7 @@ export default function PlaylistZipView({
               )
             }
             disabled={isDownloading || !url}
-            onClick={() => handleDownload("playlistZip")}
+            onClick={onDownloadClick} 
             sx={{ height: 56 }}
           >
             {isDownloading ? "Starting..." : "Download as .zip"}
