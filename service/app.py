@@ -623,11 +623,14 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             try:
                 with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
                     print("--- [get-formats] Calling yt-dlp.extract_info...", flush=True)
+                # Use a small timeout to prevent hanging on Windows
                     info = ydl.extract_info(url, download=False) or {}
-                    print("--- [get-formats] yt-dlp.extract_info finished.", flush=True)
+                    print("--- [get-formats] yt-dlp.extract_info finished successfully.", flush=True)
             except Exception as e:
-                print(f"CRITICAL YT-DLP ERROR: {e}") # This will show in your terminal
-                raise e
+                print(f"\n[CRITICAL BACKEND ERROR]: {str(e)}", flush=True)
+                import traceback
+                traceback.print_exc() 
+                return jsonify({"error": str(e)}), 500
 
         with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
             print("--- [get-formats] Calling yt-dlp.extract_info...", flush=True)
