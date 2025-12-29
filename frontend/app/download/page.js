@@ -125,6 +125,66 @@ export default function Home() {
     });
   };
 
+  const handleDownload = async (type) => {
+    setError(null);
+    if (!url) {
+      setError("Please enter a YouTube URL.");
+      return;
+    }
+
+    const apiEndpoint = "/api/start-job";
+    const savedCookies = localStorage.getItem("youtubeCookies") || "";
+
+    let body = {
+      jobType: type,
+      url: url,
+      format: selectedFormat,
+      cookies: savedCookies,
+    };
+
+    if (type === "singleVideo") {
+      if (!selectedQuality) {
+        setError("Please fetch and select a video quality first.");
+        return;
+      }
+      body.quality = selectedQuality;
+    }
+
+    // Set placeholder for the UI
+    const placeholderId = `pending-${Date.now()}`;
+    setCurrentJob((prev) => ({
+      ...prev,
+      [placeholderId]: {
+        job_id: placeholderId,
+        status: "queued",
+        message: "Job is starting...",
+        file_name: "Resolving video...",
+        progress: 0,
+        url: url,
+      },
+    }));
+
+    const { data, error: dlError } = await postDownload(apiEndpoint, body);
+    if (dlError) {
+      setError(dlError);
+      handleClearJob(placeholderId);
+    } else {
+      console.log("Job started:", data);
+      handleClearJob(placeholderId);
+      setPollingJobId((prev) => [...prev, data.jobId]);
+      setCurrentJob((prev) => ({
+        ...prev,
+        [data.jobId]: {
+          job_id: data.jobId,
+          status: "queued",
+          progress: 0,
+          url: url,
+        },
+      }));
+      setUrl("");
+    }
+  };
+  
   const [cookieStatus, setCookieStatus] = useState({
     message: null,
     type: null,
