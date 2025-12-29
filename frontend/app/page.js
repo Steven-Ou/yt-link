@@ -322,6 +322,7 @@ export default function Home() {
       setCurrentView,
       handleClearJob,
       currentJob, // Added to props so JobCards work
+      jobs:currentJob,
     };
 
     switch (currentView) {
