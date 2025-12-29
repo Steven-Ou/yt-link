@@ -18,6 +18,32 @@ import {
 import JobCard from "../JobCard";
 
 // This component is based on your renderPlaylistZipForm() function
+const handleStartJob = async () => {
+  if (!url) return;
+
+  // Assuming 'jobs' is available via props or context
+  const isDuplicate = Object.values(jobs).some(
+    (job) => 
+      job.url === url && 
+      job.job_type === "playlistZip" && 
+      ["downloading", "processing", "queued"].includes(job.status)
+  );
+
+  if (isDuplicate) {
+    alert("This playlist is already being zipped. Please check the sidebar.");
+    return;
+  }
+
+  const { data, error } = await post("/api/start-job", {
+    url,
+    jobType: "playlistZip",
+    cookies
+  });
+
+  if (error) {
+    // Handle error
+  }
+};
 export default function PlaylistZipView({
   url,
   setUrl,

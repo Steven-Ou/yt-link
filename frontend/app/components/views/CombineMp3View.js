@@ -17,6 +17,25 @@ import {
 } from "@mui/icons-material";
 import JobCard from "../JobCard";
 
+const handleCombine = async () => {
+  const isDuplicate = Object.values(jobs).some(
+    (job) => 
+      job.url === url && 
+      job.job_type === "combineMp3" && 
+      ["downloading", "processing", "queued"].includes(job.status)
+  );
+
+  if (isDuplicate) {
+    alert("This combination job is already in progress.");
+    return;
+  }
+
+  await post("/api/start-job", {
+    url,
+    jobType: "combineMp3",
+    cookies
+  });
+};
 // This component is based on your renderCombineMp3Form() function
 export default function CombineMp3View({
   url,
