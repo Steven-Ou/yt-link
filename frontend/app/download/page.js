@@ -114,8 +114,12 @@ export default function Home() {
   const [cookies, setCookies] = useState("");
   const [selectedFormat, setSelectedFormat] = useState("");
   const [currentJob, setCurrentJob] = useState({});
-  const [isLoadingFormats, setIsLoadingFormats] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);  
+   
+
+  const [pollingJobId, setPollingJobId] = useState([]); 
+  
+  const { post: postGetFormats, isApiLoading: isLoadingFormats } = useApi();
+  const { post: postDownload, isApiLoading: isDownloading } = useApi();
 
   const handleClearJob = (jobId) => {
     setCurrentJob((prev) => {
@@ -184,7 +188,7 @@ export default function Home() {
       setUrl("");
     }
   };
-  
+
   const [cookieStatus, setCookieStatus] = useState({
     message: null,
     type: null,
@@ -198,6 +202,43 @@ export default function Home() {
     setCookies(savedCookies);
   }, []);
 
+  useEffect(() => {
+    if (pollingJobId.length === 0) return;
+
+    const intervalId = setInterval(async () => {
+      for (const jobId of pollingJobId) {
+        try {
+          let baseUrl = "";
+          if (window.electronAPI?.getBackendUrl) {
+            baseUrl = window.electronAPI.getBackendUrl();
+          }
+
+          const statusUrl = baseUrl 
+            ? `${baseUrl}/job-status?jobId=${jobId}` 
+            : `/api/job-status?jobId=${jobId}`;
+
+          const response = await fetch(statusUrl);
+          const job = await response.json();
+
+          setCurrentJob((prev) => ({ ...prev, [jobId]: job }));
+
+          if (job.status === "completed") {
+            setPollingJobId((prev) => prev.filter((id) => id !== jobId));
+            const downloadUrl = `${baseUrl}/download/${job.job_id}`;
+            window.location.href = downloadUrl;
+          } else if (job.status === "failed") {
+            setError(job.message || job.error);
+            setPollingJobId((prev) => prev.filter((id) => id !== jobId));
+            setTimeout(() => handleClearJob(jobId), 10000);
+          }
+        } catch (err) {
+          console.error("Polling error:", err);
+        }
+      }
+    }, 2000);
+    return () => clearInterval(intervalId);
+  }, [pollingJobId]);
+  
   const handleSaveCookies = () => {
     try {
       localStorage.setItem("youtubeCookies", cookies);
