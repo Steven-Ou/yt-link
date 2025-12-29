@@ -107,11 +107,18 @@ export default function SingleVideoView({
               {error}
             </Alert>
           )}
-          {currentJob && (
-            <Box sx={{ mt: 3 }}>
-              <JobCard job={currentJob} onClose={handleClearJob} />
-            </Box>
-          )}
+          <Box sx={{ mt: 4 }}>
+            {currentJob &&
+              typeof currentJob === "object" &&
+              Object.values(currentJob).map((job) => (
+                <Box key={job.job_id} sx={{ mb: 2 }}>
+                  <JobCard
+                    job={job}
+                    onClose={() => handleClearJob(job.job_id)}
+                  />
+                </Box>
+              ))}
+          </Box>
         </Stack>
       </Paper>
     </Container>
