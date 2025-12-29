@@ -376,8 +376,10 @@ class Job:
 
             mp3_files = sorted(
                 [
-                    f for f in os.listdir(self.temp_dir)
-                    if f.lower().endswith(".mp3") and not f.endswith("(Combined).mp3")
+                    os.path.join(self.temp_dir, f)       
+                    for f in os.listdir(self.temp_dir)
+                    if f.lower().endswith(".mp3") 
+                    and not f.endswith("(Combined).mp3")
                 ]
             )
 
