@@ -76,7 +76,7 @@ export default function CombineMp3View({
               )
             }
             disabled={isDownloading || !url}
-            onClick={() => handleDownload("combineMp3")}
+            onClick={onCombineClick}
             sx={{ height: 56 }}
           >
             {isDownloading ? "Starting..." : "Download & Combine"}
