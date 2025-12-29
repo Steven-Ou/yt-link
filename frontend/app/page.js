@@ -276,7 +276,7 @@ export default function Home() {
       },
     }));
 
-    const { data, error: dlError } = await postDownload(apiEndpoint, body);
+    const { data, error: dlError } = await postDownload(apiEndpoint, body, currentJob);
     if (dlError) {
       setError(dlError);
       handleClearJob(placeholderId);
