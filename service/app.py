@@ -227,20 +227,28 @@ class Job:
         self.set_status("processing", "Preparing download...", 0)
         os.makedirs(self.temp_dir, exist_ok=True)
 
-        existing_mp3s = [
-            f for f in os.listdir(self.temp_dir) if f.lower().endswith("mp3")
-        ]
+
+        existing_mp3s = [f for f in os.listdir(self.temp_dir) if f.lower().endswith("mp3")]
+
         if existing_mp3s and self.job_type in ["playlistZip", "combineMp3"]:
-            self.set_status(
-                "processing", "Found existing files! Reusing for combination...", 50
-            )
             try:
-                with yt_dlp.YoutubeDL(
-                    {"quiet": True, "nocheckcertificate": True}
-                ) as ydl:
+                with yt_dlp.YoutubeDL({"quiet": True, "nocheckcertificate": True}) as ydl:
                     self.info = ydl.extract_info(self.url, download=False)
-                self._finalize()
-                return
+
+            # Check if the number of cached MP3s matches the playlist count
+                playlist_count = self.info.get("playlist_count") or len(
+                    self.info.get("entries", [])
+                )
+
+        # Only skip download if we have all the files (or at least more than one)
+                if playlist_count > 0 and len(existing_mp3s) >= playlist_count:
+                    self.set_status("processing", "All files found in cache! Finalizing...", 50)
+                    self._finalize()
+                    return
+                else:
+                    print(
+                        f"Cache incomplete ({len(existing_mp3s)}/{playlist_count}). Continuing download..."
+                    )
             except Exception as e:
                 print(f"Cache re-validation failed: {e}")
 
@@ -361,7 +369,7 @@ class Job:
                 self.file_name = sanitize_filename(original_filename)
         else:
             time.sleep(1)
-            
+
             mp3_files = sorted(
                 [
                     os.path.join(self.temp_dir, f)
@@ -412,13 +420,15 @@ class Job:
                     )
             elif self.job_type == "playlistZip":
                 self.set_status("processing", "Creating ZIP archive...", self.progress)
-                
+
                 time.sleep(1.5)
-                mp3_files = sorted([
-                    os.path.join(self.temp_dir, f)
-                    for f in os.listdir(self.temp_dir)
-                    if f.lower().endswith(".mp3")
-                ])
+                mp3_files = sorted(
+                    [
+                        os.path.join(self.temp_dir, f)
+                        for f in os.listdir(self.temp_dir)
+                        if f.lower().endswith(".mp3")
+                    ]
+                )
                 self.file_name = f"{playlist_title}.zip"
                 self.file_path = os.path.join(self.temp_dir, self.file_name)
                 with zipfile.ZipFile(self.file_path, "w") as zipf:
