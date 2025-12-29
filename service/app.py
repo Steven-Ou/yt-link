@@ -380,14 +380,15 @@ class Job:
 
             mp3_files = sorted(
                 [
-                    os.path.join(self.temp_dir, f)
+                    os.path.join(self.temp_dir, f)       
                     for f in os.listdir(self.temp_dir)
-                    if f.lower().endswith(".mp3") and not f.endswith("(Combined).mp3")
+                    if f.lower().endswith(".mp3") 
+                    and not f.endswith("(Combined).mp3") # Skip combined results
                 ]
             )
 
             if not mp3_files:
-                self.set_status("error", "No MP3 files found to process.")
+                self.set_status("error", "No individual track MP3s found.")
                 return
 
             playlist_title = sanitize_filename(
