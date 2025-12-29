@@ -17,10 +17,28 @@ export const useApi = () => {
   const [isApiLoading, setIsApiLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  
   const post = useCallback(async (endpoint, body) => {
     setIsApiLoading(true);
     setError(null);
 
+    const url = body.url;
+    const jobType = body.jobType;
+
+    if (url && jobType && currentJobs) {
+      const isDuplicate = Object.values(currentJobs).some(
+        (job) => 
+          job.url === url && 
+          job.job_type === jobType && 
+          ['downloading', 'processing', 'queued'].includes(job.status)
+      );
+
+      if (isDuplicate) {
+        console.warn(`[useApi] Duplicate job detected for ${jobType}. Intent already processing.`);
+        setIsApiLoading(false);
+        return { data: null, error: "This download is already in progress." };
+      }
+    }
     // --- START OF THE FIX ---
 
     // 1. Check if we are running in the Electron app
