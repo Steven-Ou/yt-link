@@ -503,7 +503,8 @@ def get_cache_dir(url: str) -> str:
         match = re.search(r"v=([a-zA-Z0-9_-]+)", url)
         if match:
             normalized_url = f"https://www.youtube.com/watch?v={match.group(1)}"
-    url_hash = hashlib.md5(url.encode("utf-8")).hexdigest()
+    
+    url_hash = hashlib.md5(normalized_url.encode("utf-8")).hexdigest()
     return os.path.join(APP_TEMP_DIR, f"cache_{url_hash}")
 
 
