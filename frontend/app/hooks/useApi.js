@@ -18,7 +18,7 @@ export const useApi = () => {
   const [error, setError] = useState(null);
 
   
-  const post = useCallback(async (endpoint, body) => {
+  const post = useCallback(async (endpoint, body, currentJobs) => {
     setIsApiLoading(true);
     setError(null);
 
