@@ -377,13 +377,16 @@ class Job:
                 self.file_name = sanitize_filename(original_filename)
         else:
             time.sleep(1)
+            all_files = os.listdir(self.temp_dir)
 
             mp3_files = sorted(
                 [
                     os.path.join(self.temp_dir, f)
-                    for f in os.listdir(self.temp_dir)
+                    for f in all_files
                     if f.lower().endswith(".mp3")
-                    and not f.endswith("(Combined).mp3")  # Skip combined results
+                    and not f.endswith(
+                        "(Combined).mp3"
+                    )  # Ignore result of 'combineMp3'
                 ]
             )
 
@@ -491,19 +494,20 @@ class Job:
 
 def get_cache_dir(url: str) -> str:
     import re
-    normalized_url =url
+
+    normalized_url = url
     # 1. If it's a playlist link, keep the list ID but strip indices
     if "list=" in url:
         match = re.search(r"list=([a-zA-Z0-9_-]+)", url)
         if match:
             normalized_url = f"https://www.youtube.com/playlist?list={match.group(1)}"
-    
+
     # 2. If it's a single video, strip playlist context to treat it as a single file
     elif "v=" in url:
         match = re.search(r"v=([a-zA-Z0-9_-]+)", url)
         if match:
             normalized_url = f"https://www.youtube.com/watch?v={match.group(1)}"
-    
+
     url_hash = hashlib.md5(normalized_url.encode("utf-8")).hexdigest()
     return os.path.join(APP_TEMP_DIR, f"cache_{url_hash}")
 
