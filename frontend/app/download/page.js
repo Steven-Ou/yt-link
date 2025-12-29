@@ -112,8 +112,19 @@ export default function Home() {
   const [formats, setFormats] = useState([]);
   const [selectedQuality, setSelectedQuality] = useState("best");
   const [cookies, setCookies] = useState("");
+  const [selectedFormat, setSelectedFormat] = useState("");
+  const [currentJob, setCurrentJob] = useState({});
+  const [isLoadingFormats, setIsLoadingFormats] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);  
 
-  // --- MODIFIED: Changed to a single state object to fix the bug ---
+  const handleClearJob = (jobId) => {
+    setCurrentJob((prev) => {
+      const newState = { ...prev };
+      delete newState[jobId];
+      return newState;
+    });
+  };
+
   const [cookieStatus, setCookieStatus] = useState({
     message: null,
     type: null,
