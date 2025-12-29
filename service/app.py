@@ -380,10 +380,10 @@ class Job:
 
             mp3_files = sorted(
                 [
-                    os.path.join(self.temp_dir, f)       
+                    os.path.join(self.temp_dir, f)
                     for f in os.listdir(self.temp_dir)
-                    if f.lower().endswith(".mp3") 
-                    and not f.endswith("(Combined).mp3") # Skip combined results
+                    if f.lower().endswith(".mp3")
+                    and not f.endswith("(Combined).mp3")  # Skip combined results
                 ]
             )
 
@@ -432,19 +432,19 @@ class Job:
             elif self.job_type == "playlistZip":
                 self.set_status("processing", "Creating ZIP archive...", self.progress)
 
-                time.sleep(1.5)
-                mp3_files = sorted(
-                    [
-                        os.path.join(self.temp_dir, f)
-                        for f in os.listdir(self.temp_dir)
-                        if f.lower().endswith(".mp3")
-                    ]
-                )
+                final_tracks = [
+                    f
+                    for f in mp3_files
+                    if not f.endswith(".zip") and not f.endswith("(Combined).mp3")
+                ]
+
                 self.file_name = f"{playlist_title}.zip"
                 self.file_path = os.path.join(self.temp_dir, self.file_name)
+
                 with zipfile.ZipFile(self.file_path, "w") as zipf:
-                    for mp3_file in mp3_files:
+                    for mp3_file in final_tracks:
                         zipf.write(mp3_file, os.path.basename(mp3_file))
+                        
             elif self.job_type == "combineMp3":
                 self.set_status("processing", "Combining all tracks...", self.progress)
                 self.file_name = f"{playlist_title} (Combined).mp3"
