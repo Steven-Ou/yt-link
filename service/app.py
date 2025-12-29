@@ -228,11 +228,15 @@ class Job:
 
         os.makedirs(self.temp_dir, exist_ok=True)
 
-        existing_mp3s = [f for f in os.listdir(self.temp_dir) if f.lower().endswith("mp3")]
+        existing_mp3s = [
+            f for f in os.listdir(self.temp_dir) if f.lower().endswith("mp3")
+        ]
 
         if existing_mp3s and self.job_type in ["playlistZip", "combineMp3"]:
             try:
-                with yt_dlp.YoutubeDL({"quiet": True, "nocheckcertificate": True}) as ydl:
+                with yt_dlp.YoutubeDL(
+                    {"quiet": True, "nocheckcertificate": True}
+                ) as ydl:
                     self.info = ydl.extract_info(self.url, download=False)
 
                 playlist_count = self.info.get("playlist_count") or len(
@@ -372,13 +376,14 @@ class Job:
 
             mp3_files = sorted(
                 [
-                    os.path.join(self.temp_dir, f)
-                    for f in os.listdir(self.temp_dir)
-                    if f.lower().endswith(".mp3")
+                    f for f in os.listdir(self.temp_dir)
+                    if f.lower().endswith(".mp3") and not f.endswith("(Combined).mp3")
                 ]
             )
+
             if not mp3_files:
-                raise Exception("No MP3 files found after conversion.")
+                self.set_status("error", "No MP3 files found to process.")
+                return
 
             playlist_title = sanitize_filename(
                 str(self.info.get("title", "playlist"))
