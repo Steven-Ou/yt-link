@@ -17,33 +17,7 @@ import {
 } from "@mui/icons-material";
 import JobCard from "../JobCard";
 
-// This component is based on your renderPlaylistZipForm() function
-const handleStartJob = async () => {
-  if (!url) return;
 
-  // Assuming 'jobs' is available via props or context
-  const isDuplicate = Object.values(jobs).some(
-    (job) => 
-      job.url === url && 
-      job.job_type === "playlistZip" && 
-      ["downloading", "processing", "queued"].includes(job.status)
-  );
-
-  if (isDuplicate) {
-    alert("This playlist is already being zipped. Please check the sidebar.");
-    return;
-  }
-
-  const { data, error } = await post("/api/start-job", {
-    url,
-    jobType: "playlistZip",
-    cookies
-  });
-
-  if (error) {
-    // Handle error
-  }
-};
 export default function PlaylistZipView({
   url,
   setUrl,
@@ -52,7 +26,27 @@ export default function PlaylistZipView({
   error,
   currentJob,
   handleClearJob,
+  jobs,
 }) {
+  const onDownloadClick = () => {
+    if (!url) return;
+
+    // Check if a job with this URL and Type is already active
+    const isDuplicate = Object.values(jobs || {}).some(
+      (job) => 
+        job.url === url && 
+        job.job_type === "playlistZip" && 
+        ["downloading", "processing", "queued"].includes(job.status)
+    );
+
+    if (isDuplicate) {
+      alert("This playlist is already being zipped. Please check the sidebar.");
+      return;
+    }
+
+    // If not a duplicate, call the original handleDownload prop
+    handleDownload("playlistZip");
+  };
   return (
     <Container maxWidth="md">
       <Paper elevation={3} sx={{ p: 4, mt: 4 }}>
