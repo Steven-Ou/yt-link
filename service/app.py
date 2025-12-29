@@ -229,13 +229,15 @@ class Job:
         os.makedirs(self.temp_dir, exist_ok=True)
 
         existing_mp3s = [
-            f for f in os.listdir(self.temp_dir) if f.lower().endswith("mp3")
+            f
+            for f in os.listdir(self.temp_dir)
+            if f.lower().endswith(".mp3") and not f.endswith("(Combined).mp3")
         ]
 
         if existing_mp3s and self.job_type in ["playlistZip", "combineMp3"]:
             try:
                 with yt_dlp.YoutubeDL(
-                    {"quiet": True, "nocheckcertificate": True}
+                    {"quiet": True, "noprogress": True, "nocheckcertificate": True}
                 ) as ydl:
                     self.info = ydl.extract_info(self.url, download=False)
 
@@ -245,16 +247,18 @@ class Job:
 
                 if playlist_count > 0 and len(existing_mp3s) >= playlist_count:
                     self.set_status(
-                        "processing", "Complete playlist found in cache! Reusing...", 50
+                        "processing",
+                        "Complete tracks found in cache! Finalizing...",
+                        50,
                     )
                     self._finalize()
                     return
                 else:
                     print(
-                        f"Cache incomplete ({len(existing_mp3s)}/{playlist_count}). Continuing download..."
+                        f"Cache incomplete ({len(existing_mp3s)}/{playlist_count}). Downloading missing tracks..."
                     )
             except Exception as e:
-                print(f"Cache re-validation failed: {e}")
+                print(f"Cache validation failed: {e}")
 
         ydl_opts = self._build_ydl_opts()
         if self.job_type in ["singleMp3", "singleVideo"]:
@@ -376,10 +380,9 @@ class Job:
 
             mp3_files = sorted(
                 [
-                    os.path.join(self.temp_dir, f)       
+                    os.path.join(self.temp_dir, f)
                     for f in os.listdir(self.temp_dir)
-                    if f.lower().endswith(".mp3") 
-                    and not f.endswith("(Combined).mp3")
+                    if f.lower().endswith(".mp3") and not f.endswith("(Combined).mp3")
                 ]
             )
 
