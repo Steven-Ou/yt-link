@@ -225,8 +225,8 @@ class Job:
             time.sleep(1)
 
         self.set_status("processing", "Preparing download...", 0)
-        os.makedirs(self.temp_dir, exist_ok=True)
 
+        os.makedirs(self.temp_dir, exist_ok=True)
 
         existing_mp3s = [f for f in os.listdir(self.temp_dir) if f.lower().endswith("mp3")]
 
@@ -235,14 +235,14 @@ class Job:
                 with yt_dlp.YoutubeDL({"quiet": True, "nocheckcertificate": True}) as ydl:
                     self.info = ydl.extract_info(self.url, download=False)
 
-            # Check if the number of cached MP3s matches the playlist count
                 playlist_count = self.info.get("playlist_count") or len(
                     self.info.get("entries", [])
                 )
 
-        # Only skip download if we have all the files (or at least more than one)
                 if playlist_count > 0 and len(existing_mp3s) >= playlist_count:
-                    self.set_status("processing", "All files found in cache! Finalizing...", 50)
+                    self.set_status(
+                        "processing", "Complete playlist found in cache! Reusing...", 50
+                    )
                     self._finalize()
                     return
                 else:
