@@ -775,6 +775,11 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
 
     # Reverted to simplified headers for better Electron compatibility
     final_name = job.file_name if job.file_name else f"{job_id}.mp3"
+    try:
+        final_name.encode('latin-1')
+        disposition = f'attachment; filename="{final_name}"'
+    except UnicodeEncodeError:
+        
     headers = {
         "Content-Disposition": f'attachment; filename="{quote(final_name)}"',
         "Content-Type": "application/octet-stream",
