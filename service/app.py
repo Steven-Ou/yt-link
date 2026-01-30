@@ -169,10 +169,13 @@ class Job:
             "max_sleep_interval": 10,
             "socket_timeout": 30,
             "retries": 10,
-            "cachedir":False,
+            "cachedir": False,
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["android", "web"] # Pretend to be Android to bypass blocks
+                    "player_client": [
+                        "android",
+                        "web",
+                    ]  # Pretend to be Android to bypass blocks
                 }
             },
             "fragment_retries": 10,
@@ -200,7 +203,7 @@ class Job:
         else:  # Audio jobs
             ydl_opts.update(
                 {
-                    "format": "bestaudio[ext=m4a]/bestaudio/best",
+                    "format": "bestaudio/best",
                     "outtmpl": output_template,
                     "noplaylist": self.job_type == "singleMp3",
                     "ignoreerrors": self.job_type != "singleMp3",
@@ -339,9 +342,9 @@ class Job:
 
     def _finalize(self) -> None:
         self.set_status("processing", "Finalizing files...", self.progress or 100)
-        assert self.temp_dir and self.info is not None, (
-            "Job temp_dir or info is not set"
-        )
+        assert (
+            self.temp_dir and self.info is not None
+        ), "Job temp_dir or info is not set"
 
         if self.job_type == "singleVideo":
             video_extensions = [".mp4", ".mkv", ".webm", ".mov", ".avi"]
@@ -783,12 +786,13 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
     # Reverted to simplified headers for better Electron compatibility
     final_name = job.file_name if job.file_name else f"{job_id}.mp3"
     try:
-        final_name.encode('latin-1')
+        final_name.encode("latin-1")
         disposition = f'attachment; filename="{final_name}"'
     except UnicodeEncodeError:
         from urllib.parse import quote
+
         encoded_name = quote(final_name)
-        disposition=f"attachment; filename*=UTF-8''{encoded_name}"
+        disposition = f"attachment; filename*=UTF-8''{encoded_name}"
     headers = {
         "Content-Disposition": disposition,
         "Content-Type": "application/octet-stream",
