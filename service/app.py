@@ -23,7 +23,8 @@ from urllib.parse import quote
 
 app = Flask(__name__)
 CORS(app)
-APP_TEMP_DIR = os.path.join(tempfile.gettempdir(), "yt-link")
+current_dir = os.path.dirname(os.path.abspath(__file__))
+APP_TEMP_DIR = os.path.join(current_dir, "..", "yt_link_cache")
 os.makedirs(APP_TEMP_DIR, exist_ok=True)
 # This will be set at runtime from the command line arguments
 ffmpeg_exe: Optional[str] = None
@@ -150,16 +151,18 @@ class Job:
 
     def _build_ydl_opts(self) -> Dict[str, Any]:
         # 1. RESTORED: Playlist index template for combined/zip jobs
-        output_template = os.path.join(self.temp_dir, "%(title)s.%(ext)s")
+        output_template = os.path.join(self.temp_dir, "%(title)s.100s.%(ext)s")
         if self.job_type in ["playlistZip", "combineMp3"]:
             output_template = os.path.join(
                 self.temp_dir, "%(playlist_index)03d-%(title).100s.%(ext)s"
             )
 
         ydl_opts: Dict[str, Any] = {
+            "verbose":True,
             "quiet": True,
             "no_warnings": True,
             "noprogress": True,
+            "nopart": True,
             "logger": SafeLogger(),
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
@@ -168,7 +171,10 @@ class Job:
             "max_sleep_interval": 10,
             "socket_timeout": 30,
             "retries": 10,
+            "overwrites": True,
+            "continue_dl": False,
             "fragment_retries": 10,
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
             "download_archive": os.path.join(self.temp_dir, "downloaded.txt"),
         }
 
@@ -193,7 +199,7 @@ class Job:
         else:  # Audio jobs
             ydl_opts.update(
                 {
-                    "format": "bestaudio[ext=m4a]/bestaudio/best",
+                    "format": "bestaudio/best",
                     "outtmpl": output_template,
                     "noplaylist": self.job_type == "singleMp3",
                     "ignoreerrors": self.job_type != "singleMp3",
