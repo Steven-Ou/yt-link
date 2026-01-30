@@ -23,8 +23,7 @@ from urllib.parse import quote
 
 app = Flask(__name__)
 CORS(app)
-current_dir = os.path.dirname(os.path.abspath(__file__))
-APP_TEMP_DIR = os.path.join(current_dir, "..", "yt_link_cache")
+APP_TEMP_DIR = os.path.join(tempfile.gettempdir(), "yt-link")
 os.makedirs(APP_TEMP_DIR, exist_ok=True)
 # This will be set at runtime from the command line arguments
 ffmpeg_exe: Optional[str] = None
@@ -151,7 +150,7 @@ class Job:
 
     def _build_ydl_opts(self) -> Dict[str, Any]:
         # 1. RESTORED: Playlist index template for combined/zip jobs
-        output_template = os.path.join(self.temp_dir, "%(title)s.zzzz%(ext)s")
+        output_template = os.path.join(self.temp_dir, "%(title)s.%(ext)s")
         if self.job_type in ["playlistZip", "combineMp3"]:
             output_template = os.path.join(
                 self.temp_dir, "%(playlist_index)03d-%(title).100s.%(ext)s"
@@ -161,7 +160,6 @@ class Job:
             "quiet": True,
             "no_warnings": True,
             "noprogress": True,
-            "nopart": True,
             "logger": SafeLogger(),
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
