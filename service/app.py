@@ -150,10 +150,10 @@ class Job:
 
     def _build_ydl_opts(self) -> Dict[str, Any]:
         # 1. RESTORED: Playlist index template for combined/zip jobs
-        output_template = os.path.join(self.temp_dir, "%(title).50s.%(ext)s")
+        output_template = os.path.join(self.temp_dir, "%(id)s.%(ext)s")
         if self.job_type in ["playlistZip", "combineMp3"]:
             output_template = os.path.join(
-                self.temp_dir, "%(playlist_index)03d-%(title).50s.%(ext)s"
+                self.temp_dir, "%(playlist_index)03d-%(id)s.%(ext)s"
             )
 
         ydl_opts: Dict[str, Any] = {
@@ -164,10 +164,17 @@ class Job:
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
             "ffmpeg_location": ffmpeg_exe,
+            "outtmpl": output_template,
             "sleep_interval": 3,  # Added to help with rate limits
             "max_sleep_interval": 10,
             "socket_timeout": 30,
             "retries": 10,
+            "cachedir":False,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "web"] # Pretend to be Android to bypass blocks
+                }
+            },
             "fragment_retries": 10,
             "download_archive": os.path.join(self.temp_dir, "downloaded.txt"),
         }
