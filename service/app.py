@@ -779,9 +779,10 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
         final_name.encode('latin-1')
         disposition = f'attachment; filename="{final_name}"'
     except UnicodeEncodeError:
-        
+        encoded_name = quote(final_name)
+        disposition=f"attachment; filename*=UTF-8''{encoded_name}"
     headers = {
-        "Content-Disposition": f'attachment; filename="{quote(final_name)}"',
+        "Content-Disposition": disposition,
         "Content-Type": "application/octet-stream",
         "Content-Length": str(os.path.getsize(job.file_path)),
     }
