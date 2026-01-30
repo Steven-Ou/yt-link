@@ -212,6 +212,10 @@ function createWindow() {
     (event, item, webContents) => {
       // Get the user's "Downloads" path
       const downloadsPath = path.join(app.getPath("downloads"), "yt-link"); // Get the sanitized filename from the server
+
+      if (!fs.existsSync(downloadsPath)) {
+        fs.mkdirSync(downloadsPath, { recursive: true });
+      }
       const suggestedFilename = item.getFilename();
 
       // Construct the full save path
