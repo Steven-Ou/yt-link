@@ -158,24 +158,22 @@ class Job:
             )
 
         ydl_opts: Dict[str, Any] = {
-            "verbose":True,
-            "quiet": True,
-            "no_warnings": True,
-            "noprogress": True,
-            "nopart": True,
+            "verbose": True,
             "logger": SafeLogger(),
             "progress_hooks": [self._progress_hook],
-            "nocheckcertificate": True,
             "ffmpeg_location": ffmpeg_exe,
-            "sleep_interval": 3,  # Added to help with rate limits
-            "max_sleep_interval": 10,
-            "socket_timeout": 30,
-            "retries": 10,
+            
+            "hls_prefer_native": False,   # Force use of ffmpeg for HLS instead of native downloader
+            "external_downloader": "ffmpeg", 
+            "external_downloader_args": {
+                "ffmpeg_i": ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
+            },
+
+            "nocheckcertificate": True,
             "overwrites": True,
-            "continue_dl": False,
-            "fragment_retries": 10,
+            "continuedl": False,
+            "socket_timeout": 60,
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-            "download_archive": os.path.join(self.temp_dir, "downloaded.txt"),
         }
 
         if self.job_type == "singleVideo":
