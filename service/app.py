@@ -161,6 +161,7 @@ class Job:
             "quiet": True,
             "no_warnings": True,
             "noprogress": True,
+            "nopart": True,
             "logger": SafeLogger(),
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
