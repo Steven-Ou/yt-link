@@ -33,7 +33,7 @@ function getPythonBackendConfig(port, ffmpegPath) {
     const backendPath = path.join(process.resourcesPath, "backend", execName);
     if (!fs.existsSync(backendPath)) {
       console.error(
-        `[Electron] ERROR: Packaged backend not found at: ${backendPath}`
+        `[Electron] ERROR: Packaged backend not found at: ${backendPath}`,
       );
       return null;
     }
@@ -48,7 +48,7 @@ function getPythonBackendConfig(port, ffmpegPath) {
     const scriptPath = path.join(__dirname, "service", "app.py");
     if (!fs.existsSync(scriptPath)) {
       console.error(
-        `[Electron] ERROR: Dev backend script not found at: ${scriptPath}`
+        `[Electron] ERROR: Dev backend script not found at: ${scriptPath}`,
       );
       return null;
     }
@@ -64,10 +64,10 @@ function getPythonBackendConfig(port, ffmpegPath) {
     // Add a check to give a good error if the venv is missing
     if (!fs.existsSync(pythonCommand)) {
       console.error(
-        `[Electron] FATAL: Python venv not found at: ${pythonCommand}`
+        `[Electron] FATAL: Python venv not found at: ${pythonCommand}`,
       );
       console.error(
-        "[Electron] Please run 'python -m venv venv' in the /service folder."
+        "[Electron] Please run 'python -m venv venv' in the /service folder.",
       );
     }
 
@@ -95,7 +95,7 @@ function getFFmpegPath() {
       return packagedPath;
     }
     console.error(
-      `[Electron] ERROR: Could not find packaged ffmpeg at: ${packagedPath}`
+      `[Electron] ERROR: Could not find packaged ffmpeg at: ${packagedPath}`,
     );
   } else {
     // --- Development Mode ---
@@ -126,7 +126,7 @@ function startPythonBackend(port) {
   const backendConfig = getPythonBackendConfig(port, ffmpegPath);
   if (!backendConfig) {
     console.error(
-      "[Electron] Failed to get config for backend. Aborting start."
+      "[Electron] Failed to get config for backend. Aborting start.",
     );
     return;
   }
@@ -196,7 +196,7 @@ function createWindow() {
       __dirname,
       "frontend",
       "out",
-      "index.html"
+      "index.html",
     );
     console.log(`[Electron] Loading production build from: ${staticBuildPath}`);
     mainWindow.loadFile(staticBuildPath);
@@ -211,8 +211,7 @@ function createWindow() {
     "will-download",
     (event, item, webContents) => {
       // Get the user's "Downloads" path
-      const downloadsPath = app.getPath("downloads");
-      // Get the sanitized filename from the server
+      const downloadsPath = path.join(app.getPath("downloads"), "yt-link"); // Get the sanitized filename from the server
       const suggestedFilename = item.getFilename();
 
       // Construct the full save path
@@ -231,7 +230,7 @@ function createWindow() {
           console.error(`[Electron] Download failed: ${state}`);
         }
       });
-    }
+    },
   );
 
   return mainWindow;
@@ -239,7 +238,7 @@ function createWindow() {
 
 app.on("ready", () => {
   console.log(
-    "[Electron] App is ready, creating window and starting backend..."
+    "[Electron] App is ready, creating window and starting backend...",
   );
   // This order is correct
   createWindow();
