@@ -150,10 +150,10 @@ class Job:
 
     def _build_ydl_opts(self) -> Dict[str, Any]:
         # 1. RESTORED: Playlist index template for combined/zip jobs
-        output_template = os.path.join(self.temp_dir, "%(title)s.%(ext)s")
+        output_template = os.path.join(self.temp_dir, "%(title).50s.%(ext)s")
         if self.job_type in ["playlistZip", "combineMp3"]:
             output_template = os.path.join(
-                self.temp_dir, "%(playlist_index)03d-%(title).100s.%(ext)s"
+                self.temp_dir, "%(playlist_index)03d-%(title).50s.%(ext)s"
             )
 
         ydl_opts: Dict[str, Any] = {
@@ -779,6 +779,7 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
         final_name.encode('latin-1')
         disposition = f'attachment; filename="{final_name}"'
     except UnicodeEncodeError:
+        from urllib.parse import quote
         encoded_name = quote(final_name)
         disposition=f"attachment; filename*=UTF-8''{encoded_name}"
     headers = {
