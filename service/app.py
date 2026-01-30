@@ -23,7 +23,8 @@ from urllib.parse import quote
 
 app = Flask(__name__)
 CORS(app)
-APP_TEMP_DIR = os.path.join(tempfile.gettempdir(), "yt-link")
+current_dir = os.path.dirname(os.path.abspath(__file__))
+APP_TEMP_DIR = os.path.join(current_dir, "..", "yt_link_cache")
 os.makedirs(APP_TEMP_DIR, exist_ok=True)
 # This will be set at runtime from the command line arguments
 ffmpeg_exe: Optional[str] = None
