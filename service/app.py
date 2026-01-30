@@ -151,29 +151,27 @@ class Job:
 
     def _build_ydl_opts(self) -> Dict[str, Any]:
         # 1. RESTORED: Playlist index template for combined/zip jobs
-        output_template = os.path.join(self.temp_dir, "%(title)s.100s.%(ext)s")
+        output_template = os.path.join(self.temp_dir, "%(title)s.zzzz%(ext)s")
         if self.job_type in ["playlistZip", "combineMp3"]:
             output_template = os.path.join(
                 self.temp_dir, "%(playlist_index)03d-%(title).100s.%(ext)s"
             )
 
         ydl_opts: Dict[str, Any] = {
-            "verbose": True,
+            "quiet": True,
+            "no_warnings": True,
+            "noprogress": True,
+            "nopart": True,
             "logger": SafeLogger(),
             "progress_hooks": [self._progress_hook],
-            "ffmpeg_location": ffmpeg_exe,
-            
-            "hls_prefer_native": False,   # Force use of ffmpeg for HLS instead of native downloader
-            "external_downloader": "ffmpeg", 
-            "external_downloader_args": {
-                "ffmpeg_i": ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
-            },
-
             "nocheckcertificate": True,
-            "overwrites": True,
-            "continuedl": False,
-            "socket_timeout": 60,
-            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "ffmpeg_location": ffmpeg_exe,
+            "sleep_interval": 3,  # Added to help with rate limits
+            "max_sleep_interval": 10,
+            "socket_timeout": 30,
+            "retries": 10,
+            "fragment_retries": 10,
+            "download_archive": os.path.join(self.temp_dir, "downloaded.txt"),
         }
 
         if self.job_type == "singleVideo":
@@ -197,7 +195,7 @@ class Job:
         else:  # Audio jobs
             ydl_opts.update(
                 {
-                    "format": "bestaudio/best",
+                    "format": "bestaudio[ext=m4a]/bestaudio/best",
                     "outtmpl": output_template,
                     "noplaylist": self.job_type == "singleMp3",
                     "ignoreerrors": self.job_type != "singleMp3",
