@@ -150,7 +150,7 @@ class Job:
 
     def _build_ydl_opts(self) -> Dict[str, Any]:
         # 1. RESTORED: Playlist index template for combined/zip jobs
-        output_template = os.path.join(self.temp_dir, "%(title)s.%(ext)s")
+        output_template = os.path.join(self.temp_dir, "%(title).50s.%(ext)s")
         if self.job_type in ["playlistZip", "combineMp3"]:
             output_template = os.path.join(
                 self.temp_dir, "%(playlist_index)03d-%(title).100s.%(ext)s"
