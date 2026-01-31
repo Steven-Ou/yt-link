@@ -433,13 +433,19 @@ class Job:
                     )
             elif self.job_type == "playlistZip":
                 self.set_status("processing", "Creating ZIP archive...", self.progress)
-                time.sleep(1.5)
+                time.sleep(2)
                 final_tracks = [
                     os.path.join(self.temp_dir, f)
                     for f in os.listdir(self.temp_dir)
-                    if f.lower().endswith(".mp3") and not f.endswith("(Combined).mp3")
+                    if f.lower().endswith(".mp3")
+                    and not f.endswith("(Combined).mp3")
+                    and not f.endswith(".part")
                 ]
-
+                print(f"--- [PlaylistZip] Found {len(final_tracks)} MP3 tracks in {self.temp_dir}")
+                
+                if not final_tracks:
+                    raise Exception(f"No individual track MP3s found in cache directory: {self.temp_dir}")
+                
                 self.file_name = f"{playlist_title}.zip"
                 self.file_path = os.path.join(self.temp_dir, self.file_name)
 
