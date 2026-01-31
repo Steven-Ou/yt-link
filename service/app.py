@@ -37,13 +37,13 @@ RETRY_DELAY = 300  # 5 minutes
 
 
 class SafeLogger:
-    def debug(self, msg: str):
+    def debug(self, msg):
         pass
 
-    def warning(self, msg: str):
+    def warning(self, msg):
         pass
 
-    def error(self, msg: str):
+    def error(self, msg):
         # Safely handle characters that crash the Windows/Electron pipe
         try:
             clean_msg = str(msg).encode("ascii", "ignore").decode("ascii")
@@ -150,10 +150,10 @@ class Job:
 
     def _build_ydl_opts(self) -> Dict[str, Any]:
         # 1. RESTORED: Playlist index template for combined/zip jobs
-        output_template = os.path.join(self.temp_dir, "%(title).50s.%(ext)s")
+        output_template = os.path.join(self.temp_dir, "%(title)s.%(ext)s")
         if self.job_type in ["playlistZip", "combineMp3"]:
             output_template = os.path.join(
-                self.temp_dir, "%(playlist_index)03d-%(title).50s.%(ext)s"
+                self.temp_dir, "%(playlist_index)03d-%(title).100s.%(ext)s"
             )
 
         ydl_opts: Dict[str, Any] = {
@@ -161,7 +161,6 @@ class Job:
             "no_warnings": True,
             "noprogress": True,
             "logger": SafeLogger(),
-            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
             "ffmpeg_location": ffmpeg_exe,
@@ -179,7 +178,9 @@ class Job:
             if selected_format:
                 quality = f"{selected_format}+bestaudio/best"
             else:
-                quality = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+                quality = (
+                    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
+                )
 
             ydl_opts.update(
                 {
@@ -218,8 +219,6 @@ class Job:
         self.update_progress(d)
 
     def run(self) -> None:
-        self._log("Entering Job.run()")
-    
         # Initial pause check
         while self.status == "paused":
             self.set_status("paused", "Job is paused. Waiting for resume...")
@@ -227,9 +226,7 @@ class Job:
 
         self.set_status("processing", "Preparing download...", 0)
 
-        if not os.path.exists(self.temp_dir):
-            os.makedirs(self.temp_dir, exist_ok=True)
-            self._log("Created temp directory.")
+        os.makedirs(self.temp_dir, exist_ok=True)
 
         existing_mp3s = [
             f
@@ -332,21 +329,9 @@ class Job:
                 os.remove(cookie_file)
             except OSError as e:
                 print(f"Warning: could not delete cookie file: {e}")
-                
-    def _log(self, message: str, is_error: bool = False):
-        """Aggressive logging to bypass Windows buffering."""
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        formatted_msg = f"DEBUG_JOB_{self.job_id}: {message}"
-    
-        print(f"{formatted_msg}", flush=True)
-        if is_error:
-            print(f"ERROR_{formatted_msg}", file=sys.stderr, flush=True)
-            
+
     def _finalize(self) -> None:
         self.set_status("processing", "Finalizing files...", self.progress or 100)
-        
-        self._log(f"Finalizing {self.job_type}. Cache dir: {self.temp_dir}")
-        
         assert self.temp_dir and self.info is not None, (
             "Job temp_dir or info is not set"
         )
@@ -391,9 +376,9 @@ class Job:
                 # If the name is already correct, just sanitize it
                 self.file_name = sanitize_filename(original_filename)
         else:
-            time.sleep(1.5)
+            time.sleep(1)
             all_files = os.listdir(self.temp_dir)
-            self._log(f"Files in cache: {all_files}")
+
             mp3_files = sorted(
                 [
                     os.path.join(self.temp_dir, f)
@@ -406,7 +391,6 @@ class Job:
             )
 
             if not mp3_files:
-                self._log(f"CRITICAL: No MP3s found. Directory state: {all_files}", is_error=True)
                 self.set_status("error", "No individual track MP3s found.")
                 return
 
@@ -450,19 +434,13 @@ class Job:
                     )
             elif self.job_type == "playlistZip":
                 self.set_status("processing", "Creating ZIP archive...", self.progress)
-                time.sleep(2)
+                time.sleep(1.5)
                 final_tracks = [
                     os.path.join(self.temp_dir, f)
                     for f in os.listdir(self.temp_dir)
-                    if f.lower().endswith(".mp3")
-                    and not f.endswith("(Combined).mp3")
-                    and not f.endswith(".part")
+                    if f.lower().endswith(".mp3") and not f.endswith("(Combined).mp3")
                 ]
-                print(f"--- [PlaylistZip] Found {len(final_tracks)} MP3 tracks in {self.temp_dir}")
-                
-                if not final_tracks:
-                    raise Exception(f"No individual track MP3s found in cache directory: {self.temp_dir}")
-                
+
                 self.file_name = f"{playlist_title}.zip"
                 self.file_path = os.path.join(self.temp_dir, self.file_name)
 
@@ -642,6 +620,23 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
                     flush=True,
                 )
                 pass
+            try:
+                with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
+                    print(
+                        "--- [get-formats] Calling yt-dlp.extract_info...", flush=True
+                    )
+                    # Use a small timeout to prevent hanging on Windows
+                    info = ydl.extract_info(url, download=False) or {}
+                    print(
+                        "--- [get-formats] yt-dlp.extract_info finished successfully.",
+                        flush=True,
+                    )
+            except Exception as e:
+                print(f"\n[CRITICAL BACKEND ERROR]: {str(e)}", flush=True)
+                import traceback
+
+                traceback.print_exc()
+                return jsonify({"error": str(e)}), 500
 
         with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
             print("--- [get-formats] Calling yt-dlp.extract_info...", flush=True)
@@ -730,20 +725,21 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
 
 @app.route("/start-job", methods=["POST"])
 def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
+    # --- FIX: The try block now wraps EVERYTHING ---
     try:
-        data = request.get_json()  
+        data = request.get_json()  # <--- This line is now safely inside
         if not data or "url" not in data or "jobType" not in data:
             return jsonify({"error": "Invalid request body"}), 400
 
         job_id = str(uuid.uuid4())
         job_type = data["jobType"]
-        print(f"--- API TRIGGERED: Job {job_id} for URL {data.get('url')} ---", flush=True)
+
         job = Job(job_id=job_id, job_type=job_type, data=data)
 
         with jobs_lock:
             jobs[job_id] = job
         job_queue.put(job)
-        print(f"--- QUEUE STATUS: Size is now {job_queue.qsize()} ---", flush=True)     
+
         print(f"Job enqueued: {job_id} ({job_type})")
         return jsonify({"jobId": job_id})
 
@@ -796,16 +792,8 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
 
     # Reverted to simplified headers for better Electron compatibility
     final_name = job.file_name if job.file_name else f"{job_id}.mp3"
-    try:
-        final_name.encode("latin-1")
-        disposition = f'attachment; filename="{final_name}"'
-    except UnicodeEncodeError:
-        from urllib.parse import quote
-
-        encoded_name = quote(final_name)
-        disposition = f"attachment; filename*=UTF-8''{encoded_name}"
     headers = {
-        "Content-Disposition": disposition,
+        "Content-Disposition": f'attachment; filename="{quote(final_name)}"',
         "Content-Type": "application/octet-stream",
         "Content-Length": str(os.path.getsize(job.file_path)),
     }
@@ -853,17 +841,18 @@ def resume_job_endpoint(job_id: str) -> Union[Response, tuple[Response, int]]:
 
 # --- (queue_worker - unchanged) ---
 def queue_worker() -> None:
-    print("--- Worker thread loop entered ---", flush=True)  
+    print("--- Worker thread loop entered ---", flush=True)  # Add this log to verify
     while True:
         job = None
         try:
             job = job_queue.get()
             if job is None:
                 continue
-            print(f"--- WORKER PICKUP: Starting Job {job.job_id} ---", flush=True)
-            job.run()
-            print(f"--- WORKER COMPLETE: Finished Job {job.job_id} ---", flush=True)
+
             print(f"Worker thread picked up job: {job.job_id} ({job.job_type})")
+            job.run()
+            print(f"Worker thread finished job: {job.job_id}")
+
             job_queue.task_done()
 
         except Exception as e:
