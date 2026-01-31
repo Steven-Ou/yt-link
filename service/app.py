@@ -328,6 +328,7 @@ class Job:
                 os.remove(cookie_file)
             except OSError as e:
                 print(f"Warning: could not delete cookie file: {e}")
+                
     def _log(self, message: str, is_error: bool = False):
         """Standardized logging for Windows debugging."""
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -336,8 +337,12 @@ class Job:
             print(f"{prefix} ERROR: {message}", file=sys.stderr, flush=True)
         else:
             print(f"{prefix} INFO: {message}", flush=True)
+            
     def _finalize(self) -> None:
         self.set_status("processing", "Finalizing files...", self.progress or 100)
+        
+        self._log(f"Finalizing {self.job_type}. Cache dir: {self.temp_dir}")
+        
         assert self.temp_dir and self.info is not None, (
             "Job temp_dir or info is not set"
         )
@@ -382,9 +387,9 @@ class Job:
                 # If the name is already correct, just sanitize it
                 self.file_name = sanitize_filename(original_filename)
         else:
-            time.sleep(1)
+            time.sleep(1.5)
             all_files = os.listdir(self.temp_dir)
-
+            self._log(f"Files in cache: {all_files}")
             mp3_files = sorted(
                 [
                     os.path.join(self.temp_dir, f)
@@ -397,6 +402,7 @@ class Job:
             )
 
             if not mp3_files:
+                self._log(f"CRITICAL: No MP3s found. Directory state: {all_files}", is_error=True)
                 self.set_status("error", "No individual track MP3s found.")
                 return
 
