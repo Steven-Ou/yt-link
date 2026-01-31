@@ -37,13 +37,13 @@ RETRY_DELAY = 300  # 5 minutes
 
 
 class SafeLogger:
-    def debug(self, msg:str):
+    def debug(self, msg: str):
         pass
 
-    def warning(self, msg:str):
+    def warning(self, msg: str):
         pass
 
-    def error(self, msg:str):
+    def error(self, msg: str):
         # Safely handle characters that crash the Windows/Electron pipe
         try:
             clean_msg = str(msg).encode("ascii", "ignore").decode("ascii")
@@ -161,7 +161,7 @@ class Job:
             "no_warnings": True,
             "noprogress": True,
             "logger": SafeLogger(),
-            "extractor_args": {"youtube": {"player_client": ["default", "-android_sdkless"]}},
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
             "ffmpeg_location": ffmpeg_exe,
