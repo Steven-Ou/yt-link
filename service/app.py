@@ -218,6 +218,8 @@ class Job:
         self.update_progress(d)
 
     def run(self) -> None:
+        self._log("Entering Job.run()")
+    
         # Initial pause check
         while self.status == "paused":
             self.set_status("paused", "Job is paused. Waiting for resume...")
@@ -225,7 +227,9 @@ class Job:
 
         self.set_status("processing", "Preparing download...", 0)
 
-        os.makedirs(self.temp_dir, exist_ok=True)
+        if not os.path.exists(self.temp_dir):
+            os.makedirs(self.temp_dir, exist_ok=True)
+            self._log("Created temp directory.")
 
         existing_mp3s = [
             f
@@ -850,14 +854,15 @@ def resume_job_endpoint(job_id: str) -> Union[Response, tuple[Response, int]]:
 
 # --- (queue_worker - unchanged) ---
 def queue_worker() -> None:
-    print("--- Worker thread loop entered ---", flush=True)  # Add this log to verify
+    print("--- Worker thread loop entered ---", flush=True)  
     while True:
-        job = None
         try:
             job = job_queue.get()
             if job is None:
                 continue
-
+            job._log(f"Worker picked up job from queue. Type: {job.job_type}")
+            job.run()
+            job._log("Worker finished execution of job.run()")
             print(f"Worker thread picked up job: {job.job_id} ({job.job_type})")
             job.run()
             print(f"Worker thread finished job: {job.job_id}")
