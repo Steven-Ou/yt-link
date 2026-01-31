@@ -328,7 +328,14 @@ class Job:
                 os.remove(cookie_file)
             except OSError as e:
                 print(f"Warning: could not delete cookie file: {e}")
-
+    def _log(self, message: str, is_error: bool = False):
+        """Standardized logging for Windows debugging."""
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        prefix = f"[{timestamp}] [Job {self.job_id}]"
+        if is_error:
+            print(f"{prefix} ERROR: {message}", file=sys.stderr, flush=True)
+        else:
+            print(f"{prefix} INFO: {message}", flush=True)
     def _finalize(self) -> None:
         self.set_status("processing", "Finalizing files...", self.progress or 100)
         assert self.temp_dir and self.info is not None, (
