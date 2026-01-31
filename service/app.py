@@ -161,8 +161,11 @@ class Job:
             "no_warnings": True,
             "noprogress": True,
             "logger": SafeLogger(),
+            "allow_unplayable_formats": True,
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
+            "extract_flat": "in_playlist",
+            "remote_components": "ejs:github",
             "ffmpeg_location": ffmpeg_exe,
             "sleep_interval": 3,  # Added to help with rate limits
             "max_sleep_interval": 10,
