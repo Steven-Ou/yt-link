@@ -37,13 +37,13 @@ RETRY_DELAY = 300  # 5 minutes
 
 
 class SafeLogger:
-    def debug(self, msg):
+    def debug(self, msg:str):
         pass
 
-    def warning(self, msg):
+    def warning(self, msg:str):
         pass
 
-    def error(self, msg):
+    def error(self, msg:str):
         # Safely handle characters that crash the Windows/Electron pipe
         try:
             clean_msg = str(msg).encode("ascii", "ignore").decode("ascii")
@@ -161,6 +161,7 @@ class Job:
             "no_warnings": True,
             "noprogress": True,
             "logger": SafeLogger(),
+            "cookiesfrombrowser": ('chrome',),
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
             "ffmpeg_location": ffmpeg_exe,
@@ -178,9 +179,7 @@ class Job:
             if selected_format:
                 quality = f"{selected_format}+bestaudio/best"
             else:
-                quality = (
-                    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
-                )
+                quality = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
 
             ydl_opts.update(
                 {
@@ -776,12 +775,13 @@ def download_file_route(job_id: str) -> Union[Response, tuple[Response, int]]:
     # Reverted to simplified headers for better Electron compatibility
     final_name = job.file_name if job.file_name else f"{job_id}.mp3"
     try:
-        final_name.encode('latin-1')
+        final_name.encode("latin-1")
         disposition = f'attachment; filename="{final_name}"'
     except UnicodeEncodeError:
         from urllib.parse import quote
+
         encoded_name = quote(final_name)
-        disposition=f"attachment; filename*=UTF-8''{encoded_name}"
+        disposition = f"attachment; filename*=UTF-8''{encoded_name}"
     headers = {
         "Content-Disposition": disposition,
         "Content-Type": "application/octet-stream",
