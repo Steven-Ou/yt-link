@@ -162,7 +162,6 @@ class Job:
             "noprogress": True,
             "logger": SafeLogger(),
             "extractor_args": {"youtube": {"player_client": ["default", "-android_sdkless"]}},
-            "cookiesfrombrowser": ('chrome',),
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
             "ffmpeg_location": ffmpeg_exe,
