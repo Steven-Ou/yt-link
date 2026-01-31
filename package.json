@@ -11,7 +11,7 @@
     "dev-frontend": "cd frontend && npm install && npm run dev",
     "dev-electron": "wait-on http://localhost:3000 && electron .",
     "build:frontend": "cd frontend && npm install && npm run build",
-    "build:backend": "cd service && pip install -r requirements.txt && python -m PyInstaller app.py --noconfirm --onefile --name yt-link-backend --distpath ./dist",
+    "build:backend": "cd service && pip install -r requirements.txt && python -m PyInstaller app.py --noconfirm --onefile --name yt-link-backend --distpath ./dist --collect-submodules yt_dlp --hidden-import yt_dlp.extractor.lazy_extractors",
     "build": "npm run build:frontend && npm run build:backend && npm run dist",
     "dist": "electron-builder --publish never",
     "clean": "rimraf frontend/.next frontend/out service/dist service/build"
