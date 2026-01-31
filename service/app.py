@@ -158,13 +158,16 @@ class Job:
 
         ydl_opts: Dict[str, Any] = {
             "quiet": True,
-            "no_warnings": True,
+            "no_warnings": False,
             "noprogress": True,
             "logger": SafeLogger(),
+            "format": "bestaudio/best",
+            "outtmpl": output_template,
             "allow_unplayable_formats": True,
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
             "extract_flat": "in_playlist",
+            "js_runtimes": ["deno:/opt/homebrew/bin/deno"],
             "remote_components": "ejs:github",
             "ffmpeg_location": ffmpeg_exe,
             "sleep_interval": 3,  # Added to help with rate limits
@@ -187,6 +190,7 @@ class Job:
 
             ydl_opts.update(
                 {
+                    "js_runtimes": ["deno:/opt/homebrew/bin/deno"],
                     "format": quality,
                     "outtmpl": output_template,
                     "noplaylist": True,
