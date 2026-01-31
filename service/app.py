@@ -855,17 +855,15 @@ def resume_job_endpoint(job_id: str) -> Union[Response, tuple[Response, int]]:
 def queue_worker() -> None:
     print("--- Worker thread loop entered ---", flush=True)  
     while True:
+        job = None
         try:
             job = job_queue.get()
             if job is None:
                 continue
-            job._log(f"Worker picked up job from queue. Type: {job.job_type}")
+            print(f"--- WORKER PICKUP: Starting Job {job.job_id} ---", flush=True)
             job.run()
-            job._log("Worker finished execution of job.run()")
+            print(f"--- WORKER COMPLETE: Finished Job {job.job_id} ---", flush=True)
             print(f"Worker thread picked up job: {job.job_id} ({job.job_type})")
-            job.run()
-            print(f"Worker thread finished job: {job.job_id}")
-
             job_queue.task_done()
 
         except Exception as e:
