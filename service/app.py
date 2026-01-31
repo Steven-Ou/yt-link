@@ -334,13 +334,13 @@ class Job:
                 print(f"Warning: could not delete cookie file: {e}")
                 
     def _log(self, message: str, is_error: bool = False):
-        """Standardized logging for Windows debugging."""
+        """Aggressive logging to bypass Windows buffering."""
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        prefix = f"[{timestamp}] [Job {self.job_id}]"
+        formatted_msg = f"DEBUG_JOB_{self.job_id}: {message}"
+    
+        print(f"{formatted_msg}", flush=True)
         if is_error:
-            print(f"{prefix} ERROR: {message}", file=sys.stderr, flush=True)
-        else:
-            print(f"{prefix} INFO: {message}", flush=True)
+            print(f"ERROR_{formatted_msg}", file=sys.stderr, flush=True)
             
     def _finalize(self) -> None:
         self.set_status("processing", "Finalizing files...", self.progress or 100)
@@ -730,21 +730,20 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
 
 @app.route("/start-job", methods=["POST"])
 def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
-    # --- FIX: The try block now wraps EVERYTHING ---
     try:
-        data = request.get_json()  # <--- This line is now safely inside
+        data = request.get_json()  
         if not data or "url" not in data or "jobType" not in data:
             return jsonify({"error": "Invalid request body"}), 400
 
         job_id = str(uuid.uuid4())
         job_type = data["jobType"]
-
+        print(f"--- API TRIGGERED: Job {job_id} for URL {data.get('url')} ---", flush=True)
         job = Job(job_id=job_id, job_type=job_type, data=data)
 
         with jobs_lock:
             jobs[job_id] = job
         job_queue.put(job)
-
+        print(f"--- QUEUE STATUS: Size is now {job_queue.qsize()} ---", flush=True)     
         print(f"Job enqueued: {job_id} ({job_type})")
         return jsonify({"jobId": job_id})
 
