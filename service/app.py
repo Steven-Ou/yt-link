@@ -167,7 +167,7 @@ class Job:
             "no_warnings": False,
             "verbose": True,
             "check_formats": False,
-            "javascript_executor": ['deno','node'],
+            "javascript_runtimes": ['deno','node'],
             "noprogress": True,
             "logger": SafeLogger(),
             "progress_hooks": [self._progress_hook],
@@ -655,7 +655,6 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
 
         ydl_opts: Dict[str, Any] = {
             "verbose": True,
-            "javascript_executor": ['deno','node'],
             "quiet": False,
             "no_warnings": False,
             "format": "all",
@@ -924,13 +923,15 @@ def queue_worker() -> None:
 
         except Exception as e:
             print(f"CRITICAL ERROR in queue_worker: {str(e)}")
-            time.sleep(2)
             if job:
                 job.set_status(
                     "failed",
                     f"Critical worker error: {str(e)}",
                     error=traceback.format_exc(),
                 )
+            
+            time.sleep(2)
+
             try:
                 job_queue.task_done()
             except:
