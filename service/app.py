@@ -745,11 +745,15 @@ def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
     # --- FIX: The try block now wraps EVERYTHING ---
     try:
         data = request.get_json()  # <--- This line is now safely inside
+        job_type = data["jobType"]
         if not data or "url" not in data or "jobType" not in data:
             return jsonify({"error": "Invalid request body"}), 400
 
+        raw_url = data.get("url", "")
+        clean_url = sanitize_url_for_job(raw_url, job_type)
+        data["url"] = clean_url
         job_id = str(uuid.uuid4())
-        job_type = data["jobType"]
+        
 
         job = Job(job_id=job_id, job_type=job_type, data=data)
 
