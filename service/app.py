@@ -581,9 +581,14 @@ def resolve_ffmpeg_path(candidate: str) -> str:
     global node_exe
     node_path = shutil.which("node") or shutil.which("node.exe")
     if not node_path:
-        likely_node = sys.executable.replace("python.exe", "node.exe")
-        if os.path.exists(likely_node):
-            node_path = likely_node
+        possible_node = [
+            os.path.join(BASE_DIR, "node_modules", ".bin", "node.exe"),
+            sys.executable.replace("python.exe", "node.exe")
+        ]
+        for p in possible_node:
+            if os.path.exists(p):
+                node_path = p
+                break
 
     if node_path:
         node_exe = os.path.abspath(node_path)
