@@ -158,12 +158,14 @@ class Job:
 
         ydl_opts: Dict[str, Any] = {
             "quiet": True,
-            "no_warnings": True,
+            "no_warnings": False,
             "noprogress": True,
             "logger": SafeLogger(),
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
             "ffmpeg_location": ffmpeg_exe,
+            "javascript_executor": "node",
+            "prefer_ffmpeg": True,
             "sleep_interval": 3,  # Added to help with rate limits
             "max_sleep_interval": 10,
             "socket_timeout": 30,
@@ -332,9 +334,9 @@ class Job:
 
     def _finalize(self) -> None:
         self.set_status("processing", "Finalizing files...", self.progress or 100)
-        assert self.temp_dir and self.info is not None, (
-            "Job temp_dir or info is not set"
-        )
+        assert (
+            self.temp_dir and self.info is not None
+        ), "Job temp_dir or info is not set"
 
         if self.job_type == "singleVideo":
             video_extensions = [".mp4", ".mkv", ".webm", ".mov", ".avi"]
@@ -550,7 +552,7 @@ def resolve_ffmpeg_path(candidate: str) -> str:
     if ffmpeg_dir not in os.environ["PATH"]:
         os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ["PATH"]
         print(f"--- Added to PATH: {ffmpeg_dir} ---", flush=True)
-        
+
     return candidate
 
 
