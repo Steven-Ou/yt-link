@@ -27,6 +27,7 @@ if os.path.exists(POTENTIAL_BIN):
     ffmpeg_exe = POTENTIAL_BIN
 app = Flask(__name__)
 CORS(app)
+node_exe: Optional[str] = None
 APP_TEMP_DIR = os.path.join(tempfile.gettempdir(), "yt-link")
 os.makedirs(APP_TEMP_DIR, exist_ok=True)
 # This will be set at runtime from the command line arguments
@@ -168,7 +169,7 @@ class Job:
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
             "ffmpeg_location": ffmpeg_exe,
-            "javascript_executor": "node",
+            "javascript_executor": node_exe if node_exe else "node"
             "prefer_ffmpeg": True,
             "check_formats": False,
             "sleep_interval": 3,  # Added to help with rate limits
@@ -200,7 +201,7 @@ class Job:
         else:  # Audio jobs
             ydl_opts.update(
                 {
-                    "format": "bestaudio/best",
+                    "format": "bestaudio[ext=m4a]/bestaudio/best",
                     "outtmpl": output_template,
                     "noplaylist": self.job_type == "singleMp3",
                     "ignoreerrors": True,
@@ -571,7 +572,7 @@ def resolve_ffmpeg_path(candidate: str) -> str:
     if ffmpeg_dir not in os.environ["PATH"]:
         os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ["PATH"]
         print(f"--- Added to PATH: {ffmpeg_dir} ---", flush=True)
-
+    global node_exe
     node_path = shutil.which("node") or shutil.which("node.exe")
     if not node_path:
         likely_node = sys.executable.replace("python.exe", "node.exe")
@@ -579,6 +580,7 @@ def resolve_ffmpeg_path(candidate: str) -> str:
             node_path = likely_node
 
     if node_path:
+        node_exe = node_path
         node_dir = os.path.dirname(os.path.abspath(node_path))
         if node_dir not in os.environ["PATH"]:
             os.environ["PATH"] = node_dir + os.pathsep + os.environ["PATH"]
