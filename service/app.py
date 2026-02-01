@@ -12,6 +12,7 @@ import zipfile
 import subprocess
 import queue
 import hashlib
+import re
 from typing import Any, Dict, Generator, List, Optional, cast, Union
 
 from flask import Flask, Response, request, jsonify
@@ -522,6 +523,15 @@ def sanitize_filename(filename: str) -> str:
     return filename.strip().rstrip(".")
 
 
+def sanitize_url_for_job(url: str, job_type: str) -> str:
+    # If the user wants a single file, remove playlist data to prevent loops
+    if job_type in ["singleVideo", "singleMp3"]:
+        if "v=" in url:
+            # Extract just the video ID: watch?v=XXXXXXXX
+            match = re.search(r"(v=[a-zA-Z0-9_-]+)", url)
+            if match:
+                return f"https://www.youtube.com/watch?{match.group(1)}"
+    return url
 # --- (resolve_ffmpeg_path - unchanged) ---
 def resolve_ffmpeg_path(candidate: str) -> str:
     if os.path.isdir(candidate):
