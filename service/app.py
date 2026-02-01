@@ -217,7 +217,8 @@ class Job:
                             "preferredquality": "192",
                         }
                     ],
-                    "postprocessor_args": []
+                    "postprocessor_args": [],
+                    "keepvideo": False,
                 }
             )
 
@@ -909,33 +910,19 @@ def resume_job_endpoint(job_id: str) -> Union[Response, tuple[Response, int]]:
 def queue_worker() -> None:
     print("--- Worker thread loop entered ---", flush=True)  # Add this log to verify
     while True:
-        job = None
+        job = job_queue.get()
         try:
-            job = job_queue.get()
-            if job is None:
-                continue
-
-            print(f"Worker thread picked up job: {job.job_id} ({job.job_type})")
             job.run()
-            print(f"Worker thread finished job: {job.job_id}")
-
-            job_queue.task_done()
-
         except Exception as e:
-            print(f"CRITICAL ERROR in queue_worker: {str(e)}")
-            if job:
-                job.set_status(
-                    "failed",
-                    f"Critical worker error: {str(e)}",
-                    error=traceback.format_exc(),
-                )
-            
-            time.sleep(2)
-
-            try:
-                job_queue.task_done()
-            except:
-                pass
+            job.set_status(
+                "failed",
+                message=f"Processing error: {str(e)}",
+                error =traceback.format_exc()
+            )
+            print(f"[WORKER CRASH]:{str(e)}")
+        finally:
+            job_queue.task_done()
+            time.sleep(1)  
 
 
 if __name__ == "__main__":
