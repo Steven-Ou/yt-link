@@ -165,12 +165,13 @@ class Job:
         ydl_opts: Dict[str, Any] = {
             "quiet": True,
             "no_warnings": False,
+            "verbose": True,
             "noprogress": True,
             "logger": SafeLogger(),
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
             "ffmpeg_location": ffmpeg_exe,
-            "javascript_executor": "node",
+            "javascript_executor": ['deno','node'],
             "prefer_ffmpeg": True,
             "youtube_include_dash_manifest": True,
             "youtube_include_hls_manifest": True,
@@ -655,8 +656,13 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
         )
 
         ydl_opts: Dict[str, Any] = {
+            "verbose": True,
+            "javascript_executor": ['deno','node'],
             "quiet": True,
             "no_warnings": True,
+            "format": "best",
+            "extract_flat": False,
+            "check_formats": False,
             "nocheckcertificate": True,
             "noplaylist": True,
         }
