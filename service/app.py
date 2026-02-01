@@ -463,7 +463,7 @@ class Job:
                         f.write(f"file '{escaped}'\n")
 
                 command = [
-                    str(ffmpeg_exe),
+                    ffmpeg_exe,
                     "-f",
                     "concat",
                     "-safe",
