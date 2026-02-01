@@ -170,8 +170,10 @@ class Job:
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
             "ffmpeg_location": ffmpeg_exe,
-            "javascript_executor": node_exe if node_exe else "node",
+            "javascript_executor": "node",
             "prefer_ffmpeg": True,
+            "youtube_include_dash_manifest": True,
+            "youtube_include_hls_manifest": True,
             "check_formats": False,
             "sleep_interval": 3,  # Added to help with rate limits
             "max_sleep_interval": 10,
@@ -551,6 +553,9 @@ def resolve_ffmpeg_path(candidate: str) -> str:
             if os.path.exists(cand):
                 candidate = cand
                 break
+    
+    ffmpeg_exe = os.path.abspath(candidate)
+    ffmpeg_dir = os.path.dirname(ffmpeg_exe)
     if candidate in ("ffmpeg", "ffmpeg.exe"):
         found = shutil.which(candidate)
         if found:
@@ -581,12 +586,14 @@ def resolve_ffmpeg_path(candidate: str) -> str:
             node_path = likely_node
 
     if node_path:
-        node_exe = node_path
-        node_dir = os.path.dirname(os.path.abspath(node_path))
+        node_exe = os.path.abspath(node_path)
+        node_dir = os.path.dirname(node_exe)
         if node_dir not in os.environ["PATH"]:
             os.environ["PATH"] = node_dir + os.pathsep + os.environ["PATH"]
             print(f"--- Node injected from: {node_dir} ---", flush=True)
 
+    if ffmpeg_dir not in os.environ["PATH"]:
+        os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ["PATH"]
     print(f"--- Environment Ready: FFmpeg and Node Path verified ---", flush=True)
 
     if not os.access(candidate, os.X_OK):
