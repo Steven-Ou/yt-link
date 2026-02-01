@@ -171,8 +171,8 @@ class Job:
             "sleep_interval": 3,  # Added to help with rate limits
             "max_sleep_interval": 10,
             "socket_timeout": 30,
-            "retries": 10,
-            "fragment_retries": 10,
+            "retries": 3,
+            "fragment_retries": 3,
             "download_archive": os.path.join(self.temp_dir, "downloaded.txt"),
         }
 
@@ -571,7 +571,7 @@ def resolve_ffmpeg_path(candidate: str) -> str:
             node_path = likely_node
 
     if node_path:
-        node_dir = os.path.dirname(node_path)
+        node_dir = os.path.dirname(os.path.abspath(node_path))
         if node_dir not in os.environ["PATH"]:
             os.environ["PATH"] = node_dir + os.pathsep + os.environ["PATH"]
             print(f"--- Node injected from: {node_dir} ---", flush=True)
