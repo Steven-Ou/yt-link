@@ -201,7 +201,6 @@ class Job:
                     "outtmpl": output_template,
                     "noplaylist": self.job_type == "singleMp3",
                     "ignoreerrors": True,
-                    "extract_flat": False,
                     "postprocessors": [
                         {
                             "key": "FFmpegExtractAudio",
@@ -565,6 +564,14 @@ def resolve_ffmpeg_path(candidate: str) -> str:
         os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ["PATH"]
         print(f"--- Added to PATH: {ffmpeg_dir} ---", flush=True)
 
+    node_exe = sys.executable.replace("python.exe", "node.exe")
+    node_path = shutil.which("node")
+    if node_path:
+        node_dir = os.path.dirname(node_path)
+        if node_dir not in os.environ["PATH"]:
+            os.environ["PATH"] = node_dir + os.pathsep + os.environ["PATH"]
+
+    print(f"--- PATH Injected for FFmpeg and Node ---", flush=True)
     return candidate
 
 
