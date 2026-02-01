@@ -540,12 +540,17 @@ def resolve_ffmpeg_path(candidate: str) -> str:
         )
         sys.exit(1)
     if not os.access(candidate, os.X_OK):
-        print(
-            f"FATAL: FFmpeg at '{candidate}' is not executable. Try 'chmod +x {candidate}'.",
-            file=sys.stderr,
-            flush=True,
-        )
-        sys.exit(1)
+        try:
+            print(f"--- Attempting to fix permissions for: {candidate} ---", flush=True)
+            os.chmod(candidate, 0o755)
+        except Exception as e:
+            print(f"Warning: Could not set executable bit: {e}", file=sys.stderr)
+
+    ffmpeg_dir = os.path.abspath(os.path.dirname(candidate))
+    if ffmpeg_dir not in os.environ["PATH"]:
+        os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ["PATH"]
+        print(f"--- Added to PATH: {ffmpeg_dir} ---", flush=True)
+        
     return candidate
 
 
