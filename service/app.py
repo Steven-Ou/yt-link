@@ -21,7 +21,10 @@ from flask_cors import CORS
 import yt_dlp  # type: ignore[import]
 from yt_dlp.utils import DownloadError  # type: ignore[import]
 from urllib.parse import quote
-
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+POTENTIAL_BIN = os.path.join(BASE_DIR, "bin", "ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+if os.path.exists(POTENTIAL_BIN):
+    ffmpeg_exe = POTENTIAL_BIN
 app = Flask(__name__)
 CORS(app)
 APP_TEMP_DIR = os.path.join(tempfile.gettempdir(), "yt-link")
@@ -201,6 +204,7 @@ class Job:
                     "outtmpl": output_template,
                     "noplaylist": self.job_type == "singleMp3",
                     "ignoreerrors": True,
+                    "ffmpeg_location": ffmpeg_exe,
                     "postprocessors": [
                         {
                             "key": "FFmpegExtractAudio",
@@ -208,6 +212,9 @@ class Job:
                             "preferredquality": "192",
                         }
                     ],
+                    "postprocessor_args": [
+                        '-ffmpeg_location', ffmpeg_exe
+                    ]
                 }
             )
 
