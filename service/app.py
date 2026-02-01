@@ -750,11 +750,9 @@ def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
             return jsonify({"error": "Invalid request body"}), 400
 
         raw_url = data.get("url", "")
-        clean_url = sanitize_url_for_job(raw_url, job_type)
-        data["url"] = clean_url
-        job_id = str(uuid.uuid4())
-        
+        data["url"] = sanitize_url_for_job(raw_url, job_type)
 
+        job_id = str(uuid.uuid4())
         job = Job(job_id=job_id, job_type=job_type, data=data)
 
         with jobs_lock:
