@@ -163,7 +163,7 @@ class Job:
             )
 
         ydl_opts: Dict[str, Any] = {
-            "quiet": True,
+            "quiet": False,
             "no_warnings": False,
             "verbose": True,
             "noprogress": True,
@@ -191,7 +191,7 @@ class Job:
                 quality = f"{selected_format}+bestaudio/best"
             else:
                 quality = (
-                    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
+                    "bestaudio/best"
                 )
 
             ydl_opts.update(
@@ -658,10 +658,11 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
         ydl_opts: Dict[str, Any] = {
             "verbose": True,
             "javascript_executor": ['deno','node'],
-            "quiet": True,
-            "no_warnings": True,
-            "format": "best",
+            "quiet": False,
+            "no_warnings": False,
+            "format": "all",
             "extract_flat": False,
+            "javascript_runtimes": ['deno','node'],
             "check_formats": False,
             "nocheckcertificate": True,
             "noplaylist": True,
