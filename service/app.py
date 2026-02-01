@@ -195,7 +195,7 @@ class Job:
         else:  # Audio jobs
             ydl_opts.update(
                 {
-                    "format": "bestaudio[ext=m4a]/bestaudio/best",
+                    "format": "bestaudio/best",
                     "outtmpl": output_template,
                     "noplaylist": self.job_type == "singleMp3",
                     "ignoreerrors": self.job_type != "singleMp3",
