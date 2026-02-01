@@ -21,18 +21,19 @@ from flask_cors import CORS
 import yt_dlp  # type: ignore[import]
 from yt_dlp.utils import DownloadError  # type: ignore[import]
 from urllib.parse import quote
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-POTENTIAL_BIN = os.path.join(BASE_DIR, "bin", "ffmpeg.exe" if os.name == "nt" else "ffmpeg")
-if os.path.exists(POTENTIAL_BIN):
-    ffmpeg_exe = POTENTIAL_BIN
+
 app = Flask(__name__)
 CORS(app)
-node_exe: Optional[str] = None
 APP_TEMP_DIR = os.path.join(tempfile.gettempdir(), "yt-link")
 os.makedirs(APP_TEMP_DIR, exist_ok=True)
 # This will be set at runtime from the command line arguments
 ffmpeg_exe: Optional[str] = None
+node_exe: Optional[str] = None
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+POTENTIAL_BIN = os.path.join(BASE_DIR, "bin", "ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+if os.path.exists(POTENTIAL_BIN):
+    ffmpeg_exe = POTENTIAL_BIN
 # --- Job Queue, Lock, and Retry Settings ---
 jobs: Dict[str, "Job"] = {}
 jobs_lock = threading.Lock()
@@ -169,7 +170,7 @@ class Job:
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
             "ffmpeg_location": ffmpeg_exe,
-            "javascript_executor": node_exe if node_exe else "node"
+            "javascript_executor": node_exe if node_exe else "node",
             "prefer_ffmpeg": True,
             "check_formats": False,
             "sleep_interval": 3,  # Added to help with rate limits
