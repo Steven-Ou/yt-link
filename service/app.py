@@ -564,14 +564,25 @@ def resolve_ffmpeg_path(candidate: str) -> str:
         os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ["PATH"]
         print(f"--- Added to PATH: {ffmpeg_dir} ---", flush=True)
 
-    node_exe = sys.executable.replace("python.exe", "node.exe")
-    node_path = shutil.which("node")
+    node_path = shutil.which("node") or shutil.which("node.exe")
+    if not node_path:
+        likely_node = sys.executable.replace("python.exe", "node.exe")
+        if os.path.exists(likely_node):
+            node_path = likely_node
+
     if node_path:
         node_dir = os.path.dirname(node_path)
         if node_dir not in os.environ["PATH"]:
             os.environ["PATH"] = node_dir + os.pathsep + os.environ["PATH"]
+            print(f"--- Node injected from: {node_dir} ---", flush=True)
 
-    print(f"--- PATH Injected for FFmpeg and Node ---", flush=True)
+    print(f"--- Environment Ready: FFmpeg and Node Path verified ---", flush=True)
+
+    if not os.access(candidate, os.X_OK):
+        try:
+            os.chmod(candidate, 0o755)
+        except:
+            pass
     return candidate
 
 
