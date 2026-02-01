@@ -389,6 +389,7 @@ class Job:
         else:
             time.sleep(1)
             all_files = os.listdir(self.temp_dir)
+            print(f"DEBUG: Files in temp_dir: {all_files}", flush=True)
 
             mp3_files = sorted(
                 [
@@ -402,7 +403,7 @@ class Job:
             )
 
             if not mp3_files:
-                self.set_status("error", "No individual track MP3s found.")
+                self.set_status("error", f"No individual track MP3s found. Found: {all_files}")
                 return
 
             playlist_title = sanitize_filename(
