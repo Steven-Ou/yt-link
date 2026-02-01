@@ -167,6 +167,7 @@ class Job:
             "ffmpeg_location": ffmpeg_exe,
             "javascript_executor": "node",
             "prefer_ffmpeg": True,
+            "check_formats": False,
             "sleep_interval": 3,  # Added to help with rate limits
             "max_sleep_interval": 10,
             "socket_timeout": 30,
@@ -199,7 +200,8 @@ class Job:
                     "format": "bestaudio/best",
                     "outtmpl": output_template,
                     "noplaylist": self.job_type == "singleMp3",
-                    "ignoreerrors": self.job_type != "singleMp3",
+                    "ignoreerrors": True,
+                    "extract_flat": False,
                     "postprocessors": [
                         {
                             "key": "FFmpegExtractAudio",
