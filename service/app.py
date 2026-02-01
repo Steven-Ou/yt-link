@@ -166,16 +166,16 @@ class Job:
             "quiet": False,
             "no_warnings": False,
             "verbose": True,
+            "check_formats": False,
+            "javascript_executor": ['deno','node'],
             "noprogress": True,
             "logger": SafeLogger(),
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
             "ffmpeg_location": ffmpeg_exe,
-            "javascript_executor": ['deno','node'],
             "prefer_ffmpeg": True,
             "youtube_include_dash_manifest": True,
             "youtube_include_hls_manifest": True,
-            "check_formats": False,
             "sleep_interval": 3,  # Added to help with rate limits
             "max_sleep_interval": 10,
             "socket_timeout": 30,
@@ -926,6 +926,7 @@ def queue_worker() -> None:
 
         except Exception as e:
             print(f"CRITICAL ERROR in queue_worker: {str(e)}")
+            time.sleep(2)
             if job:
                 job.set_status(
                     "failed",
