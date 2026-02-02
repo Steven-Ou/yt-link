@@ -489,9 +489,11 @@ class Job:
                     "-y",
                     self.file_path,
                 ]
-                
+                env = os.environ.copy()
+                env["PYTHONIOENCODING"] = "utf-8"
+
                 process = subprocess.run(
-                    command, capture_output=True, text=True, encoding="utf-8"
+                    command, capture_output=True, text=True, encoding="utf-8", env=env
                 )
                 
                 if process.returncode != 0:
@@ -499,7 +501,7 @@ class Job:
 
         # Mark job as fully successful
         self.set_status("completed", "Processing complete!", 100)
-        
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "job_id": self.job_id,
