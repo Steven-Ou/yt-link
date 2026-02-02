@@ -346,38 +346,41 @@ class Job:
                 print(f"Warning: could not delete cookie file: {e}")
 
     def _finalize(self) -> None:
+        # Update status to indicate finalization has started
         self.set_status("processing", "Finalizing files...", self.progress or 100)
         time.sleep(2)
+        
+        # Ensure critical job data is present before proceeding
         assert (
             self.temp_dir and self.info is not None
         ), "Job temp_dir or info is not set"
 
+        # Logic for processing a single video download
         if self.job_type == "singleVideo":
+            # Define acceptable video formats
             video_extensions = [".mp4", ".mkv", ".webm", ".mov", ".avi"]
+            # Scan directory for completed video files, excluding active partial downloads
             found_files = [
                 f
                 for f in os.listdir(self.temp_dir)
                 if os.path.splitext(f)[1].lower() in video_extensions
                 and not f.endswith(".part")
             ]
+            
             if not found_files:
                 raise Exception("No final video file found after download.")
-            # 1. Get the original downloaded filename (e.g., "().mkv")
+            
+            # Identify the raw downloaded file and prepare the sanitized destination name
             original_filename = found_files[0]
             original_filepath = os.path.join(self.temp_dir, original_filename)
-
-            # 2. Get the title from the info we fetched earlier
             video_title = self.info.get("title", "video")
 
-            # 3. Create a new, sanitized filename ending in .mp4
             self.file_name = sanitize_filename(f"{video_title}.mp4")
             self.file_path = os.path.join(self.temp_dir, self.file_name)
 
-            # 4. Rename the downloaded file to our new, clean name
+            # Rename the file to the clean, sanitized title if necessary
             if original_filepath != self.file_path:
                 try:
-                    # Note: os.rename() will fail if the .part file is still being processed
-                    # This check assumes the .part file is gone and the final file is present
                     os.rename(original_filepath, self.file_path)
                     print(f"Renamed '{original_filename}' to '{self.file_name}'")
                 except OSError as e:
@@ -385,30 +388,31 @@ class Job:
                         f"Warning: Could not rename file. Using original path. Error: {e}",
                         file=sys.stderr,
                     )
-                    # Fallback: Use the original, ugly name if rename fails
                     self.file_name = sanitize_filename(original_filename)
                     self.file_path = original_filepath
             else:
-                # If the name is already correct, just sanitize it
                 self.file_name = sanitize_filename(original_filename)
+        
+        # Logic for processing audio-based jobs (Single MP3, ZIP, or Combined)
         else:
             time.sleep(1)
             all_files = os.listdir(self.temp_dir)
             print(f"DEBUG: Files in temp_dir: {all_files}", flush=True)
 
-            mp3_files = sorted(
+            # Look for common audio formats to ensure we don't miss files that failed MP3 conversion
+            audio_extensions = (".mp3", ".m4a", ".webm")
+            audio_files = sorted(
                 [
                     os.path.join(self.temp_dir, f)
                     for f in all_files
-                    if f.lower().endswith(".mp3")
-                    and not f.endswith(
-                        "(Combined).mp3"
-                    )  # Ignore result of 'combineMp3'
+                    if f.lower().endswith(audio_extensions)
+                    and not f.endswith("(Combined).mp3")
+                    and not f.endswith(".zip")
                 ]
             )
 
-            if not mp3_files:
-                self.set_status("error", f"No individual track MP3s found. Found: {all_files}")
+            if not audio_files:
+                self.set_status("error", f"No audio tracks found. Found: {all_files}")
                 return
 
             playlist_title = sanitize_filename(
@@ -417,18 +421,13 @@ class Job:
                 else "playlist"
             )
 
+            # Handle single track audio download
             if self.job_type == "singleMp3":
-                # 1. Get the original downloaded filename (e.g., "().mp3")
-                original_filepath = mp3_files[0]
-
-                # 2. Get the title from the info
+                original_filepath = audio_files[0]
                 track_title = self.info.get("title", "track")
-
-                # 3. Create a new, sanitized filename
                 self.file_name = sanitize_filename(f"{track_title}.mp3")
                 self.file_path = os.path.join(self.temp_dir, self.file_name)
 
-                # 4. Rename the file
                 if original_filepath != self.file_path:
                     try:
                         os.rename(original_filepath, self.file_path)
@@ -440,7 +439,6 @@ class Job:
                             f"Warning: Could not rename file. Using original path. Error: {e}",
                             file=sys.stderr,
                         )
-                        # Fallback
                         self.file_name = sanitize_filename(
                             os.path.basename(original_filepath)
                         )
@@ -449,32 +447,33 @@ class Job:
                     self.file_name = sanitize_filename(
                         os.path.basename(original_filepath)
                     )
+            
+            # Handle creating a ZIP archive of all playlist tracks
             elif self.job_type == "playlistZip":
                 self.set_status("processing", "Creating ZIP archive...", self.progress)
                 time.sleep(1.5)
-                final_tracks = [
-                    os.path.join(self.temp_dir, f)
-                    for f in os.listdir(self.temp_dir)
-                    if f.lower().endswith(".mp3") and not f.endswith("(Combined).mp3")
-                ]
-
                 self.file_name = f"{playlist_title}.zip"
                 self.file_path = os.path.join(self.temp_dir, self.file_name)
 
                 with zipfile.ZipFile(self.file_path, "w") as zipf:
-                    for mp3_file in final_tracks:
-                        zipf.write(mp3_file, os.path.basename(mp3_file))
+                    for audio_file in audio_files:
+                        zipf.write(audio_file, os.path.basename(audio_file))
 
+            # Handle combining all playlist tracks into a single MP3 file
             elif self.job_type == "combineMp3":
                 self.set_status("processing", "Combining all tracks...", self.progress)
                 self.file_name = f"{playlist_title} (Combined).mp3"
                 self.file_path = os.path.join(self.temp_dir, self.file_name)
                 concat_list_path = os.path.join(self.temp_dir, "concat_list.txt")
+                
+                # Create a temporary manifest file for FFmpeg concatenation
                 with open(concat_list_path, "w", encoding="utf-8") as f:
-                    for mp3_file in mp3_files:
-                        escaped = mp3_file.replace("'", "'\\''")
+                    for audio_file in audio_files:
+                        # Escape single quotes in filenames for FFmpeg compatibility
+                        escaped = audio_file.replace("'", "'\\''")
                         f.write(f"file '{escaped}'\n")
 
+                # Execute FFmpeg to merge tracks; uses re-encoding to ensure consistent MP3 output
                 command = [
                     ffmpeg_exe,
                     "-f",
@@ -483,19 +482,24 @@ class Job:
                     "0",
                     "-i",
                     concat_list_path,
-                    "-c",
-                    "copy",
+                    "-c:a",
+                    "libmp3lame",
+                    "-q:a",
+                    "2",
                     "-y",
                     self.file_path,
                 ]
+                
                 process = subprocess.run(
                     command, capture_output=True, text=True, encoding="utf-8"
                 )
+                
                 if process.returncode != 0:
                     raise Exception(f"FFMPEG Concat Error: {process.stderr}")
 
+        # Mark job as fully successful
         self.set_status("completed", "Processing complete!", 100)
-
+        
     def to_dict(self) -> Dict[str, Any]:
         return {
             "job_id": self.job_id,
