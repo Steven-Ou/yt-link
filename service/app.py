@@ -81,8 +81,9 @@ class Job:
         error: Optional[str] = None,
     ) -> None:
         with jobs_lock:
-            if self.status in ["completed", "failed"] and status != self.status:
-                return
+            if self.status in ["completed", "failed"]:
+                if status not in ["processing", "queued", "downloading"]:
+                    return
 
             self.status = status
             self.message = message
@@ -234,10 +235,14 @@ class Job:
         self.update_progress(d)
 
     def run(self) -> None:
-        # Initial pause check
+        pause_timeout = 0
         while self.status == "paused":
+            if pause_timeout > 3600:
+                self.set_status("failed", "Job timed out while paused.")
+                return
             self.set_status("paused", "Job is paused. Waiting for resume...")
-            time.sleep(1)
+            time.sleep(2)
+            pause_timeout += 2
 
         self.set_status("processing", "Preparing download...", 0)
 
@@ -351,9 +356,9 @@ class Job:
         time.sleep(2)
         
         # Ensure critical job data is present before proceeding
-        assert (
-            self.temp_dir and self.info is not None
-        ), "Job temp_dir or info is not set"
+        if not self.temp_dir or self.info is None:
+            self.set_status("failed", "Finalization failed: Missing metadata.")
+            return
 
         # Logic for processing a single video download
         if self.job_type == "singleVideo":
