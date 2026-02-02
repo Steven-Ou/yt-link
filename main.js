@@ -203,7 +203,7 @@ function createWindow() {
   } else {
     // Development: Load the Next.js dev server
     console.log("[Electron] Loading dev server from: http://localhost:3000");
-    mainWindow.loadURL("http://localhost:3000");
+    mainWindow.loadURL('http://127.0.0.1:3000');
     mainWindow.webContents.openDevTools(); // Open dev tools in dev mode
   }
   // Intercept all download requests from this window
