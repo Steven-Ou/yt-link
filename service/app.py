@@ -347,6 +347,7 @@ class Job:
 
     def _finalize(self) -> None:
         self.set_status("processing", "Finalizing files...", self.progress or 100)
+        time.sleep(2)
         assert (
             self.temp_dir and self.info is not None
         ), "Job temp_dir or info is not set"
@@ -812,11 +813,15 @@ def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
 
     # --- This block will now catch any errors ---
     except Exception as e:
-        print(
-            f"[start-job] UNEXPECTED ERROR: {traceback.format_exc()}",
-            file=sys.stderr,
-            flush=True,
-        )
+        print(f"CRITICAL ERROR in queue_worker: {str(e)}")
+        if job:
+            job.set_status(
+                "failed",
+                f"Finalization failed: {str(e)}",
+                error=traceback.format_exc(),
+            )
+        time.sleep(2)
+        
         return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
 
 
@@ -922,7 +927,7 @@ def queue_worker() -> None:
             print(f"[WORKER CRASH]:{str(e)}")
         finally:
             job_queue.task_done()
-            time.sleep(1)  
+            time.sleep(1)
 
 
 if __name__ == "__main__":
