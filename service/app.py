@@ -91,10 +91,12 @@ class Job:
             if error:
                 self.error = error
                 try:
-                    safe_error = str(error).encode(sys.stdout.encoding, errors='replace').decode(sys.stdout.encoding)
-                    print(f"--- [Job {self.job_id}] ERROR: {safe_error}", file=sys.stderr, flush=True)
-                except Exception:
-                    print(f"--- [Job {self.job_id}] ERROR: (Unprintable error message)", file=sys.stderr, flush=True)
+                    safe_error = str(error)[:500].encode('ascii', 'replace').decode('ascii')
+                    sys.stderr.write(f"--- [Job {self.job_id}] ERROR: {safe_error}\n")
+                    sys.stderr.flush()
+                except:
+                    pass
+                
             jobs[self.job_id] = self
 
     # --- MODIFIED: This method now has the new logging logic ---
