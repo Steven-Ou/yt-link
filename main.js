@@ -73,7 +73,7 @@ function getPythonBackendConfig(port, ffmpegPath) {
 
     return {
       command: pythonCommand,
-      args: ["-u", scriptPath, port, ffmpegPath], // <-- This is the original, correct line
+      args: ["-X", "utf8","-u", scriptPath, port, ffmpegPath], 
     };
   }
 }
