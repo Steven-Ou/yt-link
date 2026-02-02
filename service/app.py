@@ -167,9 +167,9 @@ class Job:
             )
 
         ydl_opts: Dict[str, Any] = {
-            "quiet": False,
-            "no_warnings": False,
-            "verbose": True,
+            "quiet": True,
+            "no_warnings": True,
+            "verbose": False,
             "cachedir": False,
             "check_formats": False,
             "javascript_runtimes": ['deno','node'],
