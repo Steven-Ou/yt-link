@@ -31,9 +31,7 @@ ffmpeg_exe: Optional[str] = None
 node_exe: Optional[str] = None
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-POTENTIAL_BIN = os.path.join(
-    BASE_DIR, "bin", "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
-)
+POTENTIAL_BIN = os.path.join(BASE_DIR, "bin", "ffmpeg.exe" if os.name == "nt" else "ffmpeg")
 if os.path.exists(POTENTIAL_BIN):
     ffmpeg_exe = POTENTIAL_BIN
 # --- Job Queue, Lock, and Retry Settings ---
@@ -92,15 +90,11 @@ class Job:
                 self.progress = progress
             if error:
                 self.error = error
-                try:
-                    safe_error = (
-                        str(error)[:500].encode("ascii", "replace").decode("ascii")
-                    )
-                    sys.stderr.write(f"--- [Job {self.job_id}] ERROR: {safe_error}\n")
-                    sys.stderr.flush()
-                except:
-                    pass
-
+                print(
+                    f"--- [Job {self.job_id}] ERROR: {self.error}",
+                    file=sys.stderr,
+                    flush=True,
+                )
             jobs[self.job_id] = self
 
     # --- MODIFIED: This method now has the new logging logic ---
@@ -173,7 +167,7 @@ class Job:
             "no_warnings": False,
             "verbose": True,
             "check_formats": False,
-            "javascript_runtimes": ["deno", "node"],
+            "javascript_runtimes": ['deno','node'],
             "noprogress": True,
             "logger": SafeLogger(),
             "progress_hooks": [self._progress_hook],
@@ -196,7 +190,9 @@ class Job:
             if selected_format:
                 quality = f"{selected_format}+bestaudio/best"
             else:
-                quality = "bestaudio/best"
+                quality = (
+                    "bestaudio/best"
+                )
 
             ydl_opts.update(
                 {
@@ -353,7 +349,7 @@ class Job:
         # Update status to indicate finalization has started
         self.set_status("processing", "Finalizing files...", self.progress or 100)
         time.sleep(2)
-
+        
         # Ensure critical job data is present before proceeding
         assert (
             self.temp_dir and self.info is not None
@@ -370,10 +366,10 @@ class Job:
                 if os.path.splitext(f)[1].lower() in video_extensions
                 and not f.endswith(".part")
             ]
-
+            
             if not found_files:
                 raise Exception("No final video file found after download.")
-
+            
             # Identify the raw downloaded file and prepare the sanitized destination name
             original_filename = found_files[0]
             original_filepath = os.path.join(self.temp_dir, original_filename)
@@ -396,7 +392,7 @@ class Job:
                     self.file_path = original_filepath
             else:
                 self.file_name = sanitize_filename(original_filename)
-
+        
         # Logic for processing audio-based jobs (Single MP3, ZIP, or Combined)
         else:
             time.sleep(1)
@@ -451,7 +447,7 @@ class Job:
                     self.file_name = sanitize_filename(
                         os.path.basename(original_filepath)
                     )
-
+            
             # Handle creating a ZIP archive of all playlist tracks
             elif self.job_type == "playlistZip":
                 self.set_status("processing", "Creating ZIP archive...", self.progress)
@@ -469,7 +465,7 @@ class Job:
                 self.file_name = f"{playlist_title} (Combined).mp3"
                 self.file_path = os.path.join(self.temp_dir, self.file_name)
                 concat_list_path = os.path.join(self.temp_dir, "concat_list.txt")
-
+                
                 # Create a temporary manifest file for FFmpeg concatenation
                 with open(concat_list_path, "w", encoding="utf-8") as f:
                     for audio_file in audio_files:
@@ -493,25 +489,17 @@ class Job:
                     "-y",
                     self.file_path,
                 ]
-                env = os.environ.copy()
-                env["PYTHONIOENCODING"] = "utf-8"
-
-                try:
-                    subprocess.run(
-                        command,
-                        stdout=subprocess.DEVNULL,
-                        stderr=sys.stderr,
-                        check=True,
-                        env=env,
-                    )
-                except subprocess.CalledProcessError:
-                    raise Exception(
-                        "FFmpeg failed to combine the audio files. Check if the tracks are valid MP3s."
-                    )
+                
+                process = subprocess.run(
+                    command, capture_output=True, text=True, encoding="utf-8"
+                )
+                
+                if process.returncode != 0:
+                    raise Exception(f"FFMPEG Concat Error: {process.stderr}")
 
         # Mark job as fully successful
         self.set_status("completed", "Processing complete!", 100)
-
+        
     def to_dict(self) -> Dict[str, Any]:
         return {
             "job_id": self.job_id,
@@ -562,8 +550,6 @@ def sanitize_url_for_job(url: str, job_type: str) -> str:
             if match:
                 return f"https://www.youtube.com/watch?{match.group(1)}"
     return url
-
-
 # --- (resolve_ffmpeg_path - unchanged) ---
 def resolve_ffmpeg_path(candidate: str) -> str:
     if os.path.isdir(candidate):
@@ -572,7 +558,7 @@ def resolve_ffmpeg_path(candidate: str) -> str:
             if os.path.exists(cand):
                 candidate = cand
                 break
-
+    
     ffmpeg_exe = os.path.abspath(candidate)
     ffmpeg_dir = os.path.dirname(ffmpeg_exe)
     if candidate in ("ffmpeg", "ffmpeg.exe"):
@@ -602,7 +588,7 @@ def resolve_ffmpeg_path(candidate: str) -> str:
     if not node_path:
         possible_node = [
             os.path.join(BASE_DIR, "node_modules", ".bin", "node.exe"),
-            sys.executable.replace("python.exe", "node.exe"),
+            sys.executable.replace("python.exe", "node.exe")
         ]
         for p in possible_node:
             if os.path.exists(p):
@@ -679,7 +665,7 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             "no_warnings": False,
             "format": "all",
             "extract_flat": False,
-            "javascript_runtimes": ["deno", "node"],
+            "javascript_runtimes": ['deno','node'],
             "check_formats": False,
             "nocheckcertificate": True,
             "noplaylist": True,
@@ -839,7 +825,7 @@ def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
                 error=traceback.format_exc(),
             )
         time.sleep(2)
-
+        
         return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
 
 
@@ -940,7 +926,7 @@ def queue_worker() -> None:
             job.set_status(
                 "failed",
                 message=f"Processing error: {str(e)}",
-                error=traceback.format_exc(),
+                error =traceback.format_exc()
             )
             print(f"[WORKER CRASH]:{str(e)}")
         finally:
