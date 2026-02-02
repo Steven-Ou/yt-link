@@ -384,7 +384,7 @@ class Job:
             self.file_name = sanitize_filename(f"{video_title}.mp4")
             self.file_path = os.path.join(self.temp_dir, self.file_name)
 
-            def safe_log(msg):
+            def safe_print(msg):
                 try:
                     print(msg, flush=True)
                 except UnicodeEncodeError:
@@ -394,12 +394,9 @@ class Job:
             if original_filepath != self.file_path:
                 try:
                     os.rename(original_filepath, self.file_path)
-                    safe_log(f"Renamed '{original_filename}' to '{self.file_name}'")
+                    safe_print(f"Renamed '{original_filename}' to '{self.file_name}'")
                 except OSError as e:
-                    print(
-                        f"Warning: Could not rename file. Using original path. Error: {e}",
-                        file=sys.stderr,
-                    )
+                    safe_print(f"Warning: Could not rename file. Error: {e}")
                     self.file_name = sanitize_filename(original_filename)
                     self.file_path = original_filepath
             else:
