@@ -13,6 +13,7 @@ import subprocess
 import queue
 import hashlib
 import re
+import io
 from typing import Any, Dict, Generator, List, Optional, cast, Union
 
 from flask import Flask, Response, request, jsonify
@@ -29,6 +30,8 @@ os.makedirs(APP_TEMP_DIR, exist_ok=True)
 # This will be set at runtime from the command line arguments
 ffmpeg_exe: Optional[str] = None
 node_exe: Optional[str] = None
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 POTENTIAL_BIN = os.path.join(BASE_DIR, "bin", "ffmpeg.exe" if os.name == "nt" else "ffmpeg")
