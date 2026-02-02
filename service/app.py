@@ -499,7 +499,7 @@ class Job:
                     self.file_path,
                 ]
                 env = os.environ.copy()
-                env["PYTHONIOENCODING"] = "utf-8"
+                env["PYTHONIOENCODING"] = "1"
 
                 process = subprocess.run(
                     command, capture_output=True, text=True, encoding="utf-8", env=env
