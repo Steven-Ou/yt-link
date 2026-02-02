@@ -672,8 +672,9 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
 
         ydl_opts: Dict[str, Any] = {
             "verbose": True,
-            "quiet": False,
-            "no_warnings": False,
+            "quiet": True,
+            "no_warnings": True,
+            "restrictfilenames": True,
             "format": "all",
             "extract_flat": False,
             "javascript_runtimes": ['deno','node'],
