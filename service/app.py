@@ -287,7 +287,7 @@ class Job:
                         "Complete tracks found in cache! Finalizing...",
                         50,
                     )
-                    self._finalize()
+                    self._finalize(self.info)
                     return
                 else:
                     print(
@@ -369,13 +369,18 @@ class Job:
     def _finalize(self,info) -> None:
         def sanitize_for_windows(msg):
             try:
-                print(msg, flush=True)
-            except UnicodeEncodeError:
-                print(str(msg).encode('ascii', 'ignore').decode('ascii'), flush=True)
+                clean_msg = str(msg).encode('ascii', 'ignore').decode('ascii')
+                print(clean_msg, flush=True)
+            except:
+                pass
 
-        
+        if not info:
+            self.set_status("failed", "Finalization failed: Missing metadata.")
+            return
+
         original_title = info.get('title', 'Unknown Title')
-        safe_title = "".join([c for c in original_title if c.isalnum() or c in (' ', '.', '_')]).strip()
+        safe_title = "".join([c for c in original_title if c.isalnum() or c in (' ', '.', '_')]).strip()    
+        sanitize_for_windows(f"Successfully finalized: {safe_title}")
 
         try:
             log_path = os.path.join(self.download_dir, "download_log.txt")
@@ -384,7 +389,6 @@ class Job:
         except Exception as e:
             sanitize_for_windows(f"Logging error: {e}")
         
-        sanitize_for_windows(f"Successfully finalized: {safe_title}")
         # Update status to indicate finalization has started
         self.set_status("processing", "Finalizing files...", self.progress or 100)
         time.sleep(2)
@@ -439,8 +443,7 @@ class Job:
         else:
             time.sleep(1)
             all_files = os.listdir(self.temp_dir)
-            safe_files_str = str(all_files).encode('ascii', 'ignore').decode('ascii')
-            sanitize_for_windows(f"DEBUG: Files in temp_dir: {str(safe_files_str)}")
+            sanitize_for_windows(f"DEBUG: Files in temp_dir: {str(all_files)}")
             # Look for common audio formats to ensure we don't miss files that failed MP3 conversion
             audio_extensions = (".mp3", ".m4a", ".webm")
             audio_files = sorted(
