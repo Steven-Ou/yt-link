@@ -181,6 +181,8 @@ class Job:
             "verbose": False,
             "cachedir": False,
             "check_formats": False,
+            "restrictfilenames": True,
+            "windowfilenames":True,
             "javascript_runtimes": ['deno','node'],
             "noprogress": True,
             "logger": SafeLogger(),
@@ -213,6 +215,7 @@ class Job:
                     "format": quality,
                     "outtmpl": output_template,
                     "restrictfilenames": True,
+            "windowfilenames":True,
                     "noplaylist": True,
                     "merge_output_format": "mp4",
                 }
@@ -225,6 +228,7 @@ class Job:
                     "noplaylist": self.job_type == "singleMp3",
                     "ignoreerrors": True,
                     "restrictfilenames": True,
+            "windowfilenames":True,
                     "ffmpeg_location": ffmpeg_exe,
                     "postprocessors": [
                         {
@@ -383,7 +387,7 @@ class Job:
         sanitize_for_windows(f"Successfully finalized: {safe_title}")
 
         try:
-            log_path = os.path.join(self.download_dir, "download_log.txt")
+            log_path = os.path.join(self.temp_dir, "download_log.txt")
             with open(log_path, "a", encoding="utf-8", errors="replace") as f:
                 f.write(f"Completed: {safe_title}\n")
         except Exception as e:
@@ -711,7 +715,8 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             "quiet": True,
             "no_warnings": True,
             "restrictfilenames": True,
-            "format": "all",
+            "windowfilenames":True,
+            "format": "bestvideo+bestaudio/best",
             "extract_flat": False,
             "javascript_runtimes": ['deno','node'],
             "check_formats": False,
@@ -822,12 +827,11 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
         print(f"[get-formats] ERROR: {e}", file=sys.stderr, flush=True)
         return jsonify({"error": "Video not found or unavailable."}), 404
     except Exception as e:
-        print(
-            f"[get-formats] UNEXPECTED ERROR: {traceback.format_exc()}",
-            file=sys.stderr,
-            flush=True,
-        )
-        return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
+        clean_error = str(e).encode('ascii', 'ignore').decode('ascii')
+        print(f"Backend Error: {clean_error}")
+    
+        # Return a generic error to the frontend to prevent 500 crashes
+        return jsonify({"error": "A processing error occurred. Check console for details."}), 500
     finally:
         if cookie_file and os.path.exists(cookie_file):
             try:
@@ -865,7 +869,8 @@ def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
 
     # --- This block will now catch any errors ---
     except Exception as e:
-        print(f"CRITICAL ERROR in queue_worker: {str(e)}")
+        clean_error = str(e).encode('ascii', 'ignore').decode('ascii')
+        print(f"Backend Error: {clean_error}")
         if job:
             job.set_status(
                 "failed",
@@ -873,8 +878,7 @@ def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
                 error=traceback.format_exc(),
             )
         time.sleep(2)
-        
-        return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
+        return jsonify({"error": "A processing error occurred. Check console for details."}), 500
 
 
 # --- (get_job_status - unchanged) ---
