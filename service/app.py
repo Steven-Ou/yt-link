@@ -551,6 +551,14 @@ class Job:
         # Mark job as fully successful
         self.set_status("completed", "Processing complete!", 100)
 
+        for extra in ["downloaded.txt", "download_log.txt", "concat_list.txt"]:
+            extra_path = os.path.join(self.temp_dir, extra)
+            if os.path.exists(extra_path):
+                try:
+                    os.remove(extra_path)
+                except:
+                    pass
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "job_id": self.job_id,
