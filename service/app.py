@@ -181,7 +181,7 @@ class Job:
             "verbose": False,
             "cachedir": False,
             "check_formats": False,
-            "restrictfilenames": True,
+            "restrictfilenames": False,
             "windowfilenames":True,
             "javascript_runtimes": ['deno','node'],
             "noprogress": True,
@@ -227,7 +227,7 @@ class Job:
                     "outtmpl": output_template,
                     "noplaylist": self.job_type == "singleMp3",
                     "ignoreerrors": True,
-                    "restrictfilenames": True,
+                    "restrictfilenames": False,
             "windowfilenames":True,
                     "ffmpeg_location": ffmpeg_exe,
                     "postprocessors": [
@@ -597,6 +597,7 @@ def sanitize_filename(filename: str) -> str:
     invalid_chars = '<>:"/\\|?*'
     for char in invalid_chars:
         filename = filename.replace(char, "_")
+    filename = " ".join(filename.split())
     return filename.strip().rstrip(".")
 
 
@@ -722,7 +723,7 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             "verbose": True,
             "quiet": True,
             "no_warnings": True,
-            "restrictfilenames": True,
+            "restrictfilenames": False,
             "windowfilenames":True,
             "format": "bestvideo+bestaudio/best",
             "extract_flat": False,
