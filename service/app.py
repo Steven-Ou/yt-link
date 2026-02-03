@@ -1,9 +1,14 @@
 # service/app.py
 import codecs
-import os
-os.environ["PYTHONUTF8"] = "1"
-import shutil
 import sys
+import os
+import io
+os.environ["PYTHONUTF8"] = "1"
+os.environ["PYTHONIOENCODING"] = "utf-8"
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+import shutil
 import tempfile
 import threading
 import time
@@ -14,11 +19,7 @@ import subprocess
 import queue
 import hashlib
 import re
-import io
-if sys.stdout.encoding != 'utf-8':
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-if sys.stderr.encoding != 'utf-8':
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 from typing import Any, Dict, Generator, List, Optional, cast, Union
 
 from flask import Flask, Response, request, jsonify
@@ -98,11 +99,11 @@ class Job:
                 self.progress = progress
             if error:
                 self.error = error
-                print(
-                    f"--- [Job {self.job_id}] ERROR: {self.error}",
-                    file=sys.stderr,
-                    flush=True,
-                )
+                try:
+                    safe_err = str(error).encode('ascii', 'ignore').decode('ascii')
+                    print(f"--- [Job {self.job_id}] ERROR: {safe_err}", file=sys.stderr, flush=True)
+                except:
+                    pass
             jobs[self.job_id] = self
 
     # --- MODIFIED: This method now has the new logging logic ---
@@ -235,7 +236,7 @@ class Job:
 
         if self.data.get("cookies"):
             cookie_file = os.path.join(APP_TEMP_DIR, f"cookies_{self.job_id}.txt")
-            with open(cookie_file, "w", encoding="utf-8") as f:
+            with open(cookie_file, "w", encoding="utf-8", errors="replace") as f:
                 f.write(self.data["cookies"])
             ydl_opts["cookiefile"] = cookie_file
 
@@ -243,6 +244,7 @@ class Job:
 
     def _progress_hook(self, d: Dict[str, Any]) -> None:
         self.update_progress(d)
+
 
     def run(self) -> None:
         pause_timeout = 0
@@ -319,7 +321,7 @@ class Job:
                         raise DownloadError("Failed to extract video information.")
                     self.info = info_dict
 
-                self._finalize()
+                self._finalize(self.info)
                 success = True
 
             except DownloadError as e:
@@ -360,7 +362,25 @@ class Job:
             except OSError as e:
                 print(f"Warning: could not delete cookie file: {e}")
 
-    def _finalize(self) -> None:
+    def _finalize(self,info) -> None:
+        def sanitize_for_windows(msg):
+            try:
+                print(msg, flush=True)
+            except UnicodeEncodeError:
+                print(str(msg).encode('ascii', 'ignore').decode('ascii'), flush=True)
+
+        
+        original_title = info.get('title', 'Unknown Title')
+        safe_title = "".join([c for c in original_title if c.isalnum() or c in (' ', '.', '_')]).strip()
+
+        try:
+            log_path = os.path.join(self.download_dir, "download_log.txt")
+            with open(log_path, "a", encoding="utf-8", errors="replace") as f:
+                f.write(f"Completed: {safe_title}\n")
+        except Exception as e:
+            sanitize_for_windows(f"Logging error: {e}")
+        
+        sanitize_for_windows(f"Successfully finalized: {safe_title}")
         # Update status to indicate finalization has started
         self.set_status("processing", "Finalizing files...", self.progress or 100)
         time.sleep(2)
@@ -415,8 +435,8 @@ class Job:
         else:
             time.sleep(1)
             all_files = os.listdir(self.temp_dir)
-            print(f"DEBUG: Files in temp_dir: {all_files}", flush=True)
-
+            safe_files_str = str(all_files).encode('ascii', 'ignore').decode('ascii')
+            sanitize_for_windows(f"DEBUG: Files in temp_dir: {str(safe_files_str)}")
             # Look for common audio formats to ensure we don't miss files that failed MP3 conversion
             audio_extensions = (".mp3", ".m4a", ".webm")
             audio_files = sorted(
@@ -485,7 +505,7 @@ class Job:
                 concat_list_path = os.path.join(self.temp_dir, "concat_list.txt")
                 
                 # Create a temporary manifest file for FFmpeg concatenation
-                with open(concat_list_path, "w", encoding="utf-8") as f:
+                with open(concat_list_path, "w", encoding="utf-8", errors="replace") as f:
                     for audio_file in audio_files:
                         # Escape single quotes in filenames for FFmpeg compatibility
                         escaped = audio_file.replace("'", "'\\''")
@@ -508,7 +528,7 @@ class Job:
                     self.file_path,
                 ]
                 env = os.environ.copy()
-                env["PYTHONIOENCODING"] = "1"
+                env["PYTHONIOENCODING"] = "utf-8"
 
                 process = subprocess.run(
                     command, capture_output=True, text=True, encoding="utf-8", env=env
