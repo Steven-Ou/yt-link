@@ -190,6 +190,7 @@ class Job:
             "nocheckcertificate": True,
             "ffmpeg_location": ffmpeg_exe,
             "prefer_ffmpeg": True,
+            "fixup":"detect_or_warn",
             "youtube_include_dash_manifest": True,
             "youtube_include_hls_manifest": True,
             "sleep_interval": 3,  # Added to help with rate limits
@@ -233,7 +234,7 @@ class Job:
                     "postprocessors": [
                         {
                             "key": "FFmpegExtractAudio",
-                            "preferredcodec": "mp3",
+                            "preferredcodec": "m4a",
                             "preferredquality": "192",
                         }
                     ],
