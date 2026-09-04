@@ -1,5 +1,6 @@
 import "./globals.css";
 import UpdateStatus from "./components/UpdateStatus";
+import { Analytics } from '@vercel/analytics/next';
 
 // You can update this metadata as you see fit
 export const metadata = {
@@ -22,6 +23,7 @@ export default function RootLayout({ children }) {
       {/* We will apply the font via a class in globals.css now */}
       <body className="font-sans antialiased">
         {children}
+        <Analytics />
         <UpdateStatus />
       </body>
     </html>
