@@ -1,5 +1,5 @@
 Flask>=2.0
-yt-dlp>=2024.12.06
+yt-dlp>=2026.8.19
 setuptools
 Flask-Cors>=3.0.10
 pyinstaller
