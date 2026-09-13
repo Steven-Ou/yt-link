@@ -3,15 +3,20 @@ import codecs
 import sys
 import os
 import io
+
 os.environ["PYTHONUTF8"] = "1"
 os.environ["PYTHONIOENCODING"] = "utf-8"
 if sys.platform == "win32":
-    if hasattr(sys.stdout, 'reconfigure'):
-        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     else:
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+        sys.stdout = io.TextIOWrapper(
+            sys.stdout.buffer, encoding="utf-8", errors="replace"
+        )
+        sys.stderr = io.TextIOWrapper(
+            sys.stderr.buffer, encoding="utf-8", errors="replace"
+        )
 import shutil
 import tempfile
 import threading
@@ -43,7 +48,9 @@ node_exe: Optional[str] = None
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-POTENTIAL_BIN = os.path.join(BASE_DIR, "bin", "ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+POTENTIAL_BIN = os.path.join(
+    BASE_DIR, "bin", "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+)
 if os.path.exists(POTENTIAL_BIN):
     ffmpeg_exe = POTENTIAL_BIN
 # --- Job Queue, Lock, and Retry Settings ---
@@ -104,8 +111,12 @@ class Job:
             if error:
                 self.error = error
                 try:
-                    safe_err = str(error).encode('ascii', 'ignore').decode('ascii')
-                    print(f"--- [Job {self.job_id}] ERROR: {safe_err}", file=sys.stderr, flush=True)
+                    safe_err = str(error).encode("ascii", "ignore").decode("ascii")
+                    print(
+                        f"--- [Job {self.job_id}] ERROR: {safe_err}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
                 except:
                     pass
             jobs[self.job_id] = self
@@ -182,15 +193,15 @@ class Job:
             "cachedir": False,
             "check_formats": False,
             "restrictfilenames": False,
-            "windowfilenames":True,
-            "javascript_runtimes": ['deno','node'],
+            "windowfilenames": True,
+            "javascript_runtimes": ["deno", "node"],
             "noprogress": True,
             "logger": SafeLogger(),
             "progress_hooks": [self._progress_hook],
             "nocheckcertificate": True,
             "ffmpeg_location": ffmpeg_exe,
             "prefer_ffmpeg": True,
-            "fixup":"detect_or_warn",
+            "fixup": "detect_or_warn",
             "youtube_include_dash_manifest": True,
             "youtube_include_hls_manifest": True,
             "sleep_interval": 3,  # Added to help with rate limits
@@ -207,16 +218,14 @@ class Job:
             if selected_format:
                 quality = f"{selected_format}+bestaudio/best"
             else:
-                quality = (
-                    "bestaudio/best"
-                )
+                quality = "bestaudio/best"
 
             ydl_opts.update(
                 {
                     "format": quality,
                     "outtmpl": output_template,
                     "restrictfilenames": True,
-            "windowfilenames":True,
+                    "windowfilenames": True,
                     "noplaylist": True,
                     "merge_output_format": "mp4",
                 }
@@ -229,7 +238,7 @@ class Job:
                     "noplaylist": self.job_type == "singleMp3",
                     "ignoreerrors": True,
                     "restrictfilenames": False,
-            "windowfilenames":True,
+                    "windowfilenames": True,
                     "ffmpeg_location": ffmpeg_exe,
                     "postprocessors": [
                         {
@@ -253,7 +262,6 @@ class Job:
 
     def _progress_hook(self, d: Dict[str, Any]) -> None:
         self.update_progress(d)
-
 
     def run(self) -> None:
         pause_timeout = 0
@@ -371,10 +379,10 @@ class Job:
             except OSError as e:
                 print(f"Warning: could not delete cookie file: {e}")
 
-    def _finalize(self,info) -> None:
+    def _finalize(self, info) -> None:
         def sanitize_for_windows(msg):
             try:
-                clean_msg = str(msg).encode('ascii', 'ignore').decode('ascii')
+                clean_msg = str(msg).encode("ascii", "ignore").decode("ascii")
                 print(clean_msg, flush=True)
             except:
                 pass
@@ -383,8 +391,10 @@ class Job:
             self.set_status("failed", "Finalization failed: Missing metadata.")
             return
 
-        original_title = info.get('title', 'Unknown Title')
-        safe_title = "".join([c for c in original_title if c.isalnum() or c in (' ', '.', '_')]).strip()    
+        original_title = info.get("title", "Unknown Title")
+        safe_title = "".join(
+            [c for c in original_title if c.isalnum() or c in (" ", ".", "_")]
+        ).strip()
         sanitize_for_windows(f"Successfully finalized: {safe_title}")
 
         try:
@@ -393,11 +403,11 @@ class Job:
                 f.write(f"Completed: {safe_title}\n")
         except Exception as e:
             sanitize_for_windows(f"Logging error: {e}")
-        
+
         # Update status to indicate finalization has started
         self.set_status("processing", "Finalizing files...", self.progress or 100)
         time.sleep(2)
-        
+
         # Ensure critical job data is present before proceeding
         if not self.temp_dir or self.info is None:
             self.set_status("failed", "Finalization failed: Missing metadata.")
@@ -414,10 +424,10 @@ class Job:
                 if os.path.splitext(f)[1].lower() in video_extensions
                 and not f.endswith(".part")
             ]
-            
+
             if not found_files:
                 raise Exception("No final video file found after download.")
-            
+
             # Identify the raw downloaded file and prepare the sanitized destination name
             original_filename = found_files[0]
             original_filepath = os.path.join(self.temp_dir, original_filename)
@@ -430,7 +440,7 @@ class Job:
                 try:
                     print(msg, flush=True)
                 except UnicodeEncodeError:
-                    print(msg.encode('ascii', 'ignore').decode('ascii'), flush=True)
+                    print(msg.encode("ascii", "ignore").decode("ascii"), flush=True)
 
             # Rename the file to the clean, sanitized title if necessary
             if original_filepath != self.file_path:
@@ -443,7 +453,7 @@ class Job:
                     self.file_path = original_filepath
             else:
                 self.file_name = sanitize_filename(original_filename)
-        
+
         # Logic for processing audio-based jobs (Single MP3, ZIP, or Combined)
         else:
             time.sleep(1)
@@ -497,7 +507,7 @@ class Job:
                     self.file_name = sanitize_filename(
                         os.path.basename(original_filepath)
                     )
-            
+
             # Handle creating a ZIP archive of all playlist tracks
             elif self.job_type == "playlistZip":
                 self.set_status("processing", "Creating ZIP archive...", self.progress)
@@ -515,9 +525,11 @@ class Job:
                 self.file_name = f"{playlist_title} (Combined).mp3"
                 self.file_path = os.path.join(self.temp_dir, self.file_name)
                 concat_list_path = os.path.join(self.temp_dir, "concat_list.txt")
-                
+
                 # Create a temporary manifest file for FFmpeg concatenation
-                with open(concat_list_path, "w", encoding="utf-8", errors="replace") as f:
+                with open(
+                    concat_list_path, "w", encoding="utf-8", errors="replace"
+                ) as f:
                     for audio_file in audio_files:
                         # Escape single quotes in filenames for FFmpeg compatibility
                         escaped = audio_file.replace("'", "'\\''")
@@ -545,7 +557,7 @@ class Job:
                 process = subprocess.run(
                     command, capture_output=True, text=True, encoding="utf-8", env=env
                 )
-                
+
                 if process.returncode != 0:
                     raise Exception(f"FFMPEG Concat Error: {process.stderr}")
 
@@ -611,6 +623,8 @@ def sanitize_url_for_job(url: str, job_type: str) -> str:
             if match:
                 return f"https://www.youtube.com/watch?{match.group(1)}"
     return url
+
+
 # --- (resolve_ffmpeg_path - unchanged) ---
 def resolve_ffmpeg_path(candidate: str) -> str:
     if os.path.isdir(candidate):
@@ -619,7 +633,7 @@ def resolve_ffmpeg_path(candidate: str) -> str:
             if os.path.exists(cand):
                 candidate = cand
                 break
-    
+
     ffmpeg_exe = os.path.abspath(candidate)
     ffmpeg_dir = os.path.dirname(ffmpeg_exe)
     if candidate in ("ffmpeg", "ffmpeg.exe"):
@@ -649,7 +663,7 @@ def resolve_ffmpeg_path(candidate: str) -> str:
     if not node_path:
         possible_node = [
             os.path.join(BASE_DIR, "node_modules", ".bin", "node.exe"),
-            sys.executable.replace("python.exe", "node.exe")
+            sys.executable.replace("python.exe", "node.exe"),
         ]
         for p in possible_node:
             if os.path.exists(p):
@@ -682,12 +696,13 @@ def cleanup_old_job_dirs() -> None:
         dirpath = os.path.join(APP_TEMP_DIR, dirname)
         if os.path.isdir(dirpath):
             try:
-                uuid.UUID(dirname, version=4)
-                dir_age = now - os.path.getmtime(dirpath)
-                if dir_age > 86400:  # 24 hours
-                    print(f"Cleaning up old temp directory: {dirpath}")
-                    shutil.rmtree(dirpath, ignore_errors=True)
-            except (ValueError, OSError):
+                # Check for your specific cache prefix instead of a UUID
+                if dirname.startswith("cache_"):
+                    dir_age = now - os.path.getmtime(dirpath)
+                    if dir_age > 86400:  # 24 hours
+                        print(f"Cleaning up old temp directory: {dirpath}")
+                        shutil.rmtree(dirpath, ignore_errors=True)
+            except OSError:
                 continue
 
 
@@ -725,10 +740,10 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
             "quiet": True,
             "no_warnings": True,
             "restrictfilenames": False,
-            "windowfilenames":True,
+            "windowfilenames": True,
             "format": "bestvideo+bestaudio/best",
             "extract_flat": False,
-            "javascript_runtimes": ['deno','node'],
+            "javascript_runtimes": ["deno", "node"],
             "check_formats": False,
             "nocheckcertificate": True,
             "noplaylist": True,
@@ -837,11 +852,13 @@ def get_formats_endpoint() -> Union[Response, tuple[Response, int]]:
         print(f"[get-formats] ERROR: {e}", file=sys.stderr, flush=True)
         return jsonify({"error": "Video not found or unavailable."}), 404
     except Exception as e:
-        clean_error = str(e).encode('ascii', 'ignore').decode('ascii')
+        clean_error = str(e).encode("ascii", "ignore").decode("ascii")
         print(f"Backend Error: {clean_error}")
-    
+
         # Return a generic error to the frontend to prevent 500 crashes
-        return jsonify({"error": "A processing error occurred. Check console for details."}), 500
+        return jsonify(
+            {"error": "A processing error occurred. Check console for details."}
+        ), 500
     finally:
         if cookie_file and os.path.exists(cookie_file):
             try:
@@ -879,7 +896,7 @@ def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
 
     # --- This block will now catch any errors ---
     except Exception as e:
-        clean_error = str(e).encode('ascii', 'ignore').decode('ascii')
+        clean_error = str(e).encode("ascii", "ignore").decode("ascii")
         print(f"Backend Error: {clean_error}")
         if job:
             job.set_status(
@@ -888,7 +905,9 @@ def start_job_endpoint() -> Union[Response, tuple[Response, int]]:
                 error=traceback.format_exc(),
             )
         time.sleep(2)
-        return jsonify({"error": "A processing error occurred. Check console for details."}), 500
+        return jsonify(
+            {"error": "A processing error occurred. Check console for details."}
+        ), 500
 
 
 # --- (get_job_status - unchanged) ---
@@ -988,7 +1007,7 @@ def queue_worker() -> None:
             job.set_status(
                 "failed",
                 message=f"Processing error: {str(e)}",
-                error =traceback.format_exc()
+                error=traceback.format_exc(),
             )
             print(f"[WORKER CRASH]:{str(e)}")
         finally:
